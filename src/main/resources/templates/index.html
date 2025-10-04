@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Spring + Thymeleaf + SFTP</title>
+</head>
+<body>
+<h1>SFTP Server</h1>
+
+<p th:if="${message}" th:text="${message}" style="color: green;"></p>
+<p>Status: <strong th:text="${sftpRunning} ? 'Running' : 'Stopped'"></strong></p>
+
+<form th:action="@{/start-server}" method="post" th:if="${!sftpRunning}">
+    <button type="submit">Start SFTP</button>
+    <input type="text" name="username" placeholder="Your name">
+    <input type="password" name="password" placeholder="Your name">
+</form>
+
+<form th:action="@{/stop-server}" method="post" th:if="${sftpRunning}">
+    <button type="submit">Stop SFTP</button>
+</form>
+
+</body>
+</html>
