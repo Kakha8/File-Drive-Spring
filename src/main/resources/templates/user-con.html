@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"/><title>User</title></head>
+<body>
+<p th:if="${#bools.isTrue(session.sftpConnected)}">
+    Connected as <strong th:text="${session.sftpUser}">user</strong>
+</p>
+<p th:if="${#bools.isFalse(session.sftpConnected)}">
+    Not connected
+</p>
+</body>
+</html>

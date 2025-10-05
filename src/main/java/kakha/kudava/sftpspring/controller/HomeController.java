@@ -1,6 +1,10 @@
 package kakha.kudava.sftpspring.controller;
 
 
+import com.jcraft.jsch.ChannelSftp;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.SftpException;
+import jakarta.servlet.http.HttpSession;
 import kakha.kudava.sftpspring.sftp.SftpClientService;
 import kakha.kudava.sftpspring.sftp.SftpServerService;
 import org.springframework.stereotype.Controller;
@@ -53,11 +57,48 @@ public class HomeController {
         return "client";
     }
 
-    @PostMapping("/upload")
+    @PostMapping("/connect")
     public String upload(@RequestParam("username") String username,
                          @RequestParam("password") String password,
-                         Model model) {
-        client.uploadFile(username, password);
-        return "client";
+                         Model model, HttpSession session) throws JSchException, SftpException {
+        ChannelSftp con = null;
+        try {
+            con = client.connectSFTP(username, password);
+            client.showDir(con); // logs to console (optional)
+
+            boolean checkCon = client.isConnected(con);
+            if (checkCon) {
+                // store in HTTP session so we know "who" for later requests
+                session.setAttribute("sftpConnected", true);
+                session.setAttribute("sftpUser", username);
+                System.out.println("connected as " + username);
+            } else {
+                session.setAttribute("sftpConnected", false);
+                session.removeAttribute("sftpUser");
+            }
+
+            System.out.println(client.showDir(con));
+            // also put into model for immediate render
+            model.addAttribute("sftpConnected", checkCon);
+            model.addAttribute("connectedUser", checkCon ? username : null);
+
+        } finally {
+            // tidy up the SSH connection (don’t keep ChannelSftp across requests)
+            if (con != null) {
+                try {
+                    var sess = con.getSession();
+                    if (con.isConnected()) con.disconnect();
+                    if (sess != null && sess.isConnected()) sess.disconnect();
+                } catch (JSchException ignore) {
+                }
+            }
+        }
+        return "user-con";
+    }
+
+    @GetMapping("/user")
+    public String userPage() {
+        // user.html uses session.sftpConnected / session.sftpUser directly
+        return "user-con";
     }
 }
