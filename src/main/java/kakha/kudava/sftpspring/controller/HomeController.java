@@ -1,6 +1,7 @@
 package kakha.kudava.sftpspring.controller;
 
 
+import kakha.kudava.sftpspring.sftp.SftpClientService;
 import kakha.kudava.sftpspring.sftp.SftpServerService;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -12,9 +13,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 public class HomeController {
 
     private final SftpServerService sftp;
+    private final SftpClientService client;
 
-    public HomeController(SftpServerService sftp) {
+    public HomeController(SftpServerService sftp, SftpClientService client) {
         this.sftp = sftp;
+        this.client = client;
     }
 
     @GetMapping("/")
@@ -43,5 +46,18 @@ public class HomeController {
         model.addAttribute("message", "SFTP server stopped.");
         model.addAttribute("sftpRunning", sftp.isRunning());
         return "index";
+    }
+
+    @GetMapping("/client")
+    public String client(Model model) {
+        return "client";
+    }
+
+    @PostMapping("/upload")
+    public String upload(@RequestParam("username") String username,
+                         @RequestParam("password") String password,
+                         Model model) {
+        client.uploadFile(username, password);
+        return "client";
     }
 }
