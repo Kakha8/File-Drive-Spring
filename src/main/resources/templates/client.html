@@ -5,7 +5,7 @@
     <title>Title</title>
 </head>
 <body>
-uploaded, hopefully it works!
+<p th:if="${message}" th:text="${message}" style="color: green;"></p>
 <form th:action="@{/connect}" method="post">
     <button type="submit">Start SFTP</button>
     <input type="text" name="username" placeholder="Your name">

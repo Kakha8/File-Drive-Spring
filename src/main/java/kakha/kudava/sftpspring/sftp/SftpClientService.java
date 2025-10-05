@@ -86,6 +86,12 @@ public class SftpClientService {
         return sftp;
     }
 
+    public synchronized void disconnectSFTP(String username) throws JSchException {
+        System.out.println("Disconnecting: " + username);
+        JSch jsch = new JSch();
+        Session session = jsch.getSession(username, "localhost", 8022);
+        session.disconnect();
+    }
     public synchronized DirListing showDir(ChannelSftp sftp) throws SftpException {
         String pwd = sftp.pwd();
 

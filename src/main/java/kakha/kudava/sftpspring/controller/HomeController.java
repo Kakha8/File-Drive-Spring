@@ -96,6 +96,16 @@ public class HomeController {
         return "user-con";
     }
 
+    @PostMapping("/disconnect")
+    public String disconnect(HttpSession session, Model model) throws JSchException {
+        String username = (String) session.getAttribute("sftpUser");
+        client.disconnectSFTP(username);
+        model.addAttribute("message", "Client" + username +
+                " disconnected.");
+        session.invalidate();
+        return "client";
+    }
+
     @GetMapping("/user")
     public String userPage() {
         // user.html uses session.sftpConnected / session.sftpUser directly
