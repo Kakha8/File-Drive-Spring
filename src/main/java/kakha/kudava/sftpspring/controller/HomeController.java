@@ -5,8 +5,11 @@ import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.SftpException;
 import jakarta.servlet.http.HttpSession;
-import kakha.kudava.sftpspring.sftp.SftpClientService;
-import kakha.kudava.sftpspring.sftp.SftpServerService;
+import kakha.kudava.sftpspring.model.User;
+import kakha.kudava.sftpspring.services.SftpClientService;
+import kakha.kudava.sftpspring.services.SftpServerService;
+import kakha.kudava.sftpspring.services.UserService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,14 +22,29 @@ public class HomeController {
     private final SftpServerService sftp;
     private final SftpClientService client;
 
-    public HomeController(SftpServerService sftp, SftpClientService client) {
+    @Autowired
+    private UserService userService;
+
+    public HomeController(SftpServerService sftp, SftpClientService client, UserService userService) {
         this.sftp = sftp;
         this.client = client;
+        this.userService = userService;
     }
 
     @GetMapping("/")
-    public String index(Model model) {
-        model.addAttribute("sftpRunning", sftp.isRunning());
+    public String home(Model model) {
+        return "redirect:/server";
+    }
+
+
+    @GetMapping("/server")
+    public String server(HttpSession session, Model model) {
+        Object user = session.getAttribute("USERNAME");
+        if (user == null) return "redirect:/login";
+
+        boolean running = sftp != null && sftp.isRunning();
+        model.addAttribute("sftpRunning", running);
+        model.addAttribute("username", user.toString());
         return "server";
     }
 
@@ -107,11 +125,15 @@ public class HomeController {
     @GetMapping("/user")
     public String userPage() {
         // user.html uses session.sftpConnected / session.sftpUser directly
+        User user = new User();
+        user.setUsername("admin");
+        boolean checkAdmin = userService.isAdmin(user);
+        System.out.println(checkAdmin);
         return "user-con";
     }
 
-    @GetMapping("/main")
+/*    @GetMapping("/main")
     public String mainPage() {
-        return "main";
-    }
+        return "login";
+    }*/
 }

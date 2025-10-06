@@ -1,12 +1,9 @@
-package kakha.kudava.sftpspring.sftp;
+package kakha.kudava.sftpspring.services;
 
 import com.jcraft.jsch.*;
 import org.apache.sshd.server.SshServer;
 import org.springframework.stereotype.Service;
 
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.util.Vector;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service

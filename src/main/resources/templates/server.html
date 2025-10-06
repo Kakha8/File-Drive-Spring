@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>Spring + Thymeleaf + SFTP</title>
+    <style>
+        .hidden {display: none;}
+    </style>
 </head>
 <body>
 <h1>SFTP Server</h1>
@@ -19,6 +22,28 @@
 <form th:action="@{/stop-server}" method="post" th:if="${sftpRunning}">
     <button type="submit">Stop SFTP</button>
 </form>
+
+<form th:action="@{/logout}" method="post">
+    <button type="submit">Logout</button>
+</form>
+
+<br>
+<button type="button" onclick="toggleForm()">Add User</button>
+
+<div id="addUserForm" class="hidden">
+    <form method="post" onsubmit="event.preventDefault()">
+        <label>Username: <input type="text" name="username" required></label><br>
+        <label>Password: <input type="password" name="password" required></label><br>
+        <button type="submit">Submit</button>
+    </form>
+</div>
+
+<script>
+    function toggleForm() {
+        const formDiv = document.getElementById('addUserForm');
+        formDiv.classList.toggle('hidden');
+    }
+</script>
 
 </body>
 </html>

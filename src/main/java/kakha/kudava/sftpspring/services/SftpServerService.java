@@ -1,4 +1,4 @@
-package kakha.kudava.sftpspring.sftp;
+package kakha.kudava.sftpspring.services;
 
 import jakarta.annotation.PreDestroy;
 import org.apache.sshd.common.file.virtualfs.VirtualFileSystemFactory;

@@ -6,10 +6,11 @@
 </head>
 <body>
 <strong th:text="${message}">dfddf</strong>
-<form th:action="@{/login}" method="post">
-    <button type="submit">Start SFTP</button>
+<form th:action="@{/auth}" method="post">
+    <button type="submit">Log in</button>
     <input type="text" name="username" placeholder="Your name">
     <input type="password" name="password" placeholder="Your name">
 </form>
+
 </body>
 </html>
