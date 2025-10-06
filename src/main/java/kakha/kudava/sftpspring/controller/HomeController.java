@@ -27,7 +27,7 @@ public class HomeController {
     @GetMapping("/")
     public String index(Model model) {
         model.addAttribute("sftpRunning", sftp.isRunning());
-        return "index";
+        return "server";
     }
 
     @PostMapping("/start-server")
@@ -41,7 +41,7 @@ public class HomeController {
             model.addAttribute("message", "Failed to start SFTP: " + e.getMessage());
         }
         model.addAttribute("sftpRunning", sftp.isRunning());
-        return "index";
+        return "server";
     }
 
     @PostMapping("/stop-server")
@@ -49,7 +49,7 @@ public class HomeController {
         sftp.stop(true);
         model.addAttribute("message", "SFTP server stopped.");
         model.addAttribute("sftpRunning", sftp.isRunning());
-        return "index";
+        return "server";
     }
 
     @GetMapping("/client")
@@ -64,11 +64,10 @@ public class HomeController {
         ChannelSftp con = null;
         try {
             con = client.connectSFTP(username, password);
-            client.showDir(con); // logs to console (optional)
+            client.showDir(con);
 
             boolean checkCon = client.isConnected(con);
             if (checkCon) {
-                // store in HTTP session so we know "who" for later requests
                 session.setAttribute("sftpConnected", true);
                 session.setAttribute("sftpUser", username);
                 System.out.println("connected as " + username);
@@ -83,7 +82,6 @@ public class HomeController {
             model.addAttribute("connectedUser", checkCon ? username : null);
 
         } finally {
-            // tidy up the SSH connection (don’t keep ChannelSftp across requests)
             if (con != null) {
                 try {
                     var sess = con.getSession();
@@ -110,5 +108,10 @@ public class HomeController {
     public String userPage() {
         // user.html uses session.sftpConnected / session.sftpUser directly
         return "user-con";
+    }
+
+    @GetMapping("/main")
+    public String mainPage() {
+        return "main";
     }
 }
