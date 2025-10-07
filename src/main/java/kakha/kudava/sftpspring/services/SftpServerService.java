@@ -51,6 +51,7 @@ public class SftpServerService {
         PasswordAuthenticator pa = (u, p, session) -> username.equals(u) && password.equals(p);
         server.setPasswordAuthenticator(pa);
 
+
         // Enable SFTP
         server.setSubsystemFactories(Collections.singletonList(
                 new SftpSubsystemFactory.Builder().build()

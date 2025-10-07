@@ -32,8 +32,14 @@ public class HomeController {
     }
 
     @GetMapping("/")
-    public String home(Model model) {
-        return "redirect:/server";
+    public String home(HttpSession session, Model model) {
+        Object user = session.getAttribute("USERNAME");
+        if (user == null) return "redirect:/login";
+
+        boolean running = sftp != null && sftp.isRunning();
+        model.addAttribute("sftpRunning", running);
+        model.addAttribute("username", user.toString());
+        return "index";
     }
 
 
@@ -132,6 +138,10 @@ public class HomeController {
         return "user-con";
     }
 
+    @GetMapping("/yle")
+    public String yle(Model model) {
+        return "index";
+    }
 /*    @GetMapping("/main")
     public String mainPage() {
         return "login";

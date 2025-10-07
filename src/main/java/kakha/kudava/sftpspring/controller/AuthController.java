@@ -46,6 +46,7 @@ public class AuthController {
         if (userService.authenticate(username, password)) {
             session.setAttribute("USERNAME", username);
             ra.addFlashAttribute("message", "Welcome, " + username + "!");
+            //System.out.println(userService.getUsernames());
             return "redirect:/server";
         } else {
             ra.addFlashAttribute("message", "Invalid username or password.");
