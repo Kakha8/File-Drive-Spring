@@ -4,6 +4,8 @@ import com.jcraft.jsch.*;
 import org.apache.sshd.server.SshServer;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
@@ -125,6 +127,16 @@ public class SftpClientService {
         } catch (com.jcraft.jsch.JSchException e) {
             return false;
         }
+    }
+
+    public String getTime(){
+        LocalDateTime myDateObj = LocalDateTime.now();
+        DateTimeFormatter myFormatObj = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+
+        String formattedDate = myDateObj.format(myFormatObj);
+        //System.out.println("After formatting: " + formattedDate);
+
+        return formattedDate;
     }
 
 }

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>SFTP Users</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        table { border-collapse: collapse; width: 420px; }
+        th, td { border: 1px solid #888; padding: 8px 12px; text-align: left; }
+        th { background-color: #eee; }
+        .error { color: #b00020; margin-top: 12px; }
+    </style>
+</head>
+<body>
+
+<h2>SFTP User Sessions</h2>
+
+<table id="userTable">
+    <thead>
+    <tr>
+        <th>Time</th>
+        <th>User</th>
+    </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+</table>
+
+<div id="err" class="error" style="display:none;"></div>
+
+<script th:inline="javascript">
+    const DATA_URL = /*[[@{/sftpuser}]]*/ '/sftpuser';
+
+    function renderNoConnected() {
+        document.getElementById('tableBody').innerHTML =
+            `<tr><td colspan="2" style="color:#666;">No connected users</td></tr>`;
+    }
+
+    async function loadData() {
+        try {
+            const res = await fetch(DATA_URL, { headers: { 'Accept':'application/json' } });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            const data = await res.json();
+
+            
+            const list = Array.isArray(data?.users)
+                ? data.users.filter(u => u && u.connected)
+                : [];
+
+            const tbody = document.getElementById('tableBody');
+
+            if (!list.length) {
+                renderNoConnected();
+            } else {
+                tbody.innerHTML = list.map(u => `
+          <tr data-username="${u.username}">
+            <td>${u.time ?? ''}</td>
+            <td>${u.username ?? ''}</td>
+          </tr>
+        `).join('');
+            }
+
+            document.getElementById('err').style.display = 'none';
+        } catch (err) {
+            document.getElementById('err').textContent = 'Error fetching data: ' + err.message;
+            document.getElementById('err').style.display = 'block';
+            console.error(err);
+        }
+    }
+
+    loadData();
+    setInterval(loadData, 5000);
+</script>
+
+</body>
+</html>

@@ -43,38 +43,7 @@ public class HomeController {
     }
 
 
-    @GetMapping("/server")
-    public String server(HttpSession session, Model model) {
-        Object user = session.getAttribute("USERNAME");
-        if (user == null) return "redirect:/login";
 
-        boolean running = sftp != null && sftp.isRunning();
-        model.addAttribute("sftpRunning", running);
-        model.addAttribute("username", user.toString());
-        return "server";
-    }
-
-    @PostMapping("/start-server")
-    public String startServer(@RequestParam("username") String username,
-                              @RequestParam("password") String password,
-                              Model model) {
-        try {
-            sftp.start(username, password);
-            model.addAttribute("message", "SFTP server started.");
-        } catch (Exception e) {
-            model.addAttribute("message", "Failed to start SFTP: " + e.getMessage());
-        }
-        model.addAttribute("sftpRunning", sftp.isRunning());
-        return "server";
-    }
-
-    @PostMapping("/stop-server")
-    public String stopServer(Model model) {
-        sftp.stop(true);
-        model.addAttribute("message", "SFTP server stopped.");
-        model.addAttribute("sftpRunning", sftp.isRunning());
-        return "server";
-    }
 
     @GetMapping("/client")
     public String client(Model model) {
@@ -101,7 +70,7 @@ public class HomeController {
             }
 
             System.out.println(client.showDir(con));
-            // also put into model for immediate render
+
             model.addAttribute("sftpConnected", checkCon);
             model.addAttribute("connectedUser", checkCon ? username : null);
 
