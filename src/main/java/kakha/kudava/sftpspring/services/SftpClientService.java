@@ -1,106 +1,119 @@
 package kakha.kudava.sftpspring.services;
 
 import com.jcraft.jsch.*;
-import org.apache.sshd.server.SshServer;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.*;
 
 @Service
 public class SftpClientService {
-    private SshServer sshd;
-    private final AtomicBoolean running = new AtomicBoolean(false);
+
+    private final ServerSessionRegistry registry;
+
+    private final Map<String, String> serverSessionIds = new ConcurrentHashMap<>();
+    private final Map<String, ScheduledFuture<?>> heartbeats = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService scheduler =
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "sftp-heartbeats");
+                t.setDaemon(true);
+                return t;
+            });
+
+    public SftpClientService(ServerSessionRegistry registry) {
+        this.registry = registry;
+    }
+
 
     public record SftpItem(String name, boolean directory, long size, long mtimeEpochSec) {}
     public record DirListing(String pwd, java.util.List<SftpItem> items) {}
 
+    public record Connection(ChannelSftp channel, String serverSessionId) {}
 
-/*    public synchronized void uploadFile(String user, String password) {
+    // --- Connect / Disconnect ----------------------------------------------
 
+    public synchronized ChannelSftp connectSFTP(String username, String password) throws JSchException {
+        Objects.requireNonNull(username, "username");
+        Objects.requireNonNull(password, "password");
 
-        String localToUpload = "test.txt";       // must exist locally
-        String remoteToDownload = "test.txt";    // must exist on server
+        final String host = "localhost";
+        final int port = 8022;
 
-
-
-        try {
-
-
-            // 4) Upload (local -> remote)
-            try (FileInputStream fis = new FileInputStream(localToUpload)) {
-                String remoteName = "uploaded_" + localToUpload;
-                sftp.put(fis, remoteName, ChannelSftp.OVERWRITE);
-                System.out.println("Uploaded -> " + remoteName);
-            } catch (Exception ex) {
-                System.out.println("Upload skipped / failed: " + ex.getMessage());
-            }
-
-            // 5) Download (remote -> local)
-            try (FileOutputStream fos = new FileOutputStream("downloaded_" + remoteToDownload)) {
-                sftp.get(remoteToDownload, fos);
-                System.out.println("Downloaded -> downloaded_" + remoteToDownload);
-            } catch (Exception ex) {
-                System.out.println("Download skipped / failed: " + ex.getMessage());
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            if (sftp != null) sftp.disconnect();
-            if (session != null) session.disconnect();
-        }
-    }*/
-
-    public synchronized ChannelSftp connectSFTP(String user, String password) throws JSchException {
-        String host = "localhost";
-        int port = 8022;
-/*        String user = "user";
-        String password = "pass";*/
-
-        Session session = null;
-        ChannelSftp sftp = null;
-
-        // 1) Connect
         JSch jsch = new JSch();
+        Session jsession = jsch.getSession(username, host, port);
+        jsession.setPassword(password);
 
-        // For real use, set a known_hosts file instead of disabling checks:
-        // jsch.setKnownHosts("known_hosts");
-        session = jsch.getSession(user, host, port);
-        session.setPassword(password);
-
-        // demo-only: skip host key checking
         java.util.Properties cfg = new java.util.Properties();
         cfg.put("StrictHostKeyChecking", "no");
-        session.setConfig(cfg);
+        jsession.setConfig(cfg);
 
-        session.connect(5000);
-        System.out.println("Connected.");
+        jsession.connect(5000);
 
-        // 2) Open SFTP channel
-        Channel channel = session.openChannel("sftp");
+        Channel channel = jsession.openChannel("sftp");
         channel.connect(5000);
-        sftp = (ChannelSftp) channel;
+        ChannelSftp sftp = (ChannelSftp) channel;
+
+
+        String remoteHint = host + ":" + port;
+        String sid = registry.create(username, remoteHint);
+        serverSessionIds.put(username, sid);
+
+        //  Start heartbeat every ~25s to keep session active
+        ScheduledFuture<?> task = scheduler.scheduleAtFixedRate(
+                () -> registry.heartbeat(sid),
+                25, 25, TimeUnit.SECONDS
+        );
+        heartbeats.put(username, task);
+
+        System.out.println("Connected as " + username + " (serverSessionId=" + sid + ")");
         return sftp;
     }
 
-    public synchronized void disconnectSFTP(String username) throws JSchException {
-        System.out.println("Disconnecting: " + username);
-        JSch jsch = new JSch();
-        Session session = jsch.getSession(username, "localhost", 8022);
-        session.disconnect();
+
+    public synchronized void disconnectSFTP(String username, ChannelSftp sftp) {
+        // 1) Close JSch channel + session
+        if (sftp != null) {
+            try { sftp.disconnect(); } catch (Exception ignored) {}
+            try {
+                Session sess = sftp.getSession();
+                if (sess != null && sess.isConnected()) sess.disconnect();
+            } catch (Exception ignored) {}
+        }
+
+        // Stop heartbeat & close server-wide session
+        ScheduledFuture<?> hb = heartbeats.remove(username);
+        if (hb != null) hb.cancel(true);
+
+        String sid = serverSessionIds.remove(username);
+        if (sid != null) registry.close(sid);
+
+        System.out.println("Disconnected: " + username);
     }
+
+
+    public synchronized void disconnectSFTP(String username) {
+        ScheduledFuture<?> hb = heartbeats.remove(username);
+        if (hb != null) hb.cancel(true);
+        String sid = serverSessionIds.remove(username);
+        if (sid != null) registry.close(sid);
+        System.out.println("Disconnected (server session only): " + username);
+    }
+
+
     public synchronized DirListing showDir(ChannelSftp sftp) throws SftpException {
         String pwd = sftp.pwd();
 
         @SuppressWarnings("unchecked")
-        java.util.Vector<ChannelSftp.LsEntry> list = (java.util.Vector<ChannelSftp.LsEntry>) sftp.ls(".");
+        java.util.Vector<ChannelSftp.LsEntry> list =
+                (java.util.Vector<ChannelSftp.LsEntry>) sftp.ls(".");
 
         java.util.List<SftpItem> items = new java.util.ArrayList<>(list.size());
         for (ChannelSftp.LsEntry e : list) {
             String name = e.getFilename();
-            if (".".equals(name) || "..".equals(name)) continue; // hide self/parent
+            if (".".equals(name) || "..".equals(name)) continue;
 
             SftpATTRS a = e.getAttrs();
             boolean isDir = a != null && a.isDir();
@@ -110,10 +123,7 @@ public class SftpClientService {
             items.add(new SftpItem(name, isDir, size, mtime));
         }
 
-        // (optional) still log if you like
-        System.out.println("PWD = " + pwd);
-        System.out.println("Listing: " + items.size() + " items");
-
+        System.out.println("PWD = " + pwd + " | " + items.size() + " items");
         return new DirListing(pwd, items);
     }
 
@@ -124,19 +134,14 @@ public class SftpClientService {
                     && !sftp.isClosed()
                     && sftp.getSession() != null
                     && sftp.getSession().isConnected();
-        } catch (com.jcraft.jsch.JSchException e) {
+        } catch (JSchException e) {
             return false;
         }
     }
 
-    public String getTime(){
+    public String getTime() {
         LocalDateTime myDateObj = LocalDateTime.now();
         DateTimeFormatter myFormatObj = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
-
-        String formattedDate = myDateObj.format(myFormatObj);
-        //System.out.println("After formatting: " + formattedDate);
-
-        return formattedDate;
+        return myDateObj.format(myFormatObj);
     }
-
 }

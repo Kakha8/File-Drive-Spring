@@ -1,6 +1,7 @@
 package kakha.kudava.sftpspring.controller;
 
 import jakarta.servlet.http.HttpSession;
+import kakha.kudava.sftpspring.model.User;
 import kakha.kudava.sftpspring.services.SftpClientService;
 import kakha.kudava.sftpspring.services.SftpServerService;
 import kakha.kudava.sftpspring.services.UserService;
@@ -10,6 +11,8 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.List;
 
 @Controller
 public class ServerController {
@@ -40,7 +43,9 @@ public class ServerController {
                               HttpSession session, Model model) {
         try {
             String usr = session.getAttribute("USERNAME").toString();
-            sftp.start(usr, password);
+            List<User> users = userService.getUsers();
+            sftp.addDefaultUsers(users);
+            sftp.start();
             model.addAttribute("message", "SFTP server started.");
         } catch (Exception e) {
             model.addAttribute("message", "Failed to start SFTP: " + e.getMessage());

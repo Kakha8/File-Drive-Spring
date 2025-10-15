@@ -1,6 +1,8 @@
 package kakha.kudava.sftpspring.services;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import kakha.kudava.sftpspring.model.User;
 import org.apache.sshd.common.file.virtualfs.VirtualFileSystemFactory;
 import org.apache.sshd.server.SshServer;
 import org.apache.sshd.server.auth.password.PasswordAuthenticator;
@@ -12,66 +14,101 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Collections;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class SftpServerService {
-    private volatile SshServer sshd;
-    private final AtomicBoolean running = new AtomicBoolean(false);
+    /** Simple user model */
+    public static final class User {
+        private final String password;
+        private final Path home;
 
-    // You can parameterize these later if you want to pass creds from a form
-    private final int port = 8022;
-    private final String defaultUsername = "user";
-    private final String defaultPassword = "pass";
-    private final Path rootDir = Paths.get("sftp-root");
-    private final Path hostKeyFile = Paths.get("hostkey.ser");
-
-    /** Start with default creds (user/pass). */
-    public synchronized void start() throws IOException {
-        start(this.defaultUsername, this.defaultPassword);
+        public User(String password, Path home) {
+            this.password = Objects.requireNonNull(password, "password");
+            this.home = Objects.requireNonNull(home, "home").toAbsolutePath().normalize();
+        }
+        public String password() { return password; }
+        public Path home() { return home; }
+        @Override public String toString() {
+            return "User{home=" + home + "}";
+        }
     }
 
-    /** Start with provided creds */
-    public synchronized void start(String username, String password) throws IOException {
+    private volatile SshServer sshd;
+    private volatile VirtualFileSystemFactory vfs;
+    private final AtomicBoolean running = new AtomicBoolean(false);
+
+    // Config
+    private final int port = 8022;
+    private final Path hostKeyFile = Paths.get("hostkey.ser").toAbsolutePath().normalize();
+    private final Path baseRoot = Paths.get("sftp-root").toAbsolutePath().normalize();
+
+    private final Map<String, User> users = new ConcurrentHashMap<>();
+
+/*    @PostConstruct
+    public void addDefaultUsersOnInit() {
+        addDefaultUsers(); // idempotent
+    }*/
+
+    // Public API ------------------------------------------------------------
+
+    public synchronized void addDefaultUsers(List<kakha.kudava.sftpspring.model.User> users) {
+        for (kakha.kudava.sftpspring.model.User user : users) {
+            String password = user.getPassword();
+            String username = user.getUsername();
+
+            addUserIfAbsent(username, password, baseRoot.resolve(username));
+        }
+    }
+
+    /** Start server with whatever users are configured (auto-seed if empty). */
+    public synchronized void start() throws IOException {
         if (running.get()) {
             System.out.println("SFTP server already running on port " + port);
             return;
         }
 
-        Path rootAbs = rootDir.toAbsolutePath().normalize();
-        Path hostKeyAbs = hostKeyFile.toAbsolutePath().normalize();
-        Files.createDirectories(rootAbs);
+
+
+        for (User u : users.values()) {
+            Files.createDirectories(u.home());
+        }
 
         SshServer server = SshServer.setUpDefaultServer();
         server.setPort(port);
-        server.setKeyPairProvider(new SimpleGeneratorHostKeyProvider(hostKeyAbs));
+        server.setKeyPairProvider(new SimpleGeneratorHostKeyProvider(hostKeyFile));
 
-        // Simple username/password auth against the provided creds
-        PasswordAuthenticator pa = (u, p, session) -> username.equals(u) && password.equals(p);
+        PasswordAuthenticator pa = (username, password, session) -> {
+            User u = users.get(username);
+            return u != null && Objects.equals(u.password(), password);
+        };
         server.setPasswordAuthenticator(pa);
 
-
-        // Enable SFTP
         server.setSubsystemFactories(Collections.singletonList(
                 new SftpSubsystemFactory.Builder().build()
         ));
 
-        // *** CRITICAL: Map VFS home explicitly so "/" and "." resolve correctly
-        VirtualFileSystemFactory vfs = new VirtualFileSystemFactory();
-        vfs.setUserHomeDir(username, rootAbs);   // same as your working standalone server
-        vfs.setDefaultHomeDir(rootAbs);          // optional fallback
-        server.setFileSystemFactory(vfs);
+        VirtualFileSystemFactory vfsFactory = new VirtualFileSystemFactory();
+        for (Map.Entry<String, User> e : users.entrySet()) {
+            vfsFactory.setUserHomeDir(e.getKey(), e.getValue().home());
+        }
+        vfsFactory.setDefaultHomeDir(getDefaultHome());
+        server.setFileSystemFactory(vfsFactory);
 
         try {
             server.start(); // non-blocking
             this.sshd = server;
+            this.vfs = vfsFactory;
             running.set(true);
             System.out.println("SFTP server started on port " + port);
-            System.out.println("Root directory: " + rootAbs);
-            System.out.println("Login -> username: " + username + "  password: " + password);
+            users.forEach((name, u) ->
+                    System.out.println("  " + name + "  home=" + u.home()));
         } catch (IOException e) {
             this.sshd = null;
+            this.vfs = null;
+            running.set(false);
             throw e;
         }
     }
@@ -86,15 +123,58 @@ public class SftpServerService {
         } finally {
             running.set(false);
             sshd = null;
+            vfs = null;
         }
     }
 
-    public boolean isRunning() {
-        return running.get();
+    public boolean isRunning() { return running.get(); }
+
+    public Map<String, String> listUsers() {
+        Map<String, String> out = new LinkedHashMap<>();
+        users.forEach((u, info) -> out.put(u, info.home().toString()));
+        return out;
+    }
+
+    public synchronized void addUser(String username, String password, Path home) {
+        Objects.requireNonNull(username, "username");
+        Objects.requireNonNull(password, "password");
+        Objects.requireNonNull(home, "home");
+        Path norm = home.toAbsolutePath().normalize();
+        users.put(username, new User(password, norm));
+        try { Files.createDirectories(norm); }
+        catch (IOException e) { throw new RuntimeException("Failed to create home for " + username + ": " + norm, e); }
+
+        if (running.get() && vfs != null) {
+            vfs.setUserHomeDir(username, norm);
+        }
+    }
+
+    public synchronized void removeUser(String username) {
+        users.remove(username);
+        if (running.get() && vfs != null) {
+            vfs.setUserHomeDir(username, getDefaultHome());
+        }
     }
 
     @PreDestroy
-    public void onShutdown() {
-        stop(true);
+    public void onShutdown() { stop(true); }
+
+    // Helpers ---------------------------------------------------------------
+
+    private void addUserIfAbsent(String username, String password, Path home) {
+        users.computeIfAbsent(username, u -> {
+            Path norm = home.toAbsolutePath().normalize();
+            try { Files.createDirectories(norm); }
+            catch (IOException e) { throw new RuntimeException("Failed to create home for " + u + ": " + norm, e); }
+            if (vfs != null) vfs.setUserHomeDir(username, norm);
+            return new User(password, norm);
+        });
+    }
+
+    private Path getDefaultHome() {
+        return users.values().stream()
+                .findFirst()
+                .map(User::home)
+                .orElse(baseRoot.resolve("default").toAbsolutePath().normalize());
     }
 }
