@@ -1,4 +1,4 @@
-package kakha.kudava.sftpspring.controller;
+package kakha.kudava.sftpspring.controller.api;
 
 import kakha.kudava.sftpspring.services.ServerSessionRegistry;
 import kakha.kudava.sftpspring.services.UserService;

@@ -1,6 +1,5 @@
-package kakha.kudava.sftpspring.controller;
+package kakha.kudava.sftpspring.controller.view;
 
-import jakarta.servlet.http.HttpSession;
 import kakha.kudava.sftpspring.model.User;
 import kakha.kudava.sftpspring.repository.UserRepository;
 import kakha.kudava.sftpspring.services.UserService;
@@ -102,6 +101,11 @@ public class UserController {
             return "register";
         }
 
+    }
+
+    @GetMapping("/gela")
+    public String showUserList(Model model) {
+        return "users-list";
     }
 
 

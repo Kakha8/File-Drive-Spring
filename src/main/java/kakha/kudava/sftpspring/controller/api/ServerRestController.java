@@ -1,15 +1,9 @@
-package kakha.kudava.sftpspring.controller;
+package kakha.kudava.sftpspring.controller.api;
 
 import jakarta.servlet.http.HttpSession;
-import kakha.kudava.sftpspring.model.User;
 import kakha.kudava.sftpspring.repository.UserRepository;
 import kakha.kudava.sftpspring.services.SftpClientService;
-import kakha.kudava.sftpspring.services.SftpServerService;
-import kakha.kudava.sftpspring.services.UserService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
