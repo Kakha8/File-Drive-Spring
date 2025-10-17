@@ -2,7 +2,7 @@
     const tbody = document.getElementById("usersTbody");
 
     try {
-        const res = await fetch("/user-info/all-user", {
+        const res = await fetch("/api/user-info/all-user", {
             headers: { Accept: "application/json" },
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -1,5 +1,6 @@
 package kakha.kudava.sftpspring.controller.view;
 
+import jakarta.servlet.http.HttpSession;
 import kakha.kudava.sftpspring.model.User;
 import kakha.kudava.sftpspring.repository.UserRepository;
 import kakha.kudava.sftpspring.services.UserService;
@@ -103,8 +104,20 @@ public class UserController {
 
     }
 
-    @GetMapping("/gela")
-    public String showUserList(Model model) {
+    @GetMapping("/server/users-list")
+    public String showUserList(HttpSession session,
+                               Model model) {
+
+        if(session.getAttribute("ROLE") != null) {
+            if (session.getAttribute("ROLE").toString().contains("admin"))
+                return "users-list";
+            else {
+                model.addAttribute("message", "You are not an admin!");
+            }
+        }
+        else {
+            return "redirect:/login";
+        }
         return "users-list";
     }
 

@@ -2,6 +2,7 @@ package kakha.kudava.sftpspring.controller;
 // AuthController.java
 
 import jakarta.servlet.http.HttpSession;
+import kakha.kudava.sftpspring.repository.UserRepository;
 import kakha.kudava.sftpspring.services.SftpServerService;
 import kakha.kudava.sftpspring.services.UserService;
 import org.springframework.stereotype.Controller;
@@ -14,10 +15,12 @@ public class AuthController {
 
     private final UserService userService;
     private final SftpServerService sftpService;
+    private final UserRepository userRepository;
 
-    public AuthController(UserService userService, SftpServerService sftpServerService) {
+    public AuthController(UserService userService, SftpServerService sftpServerService, UserRepository userRepository) {
         this.userService = userService;
         this.sftpService = sftpServerService;
+        this.userRepository = userRepository;
     }
 
 
@@ -45,6 +48,7 @@ public class AuthController {
 
         if (userService.authenticate(username, password)) {
             session.setAttribute("USERNAME", username);
+            session.setAttribute("ROLE", userRepository.getUserPermissions(username));
             ra.addFlashAttribute("message", "Welcome, " + username + "!");
             //System.out.println(userService.getUsernames());
             return "redirect:/server";

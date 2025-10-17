@@ -3,6 +3,7 @@ package kakha.kudava.sftpspring.repository;
 import kakha.kudava.sftpspring.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -17,5 +18,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("SELECT e FROM User e")
     List<User> findAll();
+
+    @Query("SELECT u.permissions from User u WHERE u.username=:username")
+    List<String> getUserPermissions(@Param("username") String username);
 
 }
