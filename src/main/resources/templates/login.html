@@ -7,13 +7,13 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
-        :root{
+        :root {
             --bg: #111418;
             --panel: #1c2026;
             --panel-border: rgba(255,255,255,.06);
             --text: #e5e7eb;
             --muted: #9aa3af;
-            --accent: #3b82f6;
+            --accent: #3b82f6; /* blue accent for hover */
             --radius: 22px;
             --gap: clamp(1.25rem, 3vw, 3rem);
             --shadow: 0 10px 30px rgba(0,0,0,.45);
@@ -23,9 +23,10 @@
         html, body { height: 100%; margin: 0; }
 
         body {
-            background: radial-gradient(1200px 800px at 20% 10%, rgba(255,255,255,.03), transparent),
-            radial-gradient(1000px 700px at 80% 90%, rgba(255,255,255,.02), transparent),
-            var(--bg);
+            background:
+                    radial-gradient(1200px 800px at 20% 10%, rgba(255,255,255,.03), transparent),
+                    radial-gradient(1000px 700px at 80% 90%, rgba(255,255,255,.02), transparent),
+                    var(--bg);
             color: var(--text);
             font: 16px/1.5 "Inter", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
             letter-spacing: 0.2px;
@@ -62,7 +63,7 @@
             margin: 0 0 .25rem;
             font-size: clamp(1.25rem, 3vw, 1.6rem);
             font-weight: 800;
-            color: var(--accent);
+            color: var(--text);
         }
 
         .message {
@@ -83,27 +84,29 @@
             padding: 0.6rem 0.9rem;
             color: var(--text);
             font-size: 1rem;
-            transition: border-color .2s ease;
+            transition: border-color .2s ease, box-shadow .2s ease;
         }
 
         input:focus {
             outline: none;
             border-color: var(--accent);
+            box-shadow: 0 0 5px rgba(59,130,246,.25);
         }
 
         button {
-            background: var(--accent);
+            background: #374151;
             border: none;
             border-radius: 10px;
             color: #fff;
             font-weight: 600;
             padding: 0.7rem 1rem;
             cursor: pointer;
-            transition: background .2s ease, transform .1s ease;
+            transition: background .25s ease, transform .1s ease, box-shadow .25s ease;
         }
 
         button:hover {
-            background: #2563eb;
+            background: var(--accent);
+            box-shadow: 0 0 6px rgba(59,130,246,.4); /* softer glow */
             transform: translateY(-1px);
         }
 
