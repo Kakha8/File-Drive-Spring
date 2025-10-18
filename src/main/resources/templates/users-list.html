@@ -19,6 +19,11 @@
     </tbody>
 </table>
 <p th:text="${message}"></p>
+
+<script th:inline="javascript">
+    const userRole = /*[[${userRole}]]*/ "client"; // fallback client
+</script>
+
 <script defer th:src="@{/js/users-list.js}"></script>
 </body>
 </html>
