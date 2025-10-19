@@ -1,6 +1,6 @@
 package kakha.kudava.sftpspring.controller.api;
 
-import kakha.kudava.sftpspring.services.ServerSessionRegistry;
+import kakha.kudava.sftpspring.services.SftpSessionRegistry;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -10,9 +10,9 @@ import java.util.Map;
 @RequestMapping("/sessions")
 public class ServerSessionController {
 
-    private final ServerSessionRegistry registry;
+    private final SftpSessionRegistry registry;
 
-    public ServerSessionController(ServerSessionRegistry registry) {
+    public ServerSessionController(SftpSessionRegistry registry) {
         this.registry = registry;
     }
 

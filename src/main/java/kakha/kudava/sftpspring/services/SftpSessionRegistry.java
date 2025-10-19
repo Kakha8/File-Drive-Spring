@@ -7,7 +7,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
-public class ServerSessionRegistry {
+public class SftpSessionRegistry {
 
     public static final class SessionInfo {
         public final String sessionId;

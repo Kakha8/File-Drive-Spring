@@ -1,6 +1,6 @@
 package kakha.kudava.sftpspring.controller.api;
 
-import kakha.kudava.sftpspring.services.ServerSessionRegistry;
+import kakha.kudava.sftpspring.services.SftpSessionRegistry;
 import kakha.kudava.sftpspring.services.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,9 +18,9 @@ public class UserRestController {
     @Autowired
     private final UserService userService;
     @Autowired
-    private final ServerSessionRegistry sessionRegistry;
+    private final SftpSessionRegistry sessionRegistry;
 
-    public UserRestController(UserService userService, ServerSessionRegistry sessionRegistry) {
+    public UserRestController(UserService userService, SftpSessionRegistry sessionRegistry) {
         this.userService = userService;
         this.sessionRegistry = sessionRegistry;
     }

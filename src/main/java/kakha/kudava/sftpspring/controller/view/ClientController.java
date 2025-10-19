@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpSession;
 import kakha.kudava.sftpspring.services.SftpClientService;
 import kakha.kudava.sftpspring.services.SftpServerService;
 import kakha.kudava.sftpspring.services.UserService;
+import kakha.kudava.sftpspring.services.UserSessionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -25,6 +26,9 @@ public class ClientController {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private UserSessionService userSessionService;
+
     public ClientController(SftpServerService sftp, SftpClientService client, UserService userService) {
         this.sftp = sftp;
         this.client = client;
@@ -32,16 +36,19 @@ public class ClientController {
     }
 
     @GetMapping("/client-home")
-    public String client(Model model) {
-        return "client";
+    public String client(HttpSession session, Model model) {
+        if(userSessionService.checkUserSession(session))
+            return "client";
+        else
+            return "redirect:/login";
     }
 
 
     @PostMapping("/connect")
-    public String upload(@RequestParam("username") String username,
-                         @RequestParam("password") String password,
+    public String upload(@RequestParam("password") String password,
                          Model model, HttpSession session) throws JSchException, SftpException {
         ChannelSftp con = null;
+        String username = userSessionService.getUsernameFromSession(session);
         try {
             con = client.connectSFTP(username, password);
             client.showDir(con);

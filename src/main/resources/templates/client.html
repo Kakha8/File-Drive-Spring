@@ -3,35 +3,36 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Connect to SFTP</title>
+    <title>SFTP Client</title>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #111418;
-            --panel: #1c2026;
-            --panel-border: rgba(255,255,255,.06);
-            --text: #e5e7eb;
-            --muted: #9aa3af;
-            --accent: #3b82f6; /* blue accent for hover/focus */
-            --radius: 10px;
-            --shadow: 0 10px 30px rgba(0,0,0,.45);
+            --bg:#111418;
+            --panel:#1c2026;
+            --panel-border:rgba(255,255,255,.06);
+            --text:#e5e7eb;
+            --muted:#9aa3af;
+            --accent:#3b82f6;
+            --radius:10px;
+            --shadow:0 10px 30px rgba(0,0,0,.45);
+            --gap:clamp(1rem,2.5vw,2rem);
         }
 
-        * { box-sizing: border-box; }
-        html, body { height: 100%; margin: 0; }
+        *{box-sizing:border-box}
+        html,body{height:100%; margin:0}
 
-        body {
+        body{
+            color:var(--text);
             background:
                     radial-gradient(1200px 800px at 20% 10%, rgba(255,255,255,.03), transparent),
                     radial-gradient(1000px 700px at 80% 90%, rgba(255,255,255,.02), transparent),
                     var(--bg);
-            color: var(--text);
-            font: 16px/1.5 "Inter", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-            letter-spacing: 0.2px;
+            font:16px/1.5 "Inter", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+            letter-spacing:.2px;
         }
 
-        /* Header */
+        /* HEADER */
         header.topbar {
             position: fixed;
             top: 0; left: 0; right: 0;
@@ -49,19 +50,17 @@
         header.topbar h1 {
             margin: 0;
             font-size: 1.2rem;
-            font-weight: 700;
+            font-weight: 800;
             color: var(--text);
         }
 
-        .topbar form {
-            margin: 0;
-        }
+        .topbar form { margin: 0; }
 
         .topbar button {
             background: #374151;
             color: #fff;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             font-weight: 600;
             padding: 0.5rem 1rem;
             cursor: pointer;
@@ -74,24 +73,39 @@
             transform: translateY(-1px);
         }
 
-        /* Layout */
+        /* GRID LAYOUT */
         main.wrap {
             min-height: 100dvh;
-            display: grid;
-            place-items: center;
-            padding: calc(60px + 5vh) 5vw 5vh;
+            padding: calc(60px + 4vh) 5vw 5vh;
         }
 
+        .grid {
+            display: grid;
+            gap: var(--gap);
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 220px minmax(420px, 1fr);
+            grid-template-areas:
+        "top-left  top-right"
+        "bot-left  bot-right";
+            width: min(1300px, 100%);
+            margin: 0 auto;
+        }
+
+        .top-left { grid-area: top-left; }
+        .top-right { grid-area: top-right; }
+        .bot-left { grid-area: bot-left; }
+        .bot-right { grid-area: bot-right; }
+
+        /* CARDS */
         .card {
             background: var(--panel);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
-            padding: clamp(1.5rem, 3.5vw, 3rem);
+            padding: clamp(1rem, 2.5vw, 2rem);
             box-shadow: var(--shadow);
-            width: min(400px, 90%);
             display: grid;
+            align-content: start;
             gap: 1rem;
-            text-align: center;
             transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
         }
 
@@ -101,29 +115,32 @@
             border-color: rgba(59,130,246,.25);
         }
 
+        /* EMPTY CARD (no background or border) */
+        .card.empty {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            padding: 0;
+        }
+
+        /* TITLES & TEXT */
         h2 {
             margin: 0;
-            font-size: 1.5rem;
+            font-size: 1.1rem;
             font-weight: 800;
             color: var(--text);
         }
 
-        p.message {
-            color: #34d399;
-            margin: 0;
-        }
+        .muted { color: var(--muted); margin: 0; }
 
-        form {
-            display: grid;
-            gap: 0.75rem;
-            margin-top: 1rem;
-        }
+        /* FORM ELEMENTS */
+        form { display: grid; gap: .75rem; }
 
         input {
             background: #0e1116;
             border: 1px solid rgba(255,255,255,.08);
             border-radius: 8px;
-            padding: 0.6rem 0.9rem;
+            padding: .6rem .9rem;
             color: var(--text);
             font-size: 1rem;
             transition: border-color .2s ease, box-shadow .2s ease;
@@ -138,43 +155,90 @@
         button {
             background: #374151;
             color: #fff;
-            border: none;
+            border: 1px solid transparent;
             border-radius: 8px;
             font-weight: 600;
-            padding: 0.7rem 1rem;
+            padding: .7rem 1rem;
+            width: fit-content;
             cursor: pointer;
-            transition: background .25s ease, transform .1s ease, box-shadow .25s ease;
+            transition: background .25s ease, transform .1s ease, box-shadow .25s ease, border-color .25s ease;
         }
 
         button:hover {
             background: var(--accent);
+            border-color: rgba(59,130,246,.5);
             box-shadow: 0 0 6px rgba(59,130,246,.4);
             transform: translateY(-1px);
+        }
+
+        /* CONTENT BOXES */
+        .pane-body {
+            border: 1px solid rgba(255,255,255,.06);
+            border-radius: 8px;
+            background: #0e1116;
+            padding: 1rem;
+            overflow: auto;
+            min-height: 280px;
+            height: 100%;
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 980px) {
+            .grid {
+                grid-template-columns: 1fr;
+                grid-template-rows: 200px 140px minmax(360px,1fr) minmax(360px,1fr);
+                grid-template-areas:
+          "top-left"
+          "top-right"
+          "bot-left"
+          "bot-right";
+            }
         }
     </style>
 </head>
 <body>
 
 <header class="topbar">
-    <h1>Spring SFTP Portal</h1>
+    <h1>SFTP Client</h1>
     <form th:action="@{/logout}" method="post">
         <button type="submit">Logout</button>
     </form>
 </header>
 
 <main class="wrap">
-    <section class="card" aria-labelledby="connect-title">
-        <h2 id="connect-title">Connect to SFTP</h2>
+    <div class="grid">
 
-        <p class="message" th:if="${message}" th:text="${message}">Status message here.</p>
+        <!-- Top-left: Connection -->
+        <section class="card top-left" aria-labelledby="connect-title">
+            <h2 id="connect-title">Connection</h2>
+            <p class="muted" th:if="${message}" th:text="${message}">Enter your password to connect.</p>
 
-        <form th:action="@{/client/connect}" method="post">
-            <input type="text" name="username" placeholder="Your name" required>
-            <input type="password" name="password" placeholder="Your password" required>
-            <input type="text" name="port" placeholder="Enter port" required>
-            <button type="submit">Start SFTP</button>
-        </form>
-    </section>
+            <form th:action="@{/client/connect}" method="post">
+                <input type="password" name="password" placeholder="Password" required>
+                <button type="submit">Start SFTP</button>
+            </form>
+        </section>
+
+        <!-- Top-right: Empty (invisible area) -->
+        <section class="card top-right empty" aria-hidden="true"></section>
+
+        <!-- Bottom-left: Directories -->
+        <section class="card bot-left" aria-labelledby="dirs-title">
+            <h2 id="dirs-title">Directories</h2>
+            <div class="pane-body" id="directories">
+                <div class="muted" style="opacity:.9">No directories yet. Add or map directories here.</div>
+            </div>
+        </section>
+
+        <!-- Bottom-right: Recent uploads -->
+        <section class="card bot-right" aria-labelledby="uploads-title">
+            <h2 id="uploads-title">Recent uploads</h2>
+            <div class="pane-body" id="recent-uploads">
+                <div class="muted" style="opacity:.9">No uploads yet. Recent activity will appear here.</div>
+            </div>
+        </section>
+
+    </div>
 </main>
 
 </body>

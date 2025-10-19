@@ -12,7 +12,7 @@ import java.util.concurrent.*;
 @Service
 public class SftpClientService {
 
-    private final ServerSessionRegistry registry;
+    private final SftpSessionRegistry registry;
 
     private final Map<String, String> serverSessionIds = new ConcurrentHashMap<>();
     private final Map<String, ScheduledFuture<?>> heartbeats = new ConcurrentHashMap<>();
@@ -23,7 +23,7 @@ public class SftpClientService {
                 return t;
             });
 
-    public SftpClientService(ServerSessionRegistry registry) {
+    public SftpClientService(SftpSessionRegistry registry) {
         this.registry = registry;
     }
 
