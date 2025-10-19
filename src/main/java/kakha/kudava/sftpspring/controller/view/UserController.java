@@ -3,6 +3,7 @@ package kakha.kudava.sftpspring.controller.view;
 import jakarta.servlet.http.HttpSession;
 import kakha.kudava.sftpspring.model.User;
 import kakha.kudava.sftpspring.repository.UserRepository;
+import kakha.kudava.sftpspring.services.SftpServerService;
 import kakha.kudava.sftpspring.services.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
@@ -19,6 +20,9 @@ public class UserController {
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private SftpServerService serverService;
 
 /*    @GetMapping("/users")
     public List<User> listAll() {
@@ -108,17 +112,24 @@ public class UserController {
     public String showUserList(HttpSession session,
                                Model model) {
 
-        if(session.getAttribute("ROLE") != null) {
-            if (session.getAttribute("ROLE").toString().contains("admin"))
+        if(serverService.checkAdminRole(session)){
+            model.addAttribute("userRole", "admin");
+            return "users-list";
+        }
+        else
+            return "redirect:/";
+/*        if(session.getAttribute("ROLE") != null) {
+            if (session.getAttribute("ROLE").toString().contains("admin")){
+                model.addAttribute("userRole", "admin");
                 return "users-list";
+            }
             else {
                 model.addAttribute("message", "You are not an admin!");
             }
         }
         else {
             return "redirect:/login";
-        }
-        return "users-list";
+        }*/
     }
 
 

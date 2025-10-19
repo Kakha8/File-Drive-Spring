@@ -30,7 +30,7 @@ public class AuthController {
 
         if (username != null) {
             // No session or not logged in → redirect to login
-            return "redirect:/login";
+            return "redirect:/";
         } else
             return "login";
     }

@@ -1,11 +1,9 @@
-package kakha.kudava.sftpspring.controller;
-
+package kakha.kudava.sftpspring.controller.view;
 
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.SftpException;
 import jakarta.servlet.http.HttpSession;
-import kakha.kudava.sftpspring.model.User;
 import kakha.kudava.sftpspring.services.SftpClientService;
 import kakha.kudava.sftpspring.services.SftpServerService;
 import kakha.kudava.sftpspring.services.UserService;
@@ -14,10 +12,12 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 @Controller
-public class HomeController {
+@RequestMapping("/client")
+public class ClientController {
 
     private final SftpServerService sftp;
     private final SftpClientService client;
@@ -25,31 +25,18 @@ public class HomeController {
     @Autowired
     private UserService userService;
 
-    public HomeController(SftpServerService sftp, SftpClientService client, UserService userService) {
+    public ClientController(SftpServerService sftp, SftpClientService client, UserService userService) {
         this.sftp = sftp;
         this.client = client;
         this.userService = userService;
     }
 
-    @GetMapping("/")
-    public String home(HttpSession session, Model model) {
-        Object user = session.getAttribute("USERNAME");
-        if (user == null) return "redirect:/login";
-
-        boolean running = sftp != null && sftp.isRunning();
-        model.addAttribute("sftpRunning", running);
-        model.addAttribute("username", user.toString());
-        return "index";
+    @GetMapping("/client-home")
+    public String client(Model model) {
+        return "client";
     }
 
 
-
-
-/*    @GetMapping("/client")
-    public String client(Model model) {
-        return "client";
-    }*/
-/*
     @PostMapping("/connect")
     public String upload(@RequestParam("username") String username,
                          @RequestParam("password") String password,
@@ -95,24 +82,6 @@ public class HomeController {
                 " disconnected.");
         session.invalidate();
         return "client";
-    }*/
-
-    @GetMapping("/user")
-    public String userPage() {
-        // user.html uses session.sftpConnected / session.sftpUser directly
-        User user = new User();
-        user.setUsername("admin");
-        boolean checkAdmin = userService.isAdmin(user);
-        System.out.println(checkAdmin);
-        return "user-con";
     }
 
-    @GetMapping("/yle")
-    public String yle(Model model) {
-        return "index";
-    }
-/*    @GetMapping("/main")
-    public String mainPage() {
-        return "login";
-    }*/
 }

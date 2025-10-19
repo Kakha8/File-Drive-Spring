@@ -2,6 +2,7 @@ package kakha.kudava.sftpspring.services;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import jakarta.servlet.http.HttpSession;
 import kakha.kudava.sftpspring.model.User;
 import org.apache.sshd.common.file.virtualfs.VirtualFileSystemFactory;
 import org.apache.sshd.server.SshServer;
@@ -176,5 +177,15 @@ public class SftpServerService {
                 .findFirst()
                 .map(User::home)
                 .orElse(baseRoot.resolve("default").toAbsolutePath().normalize());
+    }
+
+    public boolean checkAdminRole(HttpSession session){
+        if(session.getAttribute("ROLE") != null){
+            if (session.getAttribute("ROLE").toString().contains("admin"))
+                return true;
+            else
+                return false;
+        }
+        return false;
     }
 }

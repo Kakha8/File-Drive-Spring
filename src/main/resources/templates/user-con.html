@@ -5,7 +5,7 @@
 <p th:if="${#bools.isTrue(session.sftpConnected)}">
     Connected as <strong th:text="${session.sftpUser}">user</strong>
 </p>
-    <form th:action="@{/disconnect}" method="post">
+    <form th:action="@{/client/disconnect}" method="post">
         <input type="submit" value="Disconnect"/>
     </form>
 <p th:if="${#bools.isFalse(session.sftpConnected)}">
