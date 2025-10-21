@@ -4,10 +4,7 @@ import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.SftpException;
 import jakarta.servlet.http.HttpSession;
-import kakha.kudava.sftpspring.services.SftpClientService;
-import kakha.kudava.sftpspring.services.SftpServerService;
-import kakha.kudava.sftpspring.services.UserService;
-import kakha.kudava.sftpspring.services.UserSessionService;
+import kakha.kudava.sftpspring.services.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -29,6 +26,9 @@ public class ClientController {
     @Autowired
     private UserSessionService userSessionService;
 
+    @Autowired
+    private SftpSessionRegistry sftpSessionRegistry;
+
     public ClientController(SftpServerService sftp, SftpClientService client, UserService userService) {
         this.sftp = sftp;
         this.client = client;
@@ -37,8 +37,15 @@ public class ClientController {
 
     @GetMapping("/client-home")
     public String client(HttpSession session, Model model) {
-        if(userSessionService.checkUserSession(session))
-            return "client";
+
+        String username = (String) session.getAttribute("USERNAME");
+        if (userSessionService.checkUserSession(session)) {
+            if (sftpSessionRegistry.isUserConnected(username)) {
+                model.addAttribute("status", "Connected as " + username);
+                return "client";
+            } else
+                return "client";
+        }
         else
             return "redirect:/login";
     }
@@ -78,7 +85,7 @@ public class ClientController {
                 }
             }
         }
-        return "user-con";
+        return "redirect:/client/client-home";
     }
 
     @PostMapping("/disconnect")
@@ -88,7 +95,7 @@ public class ClientController {
         model.addAttribute("message", "Client" + username +
                 " disconnected.");
         session.invalidate();
-        return "client";
+        return "redirect:/client/client-home";
     }
 
 }

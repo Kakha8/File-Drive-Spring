@@ -7,192 +7,149 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --bg:#111418;
-            --panel:#1c2026;
-            --panel-border:rgba(255,255,255,.06);
-            --text:#e5e7eb;
-            --muted:#9aa3af;
-            --accent:#3b82f6;
-            --radius:10px;
-            --shadow:0 10px 30px rgba(0,0,0,.45);
-            --gap:clamp(1rem,2.5vw,2rem);
+        :root{
+            --bg:#111418; --panel:#1c2026; --panel-border:rgba(255,255,255,.06);
+            --text:#e5e7eb; --muted:#9aa3af; --accent:#3b82f6;
+            --radius:10px; --shadow:0 10px 30px rgba(0,0,0,.45); --gap:clamp(1rem,2.5vw,2rem);
         }
-
         *{box-sizing:border-box}
         html,body{height:100%; margin:0}
-
         body{
             color:var(--text);
             background:
                     radial-gradient(1200px 800px at 20% 10%, rgba(255,255,255,.03), transparent),
                     radial-gradient(1000px 700px at 80% 90%, rgba(255,255,255,.02), transparent),
                     var(--bg);
-            font:16px/1.5 "Inter", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-            letter-spacing:.2px;
+            font:16px/1.5 "Inter", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; letter-spacing:.2px;
         }
 
         /* HEADER */
-        header.topbar {
-            position: fixed;
-            top: 0; left: 0; right: 0;
-            height: 60px;
-            background: rgba(28,32,38,.9);
-            border-bottom: 1px solid rgba(255,255,255,.08);
-            backdrop-filter: blur(8px);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 2rem;
-            z-index: 10;
+        header.topbar{
+            position:fixed; inset:0 0 auto 0; height:60px; background:rgba(28,32,38,.9);
+            border-bottom:1px solid rgba(255,255,255,.08); backdrop-filter:blur(8px);
+            display:flex; align-items:center; justify-content:space-between; padding:0 2rem; z-index:10;
         }
-
-        header.topbar h1 {
-            margin: 0;
-            font-size: 1.2rem;
-            font-weight: 800;
-            color: var(--text);
+        header.topbar h1{margin:0; font-size:1.2rem; font-weight:800}
+        .topbar form{margin:0}
+        .topbar button{
+            background:#374151; color:#fff; border:none; border-radius:8px; font-weight:600; padding:.5rem 1rem; cursor:pointer;
+            transition:background .25s ease, transform .1s ease, box-shadow .25s ease;
         }
+        .topbar button:hover{background:var(--accent); box-shadow:0 0 6px rgba(59,130,246,.4); transform:translateY(-1px)}
 
-        .topbar form { margin: 0; }
-
-        .topbar button {
-            background: #374151;
-            color: #fff;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            padding: 0.5rem 1rem;
-            cursor: pointer;
-            transition: background .25s ease, transform .1s ease, box-shadow .25s ease;
-        }
-
-        .topbar button:hover {
-            background: var(--accent);
-            box-shadow: 0 0 6px rgba(59,130,246,.4);
-            transform: translateY(-1px);
-        }
-
-        /* GRID LAYOUT */
-        main.wrap {
-            min-height: 100dvh;
-            padding: calc(60px + 4vh) 5vw 5vh;
-        }
-
-        .grid {
-            display: grid;
-            gap: var(--gap);
-            grid-template-columns: 1fr 1fr;
-            grid-template-rows: 220px minmax(420px, 1fr);
+        main.wrap{min-height:100dvh; padding:calc(60px + 4vh) 5vw 5vh;}
+        .grid{
+            display:grid; gap:var(--gap);
+            grid-template-columns:1fr 1fr;
+            grid-template-rows:220px minmax(420px,1fr);
             grid-template-areas:
         "top-left  top-right"
         "bot-left  bot-right";
-            width: min(1300px, 100%);
-            margin: 0 auto;
+            width:min(1300px,100%); margin:0 auto;
         }
+        .top-left{grid-area:top-left} .top-right{grid-area:top-right}
+        .bot-left{grid-area:bot-left} .bot-right{grid-area:bot-right}
 
-        .top-left { grid-area: top-left; }
-        .top-right { grid-area: top-right; }
-        .bot-left { grid-area: bot-left; }
-        .bot-right { grid-area: bot-right; }
-
-        /* CARDS */
-        .card {
-            background: var(--panel);
-            border: 1px solid var(--panel-border);
-            border-radius: var(--radius);
-            padding: clamp(1rem, 2.5vw, 2rem);
-            box-shadow: var(--shadow);
-            display: grid;
-            align-content: start;
-            gap: 1rem;
-            transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+        .card{
+            background:var(--panel); border:1px solid var(--panel-border); border-radius:var(--radius);
+            padding:clamp(1rem,2.5vw,2rem); box-shadow:var(--shadow);
+            display:grid; align-content:start; gap:1rem;
+            transition:transform .2s, box-shadow .2s, border-color .2s;
+            overflow:hidden;
         }
+        .card:hover{transform:translateY(-2px); box-shadow:0 16px 40px rgba(0,0,0,.55); border-color:rgba(59,130,246,.25)}
+        .card.empty{background:transparent; border:none; box-shadow:none; padding:0}
+        .card-header{display:flex; align-items:center; justify-content:space-between; gap:1rem}
 
-        .card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 16px 40px rgba(0,0,0,.55);
-            border-color: rgba(59,130,246,.25);
-        }
+        h2{margin:0; font-size:1.1rem; font-weight:800}
+        .muted{color:var(--muted); margin:0}
+        .note{font-size:.9rem; color:var(--muted); opacity:.85}
 
-        /* EMPTY CARD (no background or border) */
-        .card.empty {
-            background: transparent;
-            border: none;
-            box-shadow: none;
-            padding: 0;
-        }
+        form{display:grid; gap:.75rem}
 
-        /* TITLES & TEXT */
-        h2 {
+        /* Fix overflow and drooping text */
+        .card > * { min-width: 0; }
+        .inline { min-width: 0; }
+        .card p, .note {
+            max-width: 100%;
+            overflow-wrap: break-word;
+            word-break: break-word;
+            white-space: normal;
             margin: 0;
-            font-size: 1.1rem;
-            font-weight: 800;
-            color: var(--text);
         }
 
-        .muted { color: var(--muted); margin: 0; }
-
-        /* FORM ELEMENTS */
-        form { display: grid; gap: .75rem; }
-
-        input {
-            background: #0e1116;
-            border: 1px solid rgba(255,255,255,.08);
-            border-radius: 8px;
-            padding: .6rem .9rem;
-            color: var(--text);
-            font-size: 1rem;
-            transition: border-color .2s ease, box-shadow .2s ease;
+        /* Inline form layout */
+        .inline{
+            display:grid;
+            grid-template-columns: 1fr auto;
+            column-gap:.6rem;
+            align-items:center;
+            width:100%;
+        }
+        .inline input[type="password"]{
+            width:100%;
+            min-width:0;
+        }
+        .inline button{
+            white-space:nowrap;
         }
 
-        input:focus {
-            outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 5px rgba(59,130,246,.25);
+        input{
+            background:#0e1116; border:1px solid rgba(255,255,255,.08); border-radius:8px; padding:.6rem .9rem; color:var(--text); font-size:1rem;
+            transition:border-color .2s, box-shadow .2s;
+        }
+        input:focus{outline:none; border-color:var(--accent); box-shadow:0 0 5px rgba(59,130,246,.25)}
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover,
+        input:-webkit-autofill:focus{
+            -webkit-box-shadow:0 0 0px 1000px #0e1116 inset !important;
+            -webkit-text-fill-color:var(--text) !important;
+            caret-color:var(--text);
         }
 
-        button {
-            background: #374151;
-            color: #fff;
-            border: 1px solid transparent;
-            border-radius: 8px;
-            font-weight: 600;
-            padding: .7rem 1rem;
-            width: fit-content;
-            cursor: pointer;
-            transition: background .25s ease, transform .1s ease, box-shadow .25s ease, border-color .25s ease;
+        button{
+            background:#374151; color:#fff; border:1px solid transparent; border-radius:8px; font-weight:600; padding:.6rem 1rem; cursor:pointer; width:fit-content;
+            transition:background .25s, transform .1s, box-shadow .25s, border-color .25s;
+        }
+        button:hover{background:var(--accent); border-color:rgba(59,130,246,.5); box-shadow:0 0 6px rgba(59,130,246,.4); transform:translateY(-1px)}
+        .btn-small{padding:.45rem .75rem; font-size:.9rem}
+        .btn-secondary{background:transparent; border:1px solid rgba(255,255,255,.12); color:var(--text)}
+        .btn-secondary:hover{border-color:rgba(59,130,246,.5)}
+
+        /* Disconnect button */
+        .btn-danger {
+            background:#b91c1c;
+            color:#fff;
+            border:none;
+            border-radius:8px;
+            font-weight:600;
+            padding:.6rem 1rem;
+            cursor:pointer;
+            transition:background .25s, transform .1s, box-shadow .25s;
+        }
+        .btn-danger:hover {
+            background:#dc2626;
+            box-shadow:0 0 6px rgba(220,38,38,.4);
+            transform:translateY(-1px);
         }
 
-        button:hover {
-            background: var(--accent);
-            border-color: rgba(59,130,246,.5);
-            box-shadow: 0 0 6px rgba(59,130,246,.4);
-            transform: translateY(-1px);
+        .pane-body{
+            border:1px solid rgba(255,255,255,.06); border-radius:8px; background:#0e1116;
+            padding:1rem; overflow:auto; min-height:280px; height:100%;
         }
 
-        /* CONTENT BOXES */
-        .pane-body {
-            border: 1px solid rgba(255,255,255,.06);
-            border-radius: 8px;
-            background: #0e1116;
-            padding: 1rem;
-            overflow: auto;
-            min-height: 280px;
-            height: 100%;
-        }
-
-        /* RESPONSIVE */
-        @media (max-width: 980px) {
-            .grid {
-                grid-template-columns: 1fr;
-                grid-template-rows: 200px 140px minmax(360px,1fr) minmax(360px,1fr);
-                grid-template-areas:
-          "top-left"
-          "top-right"
-          "bot-left"
-          "bot-right";
+        @media (max-width:980px){
+            .grid{
+                grid-template-columns:1fr;
+                grid-template-rows:200px 140px minmax(360px,1fr) minmax(360px,1fr);
+                grid-template-areas:"top-left" "top-right" "bot-left" "bot-right";
             }
+        }
+
+        @media (max-width:520px){
+            .inline{ grid-template-columns:1fr; row-gap:.6rem; }
+            .inline input[type="password"]{ flex:1 1 100%; }
+            .inline button{ width:100%; }
         }
     </style>
 </head>
@@ -211,23 +168,60 @@
         <!-- Top-left: Connection -->
         <section class="card top-left" aria-labelledby="connect-title">
             <h2 id="connect-title">Connection</h2>
-            <p class="muted" th:if="${message}" th:text="${message}">Enter your password to connect.</p>
 
-            <form th:action="@{/client/connect}" method="post">
+            <!-- Connection status -->
+            <p th:text="${status}"
+               th:classappend="${status != null and status.startsWith('Connected')} ? 'connected' : 'disconnected'"
+               style="font-weight:600;"
+               th:styleappend="${status != null and status.startsWith('Connected')} ? 'color:#34d399;' : 'color:#f87171;'">
+                Not connected
+            </p>
+
+            <!-- Show connect form if not connected -->
+            <form class="inline"
+                  th:if="${status == null or !status.startsWith('Connected')}"
+                  th:action="@{/client/connect}" method="post" autocomplete="off">
+                <input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
                 <input type="password" name="password" placeholder="Password" required>
-                <button type="submit">Start SFTP</button>
+                <button type="submit">Connect</button>
             </form>
+
+            <!-- Show disconnect button if connected -->
+            <form th:if="${status != null and status.startsWith('Connected')}"
+                  th:action="@{/client/disconnect}" method="post">
+                <input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                <button type="submit" class="btn-danger">Disconnect</button>
+            </form>
+
+            <p class="note">
+                Your password stays in this browser and is sent only to the server when you press Connect.
+            </p>
         </section>
 
-        <!-- Top-right: Empty (invisible area) -->
+        <!-- Top-right: Empty -->
         <section class="card top-right empty" aria-hidden="true"></section>
 
         <!-- Bottom-left: Directories -->
         <section class="card bot-left" aria-labelledby="dirs-title">
-            <h2 id="dirs-title">Directories</h2>
+            <div class="card-header">
+                <h2 id="dirs-title">Directories</h2>
+                <div class="inline">
+                    <button id="btn-files" type="button" class="btn-secondary btn-small">Upload files…</button>
+                    <button id="btn-folder" type="button" class="btn-secondary btn-small">Upload folder…</button>
+                </div>
+            </div>
+
             <div class="pane-body" id="directories">
                 <div class="muted" style="opacity:.9">No directories yet. Add or map directories here.</div>
+                <div id="upload-output" class="muted" style="margin-top:.75rem;"></div>
+                <div class="note" style="margin-top:.5rem">
+                    Browsers hide absolute local paths for security. Folder uploads show the folder-relative path.
+                </div>
             </div>
+
+            <!-- Hidden inputs -->
+            <input id="file-input" type="file" multiple style="display:none">
+            <input id="folder-input" type="file" webkitdirectory directory multiple style="display:none">
         </section>
 
         <!-- Bottom-right: Recent uploads -->
@@ -240,6 +234,32 @@
 
     </div>
 </main>
+
+<script>
+    // Upload buttons wiring
+    (function () {
+        const btnFiles = document.getElementById('btn-files');
+        const btnFolder = document.getElementById('btn-folder');
+        const inputFiles = document.getElementById('file-input');
+        const inputFolder = document.getElementById('folder-input');
+        const out = document.getElementById('upload-output');
+
+        btnFiles.addEventListener('click', () => inputFiles.click());
+        btnFolder.addEventListener('click', () => inputFolder.click());
+
+        function renderList(files, opts = { folder: false }) {
+            if (!files || files.length === 0) { out.textContent = ''; return; }
+            const lines = Array.from(files).map(f => {
+                if (opts.folder && f.webkitRelativePath) return '• ' + f.webkitRelativePath;
+                return '• ' + (f.name || 'Unnamed file');
+            });
+            out.innerHTML = `<div><strong>Selected ${opts.folder ? 'folder items' : 'files'}:</strong></div><div>${lines.join('<br>')}</div>`;
+        }
+
+        inputFiles.addEventListener('change', () => renderList(inputFiles.files, { folder: false }));
+        inputFolder.addEventListener('change', () => renderList(inputFolder.files, { folder: true }));
+    })();
+</script>
 
 </body>
 </html>
