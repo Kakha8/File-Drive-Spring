@@ -1,7 +1,7 @@
-package kakha.kudava.sftpspring.controller.api;
+package kakha.kudava.filedrivespring.controller.api;
 
-import kakha.kudava.sftpspring.services.SftpSessionRegistry;
-import kakha.kudava.sftpspring.services.UserService;
+import kakha.kudava.filedrivespring.services.SftpSessionRegistry;
+import kakha.kudava.filedrivespring.services.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;

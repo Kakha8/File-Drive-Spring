@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>kakha.kudava</groupId>
-    <artifactId>SFTP-Spring</artifactId>
+    <artifactId>File-Drive-Spring</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>SFTP-Spring</name>
-    <description>SFTP-Spring</description>
+    <name>File-Drive-Spring</name>
+    <description>File-Drive-Spring</description>
     <url/>
     <licenses>
         <license/>

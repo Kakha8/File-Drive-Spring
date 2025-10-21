@@ -1,7 +1,7 @@
-package kakha.kudava.sftpspring.services;
+package kakha.kudava.filedrivespring.services;
 
-import kakha.kudava.sftpspring.model.User;
-import kakha.kudava.sftpspring.repository.UserRepository;
+import kakha.kudava.filedrivespring.model.User;
+import kakha.kudava.filedrivespring.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 

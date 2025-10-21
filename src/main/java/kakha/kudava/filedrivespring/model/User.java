@@ -1,4 +1,4 @@
-package kakha.kudava.sftpspring.model;
+package kakha.kudava.filedrivespring.model;
 
 import jakarta.persistence.*;
 

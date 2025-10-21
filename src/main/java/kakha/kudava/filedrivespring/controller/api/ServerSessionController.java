@@ -1,6 +1,6 @@
-package kakha.kudava.sftpspring.controller.api;
+package kakha.kudava.filedrivespring.controller.api;
 
-import kakha.kudava.sftpspring.services.SftpSessionRegistry;
+import kakha.kudava.filedrivespring.services.SftpSessionRegistry;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;

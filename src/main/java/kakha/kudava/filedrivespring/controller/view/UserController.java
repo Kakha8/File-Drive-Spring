@@ -1,10 +1,10 @@
-package kakha.kudava.sftpspring.controller.view;
+package kakha.kudava.filedrivespring.controller.view;
 
 import jakarta.servlet.http.HttpSession;
-import kakha.kudava.sftpspring.model.User;
-import kakha.kudava.sftpspring.repository.UserRepository;
-import kakha.kudava.sftpspring.services.SftpServerService;
-import kakha.kudava.sftpspring.services.UserService;
+import kakha.kudava.filedrivespring.model.User;
+import kakha.kudava.filedrivespring.repository.UserRepository;
+import kakha.kudava.filedrivespring.services.SftpServerService;
+import kakha.kudava.filedrivespring.services.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;

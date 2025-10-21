@@ -1,6 +1,6 @@
-package kakha.kudava.sftpspring.repository;
+package kakha.kudava.filedrivespring.repository;
 
-import kakha.kudava.sftpspring.model.User;
+import kakha.kudava.filedrivespring.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

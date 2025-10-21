@@ -1,10 +1,10 @@
-package kakha.kudava.sftpspring.controller.view;
+package kakha.kudava.filedrivespring.controller.view;
 
 import com.jcraft.jsch.ChannelSftp;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.SftpException;
 import jakarta.servlet.http.HttpSession;
-import kakha.kudava.sftpspring.services.*;
+import kakha.kudava.filedrivespring.services.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;

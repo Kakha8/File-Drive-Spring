@@ -1,9 +1,7 @@
-package kakha.kudava.sftpspring.services;
+package kakha.kudava.filedrivespring.services;
 
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.servlet.http.HttpSession;
-import kakha.kudava.sftpspring.model.User;
 import org.apache.sshd.common.file.virtualfs.VirtualFileSystemFactory;
 import org.apache.sshd.server.SshServer;
 import org.apache.sshd.server.auth.password.PasswordAuthenticator;
@@ -55,8 +53,8 @@ public class SftpServerService {
 
     // Public API ------------------------------------------------------------
 
-    public synchronized void addDefaultUsers(List<kakha.kudava.sftpspring.model.User> users) {
-        for (kakha.kudava.sftpspring.model.User user : users) {
+    public synchronized void addDefaultUsers(List<kakha.kudava.filedrivespring.model.User> users) {
+        for (kakha.kudava.filedrivespring.model.User user : users) {
             String password = user.getPassword();
             String username = user.getUsername();
 

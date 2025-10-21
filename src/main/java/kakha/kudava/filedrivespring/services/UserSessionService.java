@@ -1,4 +1,4 @@
-package kakha.kudava.sftpspring.services;
+package kakha.kudava.filedrivespring.services;
 
 import jakarta.servlet.http.HttpSession;
 import org.springframework.stereotype.Service;

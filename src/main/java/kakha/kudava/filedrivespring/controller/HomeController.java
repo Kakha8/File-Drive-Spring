@@ -1,20 +1,15 @@
-package kakha.kudava.sftpspring.controller;
+package kakha.kudava.filedrivespring.controller;
 
 
-import com.jcraft.jsch.ChannelSftp;
-import com.jcraft.jsch.JSchException;
-import com.jcraft.jsch.SftpException;
 import jakarta.servlet.http.HttpSession;
-import kakha.kudava.sftpspring.model.User;
-import kakha.kudava.sftpspring.services.SftpClientService;
-import kakha.kudava.sftpspring.services.SftpServerService;
-import kakha.kudava.sftpspring.services.UserService;
+import kakha.kudava.filedrivespring.model.User;
+import kakha.kudava.filedrivespring.services.SftpClientService;
+import kakha.kudava.filedrivespring.services.SftpServerService;
+import kakha.kudava.filedrivespring.services.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 
 @Controller
 public class HomeController {

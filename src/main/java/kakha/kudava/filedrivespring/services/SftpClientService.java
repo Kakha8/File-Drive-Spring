@@ -1,4 +1,4 @@
-package kakha.kudava.sftpspring.services;
+package kakha.kudava.filedrivespring.services;
 
 import com.jcraft.jsch.*;
 import org.springframework.stereotype.Service;
