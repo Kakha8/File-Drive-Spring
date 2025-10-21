@@ -23,7 +23,6 @@
             font:16px/1.5 "Inter", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; letter-spacing:.2px;
         }
 
-        /* HEADER */
         header.topbar{
             position:fixed; inset:0 0 auto 0; height:60px; background:rgba(28,32,38,.9);
             border-bottom:1px solid rgba(255,255,255,.08); backdrop-filter:blur(8px);
@@ -38,118 +37,57 @@
         .topbar button:hover{background:var(--accent); box-shadow:0 0 6px rgba(59,130,246,.4); transform:translateY(-1px)}
 
         main.wrap{min-height:100dvh; padding:calc(60px + 4vh) 5vw 5vh;}
-        .grid{
-            display:grid; gap:var(--gap);
-            grid-template-columns:1fr 1fr;
-            grid-template-rows:220px minmax(420px,1fr);
-            grid-template-areas:
-        "top-left  top-right"
-        "bot-left  bot-right";
-            width:min(1300px,100%); margin:0 auto;
-        }
-        .top-left{grid-area:top-left} .top-right{grid-area:top-right}
-        .bot-left{grid-area:bot-left} .bot-right{grid-area:bot-right}
+        .center{width:min(1300px,100%); margin:0 auto;}
 
         .card{
             background:var(--panel); border:1px solid var(--panel-border); border-radius:var(--radius);
             padding:clamp(1rem,2.5vw,2rem); box-shadow:var(--shadow);
-            display:grid; align-content:start; gap:1rem;
+            display:grid; gap:1rem; overflow:hidden; min-height:60vh;
             transition:transform .2s, box-shadow .2s, border-color .2s;
-            overflow:hidden;
         }
-        .card:hover{transform:translateY(-2px); box-shadow:0 16px 40px rgba(0,0,0,.55); border-color:rgba(59,130,246,.25)}
-        .card.empty{background:transparent; border:none; box-shadow:none; padding:0}
-        .card-header{display:flex; align-items:center; justify-content:space-between; gap:1rem}
+        .card:hover{transform:translateY(-1px); box-shadow:0 16px 40px rgba(0,0,0,.55); border-color:rgba(59,130,246,.25)}
+        .card-header{display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap}
+        .left, .right{display:flex; align-items:center; gap:.5rem}
 
-        h2{margin:0; font-size:1.1rem; font-weight:800}
-        .muted{color:var(--muted); margin:0}
+        .breadcrumbs{
+            display:flex; align-items:center; gap:.4rem; font-weight:600;
+            background:#0e1116; border:1px solid rgba(255,255,255,.08); border-radius:8px; padding:.45rem .7rem;
+            white-space:nowrap; overflow:auto; max-width:60vw;
+        }
+        .breadcrumbs a{color:var(--text); text-decoration:none; opacity:.95}
+        .breadcrumbs a:hover{color:var(--accent)}
+        .crumb-sep{opacity:.4}
+
+        .status{display:flex; align-items:center; gap:.75rem; min-height:32px;}
+        .error{color:#fecaca; background:#7f1d1d; border:1px solid rgba(254,202,202,.35); padding:.35rem .55rem; border-radius:8px; display:none}
+        .spinner{display:none; font-weight:700; opacity:.9}
+        .spinner::after{content:"Loading…";}
+
+        .btn{background:#374151; color:#fff; border:1px solid transparent; border-radius:8px; font-weight:600; padding:.55rem .9rem; cursor:pointer}
+        .btn:hover{background:var(--accent); border-color:rgba(59,130,246,.5); box-shadow:0 0 6px rgba(59,130,246,.4); transform:translateY(-1px); transition:background .25s, transform .1s, box-shadow .25s, border-color .25s}
+        .btn.secondary{background:transparent; border:1px solid rgba(255,255,255,.12); color:var(--text)}
+        .btn.icon{padding:.5rem .6rem; display:inline-grid; place-items:center}
+        .search{display:flex; align-items:center; gap:.5rem; background:#0e1116; border:1px solid rgba(255,255,255,.08); border-radius:8px; padding:.45rem .6rem;}
+        .search input{background:transparent; border:none; color:var(--text); outline:none; min-width:220px;}
+
+        .pane{background:#0e1116; border:1px solid rgba(255,255,255,.08); border-radius:10px; overflow:auto;}
+        table.files{width:100%; border-collapse:separate; border-spacing:0}
+        table.files thead th{
+            position:sticky; top:0; background:#0f1318; z-index:1;
+            text-align:left; font-size:.9rem; color:var(--muted); padding:.8rem 1rem; border-bottom:1px solid rgba(255,255,255,.06); user-select:none;
+        }
+        table.files tbody td{padding:.85rem 1rem; border-bottom:1px solid rgba(255,255,255,.06); vertical-align:middle}
+        tr:hover td{background:rgba(255,255,255,.02)}
+        .name-cell{display:flex; align-items:center; gap:.6rem; min-width:240px}
+        .badge{font-size:.75rem; color:#cbd5e1; background:rgba(59,130,246,.15); border:1px solid rgba(59,130,246,.35); padding:.15rem .45rem; border-radius:999px}
+        .muted{color:var(--muted)}
         .note{font-size:.9rem; color:var(--muted); opacity:.85}
+        .ico{width:18px; height:18px; opacity:.85}
 
-        form{display:grid; gap:.75rem}
-
-        /* Fix overflow and drooping text */
-        .card > * { min-width: 0; }
-        .inline { min-width: 0; }
-        .card p, .note {
-            max-width: 100%;
-            overflow-wrap: break-word;
-            word-break: break-word;
-            white-space: normal;
-            margin: 0;
-        }
-
-        /* Inline form layout */
-        .inline{
-            display:grid;
-            grid-template-columns: 1fr auto;
-            column-gap:.6rem;
-            align-items:center;
-            width:100%;
-        }
-        .inline input[type="password"]{
-            width:100%;
-            min-width:0;
-        }
-        .inline button{
-            white-space:nowrap;
-        }
-
-        input{
-            background:#0e1116; border:1px solid rgba(255,255,255,.08); border-radius:8px; padding:.6rem .9rem; color:var(--text); font-size:1rem;
-            transition:border-color .2s, box-shadow .2s;
-        }
-        input:focus{outline:none; border-color:var(--accent); box-shadow:0 0 5px rgba(59,130,246,.25)}
-        input:-webkit-autofill,
-        input:-webkit-autofill:hover,
-        input:-webkit-autofill:focus{
-            -webkit-box-shadow:0 0 0px 1000px #0e1116 inset !important;
-            -webkit-text-fill-color:var(--text) !important;
-            caret-color:var(--text);
-        }
-
-        button{
-            background:#374151; color:#fff; border:1px solid transparent; border-radius:8px; font-weight:600; padding:.6rem 1rem; cursor:pointer; width:fit-content;
-            transition:background .25s, transform .1s, box-shadow .25s, border-color .25s;
-        }
-        button:hover{background:var(--accent); border-color:rgba(59,130,246,.5); box-shadow:0 0 6px rgba(59,130,246,.4); transform:translateY(-1px)}
-        .btn-small{padding:.45rem .75rem; font-size:.9rem}
-        .btn-secondary{background:transparent; border:1px solid rgba(255,255,255,.12); color:var(--text)}
-        .btn-secondary:hover{border-color:rgba(59,130,246,.5)}
-
-        /* Disconnect button */
-        .btn-danger {
-            background:#b91c1c;
-            color:#fff;
-            border:none;
-            border-radius:8px;
-            font-weight:600;
-            padding:.6rem 1rem;
-            cursor:pointer;
-            transition:background .25s, transform .1s, box-shadow .25s;
-        }
-        .btn-danger:hover {
-            background:#dc2626;
-            box-shadow:0 0 6px rgba(220,38,38,.4);
-            transform:translateY(-1px);
-        }
-
-        .pane-body{
-            border:1px solid rgba(255,255,255,.06); border-radius:8px; background:#0e1116;
-            padding:1rem; overflow:auto; min-height:280px; height:100%;
-        }
-
-        @media (max-width:980px){
-            .grid{
-                grid-template-columns:1fr;
-                grid-template-rows:200px 140px minmax(360px,1fr) minmax(360px,1fr);
-                grid-template-areas:"top-left" "top-right" "bot-left" "bot-right";
-            }
-        }
-
-        @media (max-width:520px){
-            .inline{ grid-template-columns:1fr; row-gap:.6rem; }
-            .inline input[type="password"]{ flex:1 1 100%; }
-            .inline button{ width:100%; }
+        @media (max-width:720px){
+            .search input{min-width:120px}
+            .hide-sm{display:none}
+            .breadcrumbs{max-width:100%}
         }
     </style>
 </head>
@@ -163,102 +101,195 @@
 </header>
 
 <main class="wrap">
-    <div class="grid">
-
-        <!-- Top-left: Connection -->
-        <section class="card top-left" aria-labelledby="connect-title">
-            <h2 id="connect-title">Connection</h2>
-
-            <!-- Connection status -->
-            <p th:text="${status}"
-               th:classappend="${status != null and status.startsWith('Connected')} ? 'connected' : 'disconnected'"
-               style="font-weight:600;"
-               th:styleappend="${status != null and status.startsWith('Connected')} ? 'color:#34d399;' : 'color:#f87171;'">
-                Not connected
-            </p>
-
-            <!-- Show connect form if not connected -->
-            <form class="inline"
-                  th:if="${status == null or !status.startsWith('Connected')}"
-                  th:action="@{/client/connect}" method="post" autocomplete="off">
-                <input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-                <input type="password" name="password" placeholder="Password" required>
-                <button type="submit">Connect</button>
-            </form>
-
-            <!-- Show disconnect button if connected -->
-            <form th:if="${status != null and status.startsWith('Connected')}"
-                  th:action="@{/client/disconnect}" method="post">
-                <input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-                <button type="submit" class="btn-danger">Disconnect</button>
-            </form>
-
-            <p class="note">
-                Your password stays in this browser and is sent only to the server when you press Connect.
-            </p>
-        </section>
-
-        <!-- Top-right: Empty -->
-        <section class="card top-right empty" aria-hidden="true"></section>
-
-        <!-- Bottom-left: Directories -->
-        <section class="card bot-left" aria-labelledby="dirs-title">
+    <div class="center">
+        <section class="card" aria-labelledby="browser-title">
             <div class="card-header">
-                <h2 id="dirs-title">Directories</h2>
-                <div class="inline">
-                    <button id="btn-files" type="button" class="btn-secondary btn-small">Upload files…</button>
-                    <button id="btn-folder" type="button" class="btn-secondary btn-small">Upload folder…</button>
+                <div class="left">
+                    <div id="path" class="breadcrumbs" aria-label="Breadcrumb"></div>
+                    <button class="btn icon" id="btn-up" title="Up one level" aria-label="Go up">
+                        <!-- Lucide arrow-up -->
+                        <svg xmlns="http://www.w3.org/2000/svg" class="ico" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m18 15-6-6-6 6"/>
+                        </svg>
+                    </button>
+                    <button class="btn icon" id="btn-refresh" title="Refresh" aria-label="Refresh">
+                        <!-- Lucide refresh-ccw -->
+                        <svg xmlns="http://www.w3.org/2000/svg" class="ico" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 2v6h-6"/>
+                            <path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 9 9"/>
+                            <path d="M3 22v-6h6"/>
+                            <path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-9-9"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="right">
+                    <button class="btn secondary" disabled>New folder</button>
+                    <button class="btn" disabled>Upload…</button>
+                    <div class="search">
+                        <svg class="ico" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M20 20l-3-3" stroke="currentColor" stroke-width="1.5"/></svg>
+                        <input type="search" id="q" placeholder="Search files…" aria-label="Search files" disabled>
+                    </div>
+                    <div class="status">
+                        <span id="loading" class="spinner" aria-live="polite"></span>
+                        <span id="error" class="error" role="alert"></span>
+                    </div>
                 </div>
             </div>
 
-            <div class="pane-body" id="directories">
-                <div class="muted" style="opacity:.9">No directories yet. Add or map directories here.</div>
-                <div id="upload-output" class="muted" style="margin-top:.75rem;"></div>
-                <div class="note" style="margin-top:.5rem">
-                    Browsers hide absolute local paths for security. Folder uploads show the folder-relative path.
-                </div>
+            <div class="pane" role="region" aria-label="File list">
+                <table class="files">
+                    <thead>
+                    <tr>
+                        <th style="width:46%;">Name</th>
+                        <th class="hide-sm" style="width:18%;">Type</th>
+                        <th class="hide-sm" style="width:18%;">Size</th>
+                        <th style="width:18%;">Modified</th>
+                    </tr>
+                    </thead>
+                    <tbody id="tbody"></tbody>
+                </table>
             </div>
 
-            <!-- Hidden inputs -->
-            <input id="file-input" type="file" multiple style="display:none">
-            <input id="folder-input" type="file" webkitdirectory directory multiple style="display:none">
         </section>
-
-        <!-- Bottom-right: Recent uploads -->
-        <section class="card bot-right" aria-labelledby="uploads-title">
-            <h2 id="uploads-title">Recent uploads</h2>
-            <div class="pane-body" id="recent-uploads">
-                <div class="muted" style="opacity:.9">No uploads yet. Recent activity will appear here.</div>
-            </div>
-        </section>
-
     </div>
 </main>
 
 <script>
-    // Upload buttons wiring
-    (function () {
-        const btnFiles = document.getElementById('btn-files');
-        const btnFolder = document.getElementById('btn-folder');
-        const inputFiles = document.getElementById('file-input');
-        const inputFolder = document.getElementById('folder-input');
-        const out = document.getElementById('upload-output');
+    const $ = sel => document.querySelector(sel);
 
-        btnFiles.addEventListener('click', () => inputFiles.click());
-        btnFolder.addEventListener('click', () => inputFolder.click());
+    function joinPath(a, b) {
+        if (!a) return b || "";
+        if (!b) return a;
+        return (a.replace(/\/+$/,'') + '/' + b.replace(/^\/+/, '')).replace(/\/+/g,'/');
+    }
 
-        function renderList(files, opts = { folder: false }) {
-            if (!files || files.length === 0) { out.textContent = ''; return; }
-            const lines = Array.from(files).map(f => {
-                if (opts.folder && f.webkitRelativePath) return '• ' + f.webkitRelativePath;
-                return '• ' + (f.name || 'Unnamed file');
+    function parentPath(p) {
+        if (!p) return "";
+        const parts = p.split('/').filter(Boolean);
+        parts.pop();
+        return parts.join('/');
+    }
+
+    function setQuery(path) {
+        const url = new URL(window.location);
+        if (path) url.searchParams.set('selectedDir', path);
+        else url.searchParams.delete('selectedDir');
+        history.pushState({path}, '', url);
+    }
+
+    function getQueryPath() {
+        return new URL(location.href).searchParams.get('selectedDir') || '';
+    }
+
+    function formatBytes(n) {
+        if (n == null) return '';
+        const u = ['B','KB','MB','GB','TB'];
+        let i = 0, x = Number(n);
+        while (x >= 1024 && i < u.length-1) { x /= 1024; i++; }
+        return x.toFixed(x >= 10 || i===0 ? 0 : 1) + ' ' + u[i];
+    }
+
+    function extFromName(name){
+        const m = (name || '').match(/\.([^.]+)$/);
+        return m ? m[1].toLowerCase() : '';
+    }
+
+    function renderBreadcrumb(path) {
+        const container = $('#path');
+        const parts = path ? path.split('/').filter(Boolean) : [];
+        let acc = '';
+        const segs = [`<span class="crumb"><a href="#" data-path="">/</a></span>`];
+        parts.forEach((p) => {
+            acc = joinPath(acc, p);
+            segs.push(`<span class="crumb-sep">/</span><span class="crumb"><a href="#" data-path="${acc}">${p}</a></span>`);
+        });
+        container.innerHTML = segs.join('');
+
+        container.querySelectorAll('a[data-path]').forEach(a => {
+            a.addEventListener('click', (e) => {
+                e.preventDefault();
+                load(a.dataset.path);
             });
-            out.innerHTML = `<div><strong>Selected ${opts.folder ? 'folder items' : 'files'}:</strong></div><div>${lines.join('<br>')}</div>`;
-        }
+        });
+        $('#btn-up').onclick = () => {
+            const up = parentPath(path);
+            if (up !== path) load(up);
+        };
+    }
 
-        inputFiles.addEventListener('change', () => renderList(inputFiles.files, { folder: false }));
-        inputFolder.addEventListener('change', () => renderList(inputFolder.files, { folder: true }));
-    })();
+    async function fetchDir(path) {
+        const err = $('#error');
+        const spinner = $('#loading');
+        err.style.display = 'none';
+        err.textContent = '';
+        spinner.style.display = 'inline';
+        try {
+            const res = await fetch(`/api/dirs?selectedDir=${encodeURIComponent(path)}`, {cache:'no-store'});
+            const data = await res.json();
+            if (!Array.isArray(data)) {
+                throw new Error(data && data.error ? data.error : 'Unexpected response');
+            }
+            return data;
+        } finally {
+            spinner.style.display = 'none';
+        }
+    }
+
+    function renderTable(currentPath, items) {
+        const tbody = $('#tbody');
+        if (!items.length) {
+            tbody.innerHTML = `<tr><td colspan="4" class="muted" style="padding:1.2rem 1rem; text-align:center; opacity:.8;">Empty</td></tr>`;
+            return;
+        }
+        items.sort((a,b) => {
+            if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+            return a.name.localeCompare(b.name, undefined, {sensitivity:'base'});
+        });
+        const rows = [];
+        for (const it of items) {
+            const isFolder = it.type === 'folder';
+            const when = it.lastModified ? new Date(it.lastModified).toLocaleString() : '';
+            const size = isFolder ? '—' : formatBytes(it.size);
+            const typeLabel = isFolder ? 'Directory' : (extFromName(it.name) || 'File');
+            const iconFolder = `<svg class="ico" viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" fill="currentColor"/></svg>`;
+            const iconFile = `<svg class="ico" viewBox="0 0 24 24" fill="none"><path d="M6 2h7l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M13 2v5h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>`;
+            const nameCell = isFolder
+                ? `<div class="name-cell">${iconFolder}<button class="btn secondary btn-open" data-path="${it.path}" style="padding:.2rem .5rem;">${it.name}</button> <span class="badge">folder</span></div>`
+                : `<div class="name-cell">${iconFile}<span>${it.name}</span></div>`;
+            rows.push(`
+        <tr>
+          <td>${nameCell}</td>
+          <td class="hide-sm muted">${typeLabel}</td>
+          <td class="hide-sm muted">${size}</td>
+          <td class="muted">${when}</td>
+        </tr>
+      `);
+        }
+        tbody.innerHTML = rows.join('');
+        tbody.querySelectorAll('.btn-open[data-path]').forEach(btn => {
+            btn.addEventListener('click', () => load(btn.dataset.path));
+        });
+    }
+
+    async function load(path) {
+        try {
+            setQuery(path);
+            renderBreadcrumb(path);
+            const data = await fetchDir(path);
+            renderTable(path, data);
+        } catch (e) {
+            const err = $('#error');
+            err.textContent = e && e.message ? e.message : 'Failed to load';
+            err.style.display = 'inline-block';
+            $('#tbody').innerHTML = '';
+        }
+    }
+
+    $('#btn-refresh').onclick = () => load(getQueryPath());
+    window.addEventListener('popstate', () => load(getQueryPath()));
+    load(getQueryPath());
 </script>
 
 </body>
