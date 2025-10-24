@@ -6,11 +6,15 @@
     <title>SFTP Client</title>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <!-- If using Spring Security CSRF, render these via Thymeleaf: -->
+    <!-- <meta name="_csrf" th:content="${_csrf.token}"> -->
+    <!-- <meta name="_csrf_header" th:content="${_csrf.headerName}"> -->
     <style>
         :root{
             --bg:#111418; --panel:#1c2026; --panel-border:rgba(255,255,255,.06);
             --text:#e5e7eb; --muted:#9aa3af; --accent:#3b82f6;
             --radius:10px; --shadow:0 10px 30px rgba(0,0,0,.45); --gap:clamp(1rem,2.5vw,2rem);
+            --ok:#10b981; --err:#ef4444;
         }
         *{box-sizing:border-box}
         html,body{height:100%; margin:0}
@@ -84,6 +88,21 @@
         .note{font-size:.9rem; color:var(--muted); opacity:.85}
         .ico{width:18px; height:18px; opacity:.85}
 
+        /* Upload list blocks */
+        #uploads{display:grid; gap:.75rem;}
+        .upload-row{border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:.75rem; background:#0e1116;}
+        .upload-head{display:flex; justify-content:space-between; gap:.5rem;}
+        .upload-name{font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+        .upload-size{color:var(--muted);}
+        .upload-bar{height:10px; background:#22262d; border-radius:999px; overflow:hidden; margin-top:.5rem;}
+        .upload-bar .bar{height:100%; width:0%; background:var(--accent); transition:width .1s linear;}
+        .upload-status{margin-top:.4rem; color:var(--muted)}
+        .upload-actions{margin-top:.5rem; display:flex; gap:.5rem;}
+        .btn.small{padding:.4rem .6rem; font-size:.9rem}
+        .btn.danger{background:#b91c1c;}
+        .btn.danger:hover{background:#dc2626;}
+        .ok{color:var(--ok)} .err{color:var(--err)}
+
         @media (max-width:720px){
             .search input{min-width:120px}
             .hide-sm{display:none}
@@ -107,14 +126,14 @@
                 <div class="left">
                     <div id="path" class="breadcrumbs" aria-label="Breadcrumb"></div>
                     <button class="btn icon" id="btn-up" title="Up one level" aria-label="Go up">
-                        <!-- Lucide arrow-up -->
+                        <!-- Up -->
                         <svg xmlns="http://www.w3.org/2000/svg" class="ico" viewBox="0 0 24 24" fill="none"
                              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="m18 15-6-6-6 6"/>
                         </svg>
                     </button>
                     <button class="btn icon" id="btn-refresh" title="Refresh" aria-label="Refresh">
-                        <!-- Lucide refresh-ccw -->
+                        <!-- Refresh -->
                         <svg xmlns="http://www.w3.org/2000/svg" class="ico" viewBox="0 0 24 24" fill="none"
                              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M21 2v6h-6"/>
@@ -125,8 +144,9 @@
                     </button>
                 </div>
                 <div class="right">
-                    <button class="btn secondary" disabled>New folder</button>
-                    <button class="btn" disabled>Upload…</button>
+                    <button class="btn secondary" id="btn-newfolder" disabled>New folder</button>
+                    <button class="btn" id="btn-upload">Upload…</button>
+                    <input type="file" id="file-input" multiple style="display:none">
                     <div class="search">
                         <svg class="ico" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M20 20l-3-3" stroke="currentColor" stroke-width="1.5"/></svg>
                         <input type="search" id="q" placeholder="Search files…" aria-label="Search files" disabled>
@@ -152,6 +172,8 @@
                 </table>
             </div>
 
+            <!-- Uploads progress list appears below the table -->
+            <div id="uploads"></div>
         </section>
     </div>
 </main>
@@ -164,25 +186,21 @@
         if (!b) return a;
         return (a.replace(/\/+$/,'') + '/' + b.replace(/^\/+/, '')).replace(/\/+/g,'/');
     }
-
     function parentPath(p) {
         if (!p) return "";
         const parts = p.split('/').filter(Boolean);
         parts.pop();
         return parts.join('/');
     }
-
     function setQuery(path) {
         const url = new URL(window.location);
         if (path) url.searchParams.set('selectedDir', path);
         else url.searchParams.delete('selectedDir');
         history.pushState({path}, '', url);
     }
-
     function getQueryPath() {
         return new URL(location.href).searchParams.get('selectedDir') || '';
     }
-
     function formatBytes(n) {
         if (n == null) return '';
         const u = ['B','KB','MB','GB','TB'];
@@ -190,7 +208,6 @@
         while (x >= 1024 && i < u.length-1) { x /= 1024; i++; }
         return x.toFixed(x >= 10 || i===0 ? 0 : 1) + ' ' + u[i];
     }
-
     function extFromName(name){
         const m = (name || '').match(/\.([^.]+)$/);
         return m ? m[1].toLowerCase() : '';
@@ -287,6 +304,105 @@
         }
     }
 
+    // --- Upload wiring ---
+    const fileInput = $('#file-input');
+    const btnUpload = $('#btn-upload');
+    const uploads = $('#uploads');
+
+    btnUpload.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', () => {
+        if (!fileInput.files?.length) return;
+        const currentPath = getQueryPath();
+        for (const file of fileInput.files) startUpload(file, currentPath);
+        fileInput.value = ''; // allow selecting same files again later
+    });
+
+    function startUpload(file, currentPath) {
+        // Row UI
+        const row = document.createElement('div');
+        row.className = 'upload-row';
+        row.innerHTML = `
+      <div class="upload-head">
+        <div class="upload-name" title="${file.name}">${file.name}</div>
+        <div class="upload-size">${formatBytes(file.size)}</div>
+      </div>
+      <div class="upload-bar"><div class="bar"></div></div>
+      <div class="upload-status" aria-live="polite">Waiting…</div>
+      <div class="upload-actions">
+        <button type="button" class="btn small danger cancelBtn" disabled>Cancel</button>
+      </div>
+    `;
+        uploads.prepend(row);
+        const bar = row.querySelector('.bar');
+        const status = row.querySelector('.upload-status');
+        const cancelBtn = row.querySelector('.cancelBtn');
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload');
+
+        const token = document.querySelector('meta[name="_csrf"]')?.content;
+        const header = document.querySelector('meta[name="_csrf_header"]')?.content;
+        if (token && header) xhr.setRequestHeader(header, token);
+
+        const fd = new FormData();
+        fd.append('file', file);
+
+        fd.append('selectedPath', currentPath || '');
+
+        cancelBtn.disabled = false;
+        cancelBtn.onclick = () => xhr.abort();
+
+        xhr.upload.onprogress = (evt) => {
+            if (evt.lengthComputable) {
+                const pct = Math.round((evt.loaded / evt.total) * 100);
+                bar.style.width = pct + '%';
+                status.textContent = pct + '%';
+            } else {
+                status.textContent = 'Uploading…';
+            }
+        };
+
+        xhr.onload = () => {
+            cancelBtn.disabled = true;
+            bar.style.width = '100%';
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    if (data.ok) {
+                        status.textContent = `Done — ${data.fileName} (${formatBytes(data.bytes)})`;
+                        status.classList.add('ok');
+                        // Refresh the file list to show the new file in the current path
+                        load(getQueryPath());
+                    } else {
+                        status.textContent = data.message || 'Upload failed';
+                        status.classList.add('err');
+                    }
+                } catch {
+                    status.textContent = 'Done (response parse error)';
+                    status.classList.add('ok');
+                    load(getQueryPath());
+                }
+            } else {
+                status.textContent = `Failed (${xhr.status})`;
+                status.classList.add('err');
+            }
+        };
+
+        xhr.onerror = () => {
+            cancelBtn.disabled = true;
+            status.textContent = 'Network error';
+            status.classList.add('err');
+        };
+        xhr.onabort = () => {
+            cancelBtn.disabled = true;
+            status.textContent = 'Canceled';
+        };
+
+        xhr.send(fd);
+    }
+
+    // Refresh & history
     $('#btn-refresh').onclick = () => load(getQueryPath());
     window.addEventListener('popstate', () => load(getQueryPath()));
     load(getQueryPath());
