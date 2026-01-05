@@ -51,10 +51,23 @@ public class SftpSessionRegistry {
         return new ArrayList<>(sessions.values());
     }
 
-    public boolean isUserConnected(String username) {
+/*    public boolean isUserConnected(String username) {
         if (username == null) return false;
         for(SessionInfo sessions : sessions.values()) {
             return sessions.username.equals(username);
+        }
+        return false;
+    }*/
+
+    public boolean isUserConnected(String username) {
+        if (username == null) return false;
+        String u = username.trim().toLowerCase();
+
+        for (SessionInfo session : sessions.values()) {
+            if (session.username != null &&
+                    session.username.trim().toLowerCase().equals(u)) {
+                return true;
+            }
         }
         return false;
     }

@@ -2,10 +2,15 @@ package kakha.kudava.filedrivespring.services;
 
 import jakarta.annotation.PreDestroy;
 import jakarta.servlet.http.HttpSession;
+import jdk.jfr.Event;
+import org.apache.sshd.common.AttributeRepository;
 import org.apache.sshd.common.file.virtualfs.VirtualFileSystemFactory;
+import org.apache.sshd.common.session.Session;
+import org.apache.sshd.common.session.SessionListener;
 import org.apache.sshd.server.SshServer;
 import org.apache.sshd.server.auth.password.PasswordAuthenticator;
 import org.apache.sshd.server.keyprovider.SimpleGeneratorHostKeyProvider;
+import org.apache.sshd.server.session.ServerSession;
 import org.apache.sshd.sftp.server.SftpSubsystemFactory;
 import org.springframework.stereotype.Service;
 
@@ -19,7 +24,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class SftpServerService {
-    /** Simple user model */
+
+    private final SftpSessionRegistry sessionRegistry;
+
+    public SftpServerService(SftpSessionRegistry sessionRegistry) {
+        this.sessionRegistry = sessionRegistry;
+    }
+
+    private static final AttributeRepository.AttributeKey<String> REGISTRY_SESSION_ID = new AttributeRepository.AttributeKey<>();
+
     public static final class User {
         private final String password;
         private final Path home;
@@ -62,14 +75,11 @@ public class SftpServerService {
         }
     }
 
-    /** Start server with whatever users are configured (auto-seed if empty). */
     public synchronized void start() throws IOException {
         if (running.get()) {
             System.out.println("SFTP server already running on port " + port);
             return;
         }
-
-
 
         for (User u : users.values()) {
             Files.createDirectories(u.home());
@@ -95,6 +105,52 @@ public class SftpServerService {
         }
         vfsFactory.setDefaultHomeDir(getDefaultHome());
         server.setFileSystemFactory(vfsFactory);
+
+        // ✅ ADDED: Track authenticated users / disconnects and update SftpSessionRegistry
+        server.addSessionListener(new SessionListener() {
+
+            @Override
+            public void sessionCreated(Session session) {
+                // Optional: log new TCP session (not authenticated yet)
+                // System.out.println("🔌 New session created from: " + session.getIoSession().getRemoteAddress());
+            }
+
+            @Override
+            public void sessionEvent(Session session, Event event) {
+                if (event != Event.Authenticated) return;
+                if (!(session instanceof ServerSession ss)) return;
+
+                // Prevent double-registration if Authenticated event fires more than once
+                if (ss.getAttribute(REGISTRY_SESSION_ID) != null) return;
+
+                String username = ss.getUsername();
+                String remote = String.valueOf(ss.getIoSession().getRemoteAddress());
+
+                // Register this authenticated session in your app's registry
+                String id = sessionRegistry.create(username, remote);
+
+                // Store registry id on the SSH session so we can close it later
+                ss.setAttribute(REGISTRY_SESSION_ID, id);
+
+                // log
+                System.out.println("User connected: " + username + " id=" + id);
+                System.out.println("Registry state after server start: " + sessionRegistry.list());
+
+            }
+
+            @Override
+            public void sessionClosed(Session session) {
+                if (!(session instanceof ServerSession ss)) return;
+
+                String id = ss.getAttribute(REGISTRY_SESSION_ID);
+                if (id != null) {
+                    sessionRegistry.close(id);
+                }
+
+                // Optional: log
+                // System.out.println("❌ User disconnected: " + ss.getUsername() + " id=" + id);
+            }
+        });
 
         try {
             server.start(); // non-blocking

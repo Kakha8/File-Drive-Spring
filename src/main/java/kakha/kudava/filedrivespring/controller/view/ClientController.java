@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 public class ClientController {
 
     private final SftpServerService sftp;
-    private final SftpClientService client;
 
     @Autowired
     private UserService userService;
@@ -29,9 +28,8 @@ public class ClientController {
     @Autowired
     private SftpSessionRegistry sftpSessionRegistry;
 
-    public ClientController(SftpServerService sftp, SftpClientService client, UserService userService) {
+    public ClientController(SftpServerService sftp, UserService userService) {
         this.sftp = sftp;
-        this.client = client;
         this.userService = userService;
     }
 
@@ -50,52 +48,5 @@ public class ClientController {
             return "redirect:/login";
     }
 
-
-    @PostMapping("/connect")
-    public String upload(@RequestParam("password") String password,
-                         Model model, HttpSession session) throws JSchException, SftpException {
-        ChannelSftp con = null;
-        String username = userSessionService.getUsernameFromSession(session);
-        try {
-            con = client.connectSFTP(username, password);
-            client.showDir(con);
-
-            boolean checkCon = client.isConnected(con);
-            if (checkCon) {
-                session.setAttribute("sftpConnected", true);
-                session.setAttribute("sftpUser", username);
-                System.out.println("connected as " + username);
-            } else {
-                session.setAttribute("sftpConnected", false);
-                session.removeAttribute("sftpUser");
-            }
-
-            System.out.println(client.showDir(con));
-
-            model.addAttribute("sftpConnected", checkCon);
-            model.addAttribute("connectedUser", checkCon ? username : null);
-
-        } finally {
-            if (con != null) {
-                try {
-                    var sess = con.getSession();
-                    if (con.isConnected()) con.disconnect();
-                    if (sess != null && sess.isConnected()) sess.disconnect();
-                } catch (JSchException ignore) {
-                }
-            }
-        }
-        return "redirect:/client/client-home";
-    }
-
-    @PostMapping("/disconnect")
-    public String disconnect(HttpSession session, Model model) throws JSchException {
-        String username = (String) session.getAttribute("sftpUser");
-        client.disconnectSFTP(username);
-        model.addAttribute("message", "Client" + username +
-                " disconnected.");
-        session.invalidate();
-        return "redirect:/client/client-home";
-    }
 
 }

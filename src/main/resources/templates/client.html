@@ -4,11 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SFTP Client</title>
+
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <!-- If using Spring Security CSRF, render these via Thymeleaf: -->
-    <!-- <meta name="_csrf" th:content="${_csrf.token}"> -->
-    <!-- <meta name="_csrf_header" th:content="${_csrf.headerName}"> -->
+
+
     <style>
         :root{
             --bg:#111418; --panel:#1c2026; --panel-border:rgba(255,255,255,.06);
@@ -103,6 +104,10 @@
         .btn.danger:hover{background:#dc2626;}
         .ok{color:var(--ok)} .err{color:var(--err)}
 
+        /* Selected row highlight */
+        tr.selected td { background: rgba(59,130,246,.12) !important; }
+        tr.selected td .badge { border-color: rgba(59,130,246,.6); }
+
         @media (max-width:720px){
             .search input{min-width:120px}
             .hide-sm{display:none}
@@ -172,241 +177,14 @@
                 </table>
             </div>
 
-            <!-- Uploads progress list appears below the table -->
+            <!-- Uploads progress list -->
             <div id="uploads"></div>
         </section>
     </div>
 </main>
 
-<script>
-    const $ = sel => document.querySelector(sel);
-
-    function joinPath(a, b) {
-        if (!a) return b || "";
-        if (!b) return a;
-        return (a.replace(/\/+$/,'') + '/' + b.replace(/^\/+/, '')).replace(/\/+/g,'/');
-    }
-    function parentPath(p) {
-        if (!p) return "";
-        const parts = p.split('/').filter(Boolean);
-        parts.pop();
-        return parts.join('/');
-    }
-    function setQuery(path) {
-        const url = new URL(window.location);
-        if (path) url.searchParams.set('selectedDir', path);
-        else url.searchParams.delete('selectedDir');
-        history.pushState({path}, '', url);
-    }
-    function getQueryPath() {
-        return new URL(location.href).searchParams.get('selectedDir') || '';
-    }
-    function formatBytes(n) {
-        if (n == null) return '';
-        const u = ['B','KB','MB','GB','TB'];
-        let i = 0, x = Number(n);
-        while (x >= 1024 && i < u.length-1) { x /= 1024; i++; }
-        return x.toFixed(x >= 10 || i===0 ? 0 : 1) + ' ' + u[i];
-    }
-    function extFromName(name){
-        const m = (name || '').match(/\.([^.]+)$/);
-        return m ? m[1].toLowerCase() : '';
-    }
-
-    function renderBreadcrumb(path) {
-        const container = $('#path');
-        const parts = path ? path.split('/').filter(Boolean) : [];
-        let acc = '';
-        const segs = [`<span class="crumb"><a href="#" data-path="">/</a></span>`];
-        parts.forEach((p) => {
-            acc = joinPath(acc, p);
-            segs.push(`<span class="crumb-sep">/</span><span class="crumb"><a href="#" data-path="${acc}">${p}</a></span>`);
-        });
-        container.innerHTML = segs.join('');
-
-        container.querySelectorAll('a[data-path]').forEach(a => {
-            a.addEventListener('click', (e) => {
-                e.preventDefault();
-                load(a.dataset.path);
-            });
-        });
-        $('#btn-up').onclick = () => {
-            const up = parentPath(path);
-            if (up !== path) load(up);
-        };
-    }
-
-    async function fetchDir(path) {
-        const err = $('#error');
-        const spinner = $('#loading');
-        err.style.display = 'none';
-        err.textContent = '';
-        spinner.style.display = 'inline';
-        try {
-            const res = await fetch(`/api/dirs?selectedDir=${encodeURIComponent(path)}`, {cache:'no-store'});
-            const data = await res.json();
-            if (!Array.isArray(data)) {
-                throw new Error(data && data.error ? data.error : 'Unexpected response');
-            }
-            return data;
-        } finally {
-            spinner.style.display = 'none';
-        }
-    }
-
-    function renderTable(currentPath, items) {
-        const tbody = $('#tbody');
-        if (!items.length) {
-            tbody.innerHTML = `<tr><td colspan="4" class="muted" style="padding:1.2rem 1rem; text-align:center; opacity:.8;">Empty</td></tr>`;
-            return;
-        }
-        items.sort((a,b) => {
-            if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
-            return a.name.localeCompare(b.name, undefined, {sensitivity:'base'});
-        });
-        const rows = [];
-        for (const it of items) {
-            const isFolder = it.type === 'folder';
-            const when = it.lastModified ? new Date(it.lastModified).toLocaleString() : '';
-            const size = isFolder ? '—' : formatBytes(it.size);
-            const typeLabel = isFolder ? 'Directory' : (extFromName(it.name) || 'File');
-            const iconFolder = `<svg class="ico" viewBox="0 0 24 24" fill="none"><path d="M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" fill="currentColor"/></svg>`;
-            const iconFile = `<svg class="ico" viewBox="0 0 24 24" fill="none"><path d="M6 2h7l5 5v13a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M13 2v5h5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>`;
-            const nameCell = isFolder
-                ? `<div class="name-cell">${iconFolder}<button class="btn secondary btn-open" data-path="${it.path}" style="padding:.2rem .5rem;">${it.name}</button> <span class="badge">folder</span></div>`
-                : `<div class="name-cell">${iconFile}<span>${it.name}</span></div>`;
-            rows.push(`
-        <tr>
-          <td>${nameCell}</td>
-          <td class="hide-sm muted">${typeLabel}</td>
-          <td class="hide-sm muted">${size}</td>
-          <td class="muted">${when}</td>
-        </tr>
-      `);
-        }
-        tbody.innerHTML = rows.join('');
-        tbody.querySelectorAll('.btn-open[data-path]').forEach(btn => {
-            btn.addEventListener('click', () => load(btn.dataset.path));
-        });
-    }
-
-    async function load(path) {
-        try {
-            setQuery(path);
-            renderBreadcrumb(path);
-            const data = await fetchDir(path);
-            renderTable(path, data);
-        } catch (e) {
-            const err = $('#error');
-            err.textContent = e && e.message ? e.message : 'Failed to load';
-            err.style.display = 'inline-block';
-            $('#tbody').innerHTML = '';
-        }
-    }
-
-    // --- Upload wiring ---
-    const fileInput = $('#file-input');
-    const btnUpload = $('#btn-upload');
-    const uploads = $('#uploads');
-
-    btnUpload.addEventListener('click', () => fileInput.click());
-
-    fileInput.addEventListener('change', () => {
-        if (!fileInput.files?.length) return;
-        const currentPath = getQueryPath();
-        for (const file of fileInput.files) startUpload(file, currentPath);
-        fileInput.value = ''; // allow selecting same files again later
-    });
-
-    function startUpload(file, currentPath) {
-        // Row UI
-        const row = document.createElement('div');
-        row.className = 'upload-row';
-        row.innerHTML = `
-      <div class="upload-head">
-        <div class="upload-name" title="${file.name}">${file.name}</div>
-        <div class="upload-size">${formatBytes(file.size)}</div>
-      </div>
-      <div class="upload-bar"><div class="bar"></div></div>
-      <div class="upload-status" aria-live="polite">Waiting…</div>
-      <div class="upload-actions">
-        <button type="button" class="btn small danger cancelBtn" disabled>Cancel</button>
-      </div>
-    `;
-        uploads.prepend(row);
-        const bar = row.querySelector('.bar');
-        const status = row.querySelector('.upload-status');
-        const cancelBtn = row.querySelector('.cancelBtn');
-
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/upload');
-
-        const token = document.querySelector('meta[name="_csrf"]')?.content;
-        const header = document.querySelector('meta[name="_csrf_header"]')?.content;
-        if (token && header) xhr.setRequestHeader(header, token);
-
-        const fd = new FormData();
-        fd.append('file', file);
-
-        fd.append('selectedPath', currentPath || '');
-
-        cancelBtn.disabled = false;
-        cancelBtn.onclick = () => xhr.abort();
-
-        xhr.upload.onprogress = (evt) => {
-            if (evt.lengthComputable) {
-                const pct = Math.round((evt.loaded / evt.total) * 100);
-                bar.style.width = pct + '%';
-                status.textContent = pct + '%';
-            } else {
-                status.textContent = 'Uploading…';
-            }
-        };
-
-        xhr.onload = () => {
-            cancelBtn.disabled = true;
-            bar.style.width = '100%';
-            if (xhr.status >= 200 && xhr.status < 300) {
-                try {
-                    const data = JSON.parse(xhr.responseText);
-                    if (data.ok) {
-                        status.textContent = `Done — ${data.fileName} (${formatBytes(data.bytes)})`;
-                        status.classList.add('ok');
-                        // Refresh the file list to show the new file in the current path
-                        load(getQueryPath());
-                    } else {
-                        status.textContent = data.message || 'Upload failed';
-                        status.classList.add('err');
-                    }
-                } catch {
-                    status.textContent = 'Done (response parse error)';
-                    status.classList.add('ok');
-                    load(getQueryPath());
-                }
-            } else {
-                status.textContent = `Failed (${xhr.status})`;
-                status.classList.add('err');
-            }
-        };
-
-        xhr.onerror = () => {
-            cancelBtn.disabled = true;
-            status.textContent = 'Network error';
-            status.classList.add('err');
-        };
-        xhr.onabort = () => {
-            cancelBtn.disabled = true;
-            status.textContent = 'Canceled';
-        };
-
-        xhr.send(fd);
-    }
-
-    // Refresh & history
-    $('#btn-refresh').onclick = () => load(getQueryPath());
-    window.addEventListener('popstate', () => load(getQueryPath()));
-    load(getQueryPath());
-</script>
-
+<!-- Load ES modules from /static/js. Cache-bust with app version or timestamp if desired -->
+<script type="module" th:src="@{/js/client/file-browser.js}"></script>
+<script type="module" th:src="@{/js/client/file-uploads.js}"></script>
 </body>
 </html>

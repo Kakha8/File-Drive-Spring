@@ -3,7 +3,6 @@ package kakha.kudava.filedrivespring.controller;
 
 import jakarta.servlet.http.HttpSession;
 import kakha.kudava.filedrivespring.model.User;
-import kakha.kudava.filedrivespring.services.SftpClientService;
 import kakha.kudava.filedrivespring.services.SftpServerService;
 import kakha.kudava.filedrivespring.services.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,14 +14,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 public class HomeController {
 
     private final SftpServerService sftp;
-    private final SftpClientService client;
 
     @Autowired
     private UserService userService;
 
-    public HomeController(SftpServerService sftp, SftpClientService client, UserService userService) {
+    public HomeController(SftpServerService sftp, UserService userService) {
         this.sftp = sftp;
-        this.client = client;
         this.userService = userService;
     }
 

@@ -2,7 +2,6 @@ package kakha.kudava.filedrivespring.controller.api;
 
 import jakarta.servlet.http.HttpSession;
 import kakha.kudava.filedrivespring.repository.UserRepository;
-import kakha.kudava.filedrivespring.services.SftpClientService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -15,12 +14,9 @@ import java.util.Map;
 public class ServerRestController {
 
     private final UserRepository userRepository;
-    private final SftpClientService sftpClientService;
 
-    public ServerRestController(UserRepository userRepository,
-                                SftpClientService sftpClientService) {
+    public ServerRestController(UserRepository userRepository) {
         this.userRepository = userRepository;
-        this.sftpClientService = sftpClientService;
     }
 
 /*    @GetMapping("/sftpuser")
@@ -37,34 +33,6 @@ public class ServerRestController {
 
         return response;
     }*/
-
-    @GetMapping("/sftpuser")
-    public Map<String, Object> getSftpUser(HttpSession session) {
-        // Fetch all known usernames
-        List<String> users = userRepository.getUsernames();
-
-        // The currently connected user stored in this session
-        Object currentSftpUser = session.getAttribute("sftpUser");
-
-        List<Map<String, Object>> userList = new ArrayList<>();
-
-        for (String username : users) {
-            boolean connected = currentSftpUser != null && username.equals(currentSftpUser.toString());
-            String conTime = connected ? sftpClientService.getTime() : null;
-
-            Map<String, Object> userInfo = new HashMap<>();
-            userInfo.put("username", username);
-            userInfo.put("connected", connected);
-            userInfo.put("time", conTime);
-
-            userList.add(userInfo);
-        }
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("users", userList);
-        response.put("timestamp", sftpClientService.getTime()); // optional global time marker
-
-        return response;
-    }
+    
 
 }
