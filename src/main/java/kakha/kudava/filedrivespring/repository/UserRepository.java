@@ -12,14 +12,6 @@ import java.util.Optional;
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByUsername(String username);
-
-    @Query("SELECT u.username FROM User u")
-    List<String> getUsernames();
-
-    @Query("SELECT e FROM User e")
-    List<User> findAll();
-
-    @Query("SELECT u.permissions from User u WHERE u.username=:username")
-    List<String> getUserPermissions(@Param("username") String username);
+    void deleteById(Long id);
 
 }

@@ -1,43 +1,53 @@
 package kakha.kudava.filedrivespring.services;
 
+import jakarta.transaction.Transactional;
+import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 public class UserService {
 
-    @Autowired
-    private UserRepository userRepository;
+    private final UserRepository userRepository;
 
-    public boolean authenticate(String username, String password) {
-        Optional<User> user = userRepository.findByUsername(username);
-
-        String dbPassword = user.get().getPassword();
-        if (user != null && dbPassword.equals(password))
-            return true;
-        else
-            return false;
+    public UserService(UserRepository userRepository) {
+        this.userRepository = userRepository;
     }
 
-    public List<String> getUsernames() {
-        return userRepository.getUsernames();
+    public UserDTO saveUser(UserDTO userDTO) {
+        User user = new User();
+        user.setUsername(userDTO.getUsername());
+        user.setPassword(userDTO.getPassword());
+        userRepository.save(user);
+        return userDTO;
     }
-    public boolean isAdmin(User user){
-        Optional<User> dbUser = userRepository.findByUsername(user.getUsername());
-        if (dbUser == null) {
-            return false;
+
+    public List<UserDTO> getAllUsers() {
+        List<User> users = userRepository.findAll();
+        List<UserDTO> userDTOs = new ArrayList<>();
+        for (User user : users) {
+            UserDTO userDTO = new UserDTO();
+            userDTO.setId(user.getId());
+            userDTO.setUsername(user.getUsername());
+
+            userDTOs.add(userDTO);
         }
+        return userDTOs;
+    }
 
-        String permissions = dbUser.get().getPermissions();
-        if(permissions.contains("admin"))
-            return true;
-        else
-            return false;
+    public Optional<User> findById(Long id) {
+        return userRepository.findById(id);
+    }
+
+    @Transactional
+    public void delete(Long id) {
+        userRepository.deleteById(id);
     }
 
     public List<User> getUsers() {
