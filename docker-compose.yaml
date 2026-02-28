@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    container_name: file-drive
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:h2:file:/app/data/mydb;AUTO_SERVER=TRUE
+    volumes:
+      - ./data:/app/data
