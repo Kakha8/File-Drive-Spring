@@ -4,6 +4,10 @@ import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
+import kakha.kudava.filedrivespring.dto.UserDTO;
+import kakha.kudava.filedrivespring.model.FileMetaData;
+import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -17,10 +21,12 @@ public class ObjectStorageService {
 
     private final MinioClient minioClient;
     private final String bucket;
+    private final FileMetaDataRepository fileMetaDataRepository;
 
-    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket) {
+    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository) {
         this.minioClient = minioClient;
         this.bucket = bucket;
+        this.fileMetaDataRepository = fileMetaDataRepository;
     }
 
     public String upload(MultipartFile file) throws Exception {
@@ -35,6 +41,14 @@ public class ObjectStorageService {
                             .contentType(file.getContentType())
                             .build()
             );
+
+            FileMetaData entity = new FileMetaData();
+            entity.setDeleted(false);
+            entity.setObjectKey(objectKey);
+            entity.setObjectType(file.getContentType());
+            entity.setFileName(file.getOriginalFilename());
+            fileMetaDataRepository.save(entity);
+
         }
         return objectKey;
     }
