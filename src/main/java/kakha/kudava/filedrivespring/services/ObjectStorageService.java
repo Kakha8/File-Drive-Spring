@@ -14,7 +14,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
 import java.util.UUID;
+
+import static org.apache.sshd.common.util.buffer.BufferUtils.toHex;
 
 @Service
 public class ObjectStorageService {
@@ -29,30 +33,49 @@ public class ObjectStorageService {
         this.fileMetaDataRepository = fileMetaDataRepository;
     }
 
-    public String upload(MultipartFile file) throws Exception {
+    public UploadResult upload(MultipartFile file) throws Exception {
+
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+
+
         String safeName = file.getOriginalFilename() == null ? "file" : file.getOriginalFilename();
         String objectKey = UUID.randomUUID() + "-" + safeName;
-        try(InputStream in = file.getInputStream()) {
+        try(InputStream in = file.getInputStream();
+            DigestInputStream dis = new DigestInputStream(in, md)) {
             minioClient.putObject(
                     PutObjectArgs.builder()
                             .bucket(bucket)
                             .object(objectKey)
-                            .stream(in, file.getSize(), -1)
+                            .stream(dis, file.getSize(), -1)
                             .contentType(file.getContentType())
                             .build()
             );
+
+            byte[] hash = md.digest();
+            String checksum = toHex(hash);
 
             FileMetaData entity = new FileMetaData();
             entity.setDeleted(false);
             entity.setObjectKey(objectKey);
             entity.setObjectType(file.getContentType());
             entity.setFileName(file.getOriginalFilename());
+            entity.setChecksum(checksum);
             fileMetaDataRepository.save(entity);
 
+            return new UploadResult(objectKey, checksum);
+
         }
-        return objectKey;
     }
 
+    private static String toHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
+    public record UploadResult(String objectKey, String checksum) {}
     public InputStream download(String objectKey) throws Exception {
         return minioClient.getObject(
                 GetObjectArgs.builder()
@@ -63,6 +86,12 @@ public class ObjectStorageService {
     }
 
     public void delete(String objectKey){
+
+        FileMetaData metaData = fileMetaDataRepository.findByObjectKey(objectKey)
+                .orElseThrow(() -> new RuntimeException("Object not found"));
+
+        metaData.setDeleted(true);
+        fileMetaDataRepository.save(metaData);
         try {
             minioClient.removeObject(
                     RemoveObjectArgs.builder()

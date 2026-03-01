@@ -23,8 +23,8 @@ public class FilesRestController {
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Map<String, String>> upload(@RequestPart("file") MultipartFile file) throws Exception {
-        String key = storage.upload(file);
+    public ResponseEntity<Map<String, ObjectStorageService.UploadResult>> upload(@RequestPart("file") MultipartFile file) throws Exception {
+        ObjectStorageService.UploadResult key = storage.upload(file);
         return ResponseEntity.ok(Map.of("key", key));
     }
 

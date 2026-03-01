@@ -26,6 +26,9 @@ public class FileMetaData {
     private String objectType;
 
     @Column(nullable = false)
+    private String checksum;
+
+    @Column(nullable = false)
     private Instant creationDate = Instant.now();
 
     @Column(nullable = false)
