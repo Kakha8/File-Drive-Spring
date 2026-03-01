@@ -43,4 +43,10 @@ public class FilesRestController {
                 .contentType(MediaType.parseMediaType(contentType))
                 .body(new InputStreamResource(in));
     }
+
+    @DeleteMapping("/{key}")
+    public ResponseEntity<Void> delete(@PathVariable("key") String key) throws Exception {
+        storage.delete(key);
+        return ResponseEntity.noContent().build();
+    }
 }

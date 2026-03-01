@@ -3,6 +3,7 @@ package kakha.kudava.filedrivespring.services;
 import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -45,5 +46,18 @@ public class ObjectStorageService {
                         .object(objectKey)
                         .build()
         );
+    }
+
+    public void delete(String objectKey){
+        try {
+            minioClient.removeObject(
+                    RemoveObjectArgs.builder()
+                            .bucket(bucket)
+                            .object(objectKey)
+                            .build()
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to delete object: " + objectKey, e);
+        }
     }
 }
