@@ -9,11 +9,14 @@ import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URLConnection;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.util.UUID;
@@ -53,6 +56,7 @@ public class ObjectStorageService {
 
             byte[] hash = md.digest();
             String checksum = toHex(hash);
+            Long fileSize = file.getSize();
 
             FileMetaData entity = new FileMetaData();
             entity.setDeleted(false);
@@ -60,9 +64,10 @@ public class ObjectStorageService {
             entity.setObjectType(file.getContentType());
             entity.setFileName(file.getOriginalFilename());
             entity.setChecksum(checksum);
+            entity.setSize(fileSize);
             fileMetaDataRepository.save(entity);
 
-            return new UploadResult(objectKey, checksum);
+            return new UploadResult(objectKey, checksum, fileSize);
 
         }
     }
@@ -75,8 +80,20 @@ public class ObjectStorageService {
         return sb.toString();
     }
 
-    public record UploadResult(String objectKey, String checksum) {}
-    public InputStream download(String objectKey) throws Exception {
+    public record UploadResult(String objectKey, String checksum, Long fileSize) {}
+
+
+
+    public InputStream download(Long id) throws Exception {
+        FileMetaData fileMetaData = fileMetaDataRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Object not found"));
+        String objectKey = fileMetaData.getObjectKey();
+
+/*        String contentType = URLConnection.guessContentTypeFromName(key);
+        if (contentType == null) {
+            contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        }*/
+
         return minioClient.getObject(
                 GetObjectArgs.builder()
                         .bucket(bucket)
@@ -85,10 +102,11 @@ public class ObjectStorageService {
         );
     }
 
-    public void delete(String objectKey){
+    public void delete(Long id){
 
-        FileMetaData metaData = fileMetaDataRepository.findByObjectKey(objectKey)
+        FileMetaData metaData = fileMetaDataRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Object not found"));
+        String objectKey = metaData.getObjectKey();
 
         metaData.setDeleted(true);
         fileMetaDataRepository.save(metaData);

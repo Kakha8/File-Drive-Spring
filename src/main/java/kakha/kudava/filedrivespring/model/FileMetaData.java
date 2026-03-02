@@ -32,6 +32,9 @@ public class FileMetaData {
     private Instant creationDate = Instant.now();
 
     @Column(nullable = false)
+    private Long size;
+
+    @Column(nullable = false)
     private boolean deleted;
 
 }

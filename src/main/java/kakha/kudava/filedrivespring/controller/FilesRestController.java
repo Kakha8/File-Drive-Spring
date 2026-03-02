@@ -28,25 +28,17 @@ public class FilesRestController {
         return ResponseEntity.ok(Map.of("key", key));
     }
 
-    @GetMapping("/{key}")
-    public ResponseEntity<InputStreamResource> download(@PathVariable String key) throws Exception {
-        InputStream in = storage.download(key);
-
-        String contentType = URLConnection.guessContentTypeFromName(key);
-        if (contentType == null) {
-            contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
-        }
-
+    @GetMapping("/{id}")
+    public ResponseEntity<InputStreamResource> download(@PathVariable Long id) throws Exception {
+        InputStream in = storage.download(id);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + key + "\"")
-                .contentType(MediaType.parseMediaType(contentType))
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(new InputStreamResource(in));
     }
 
-    @DeleteMapping("/{key}")
-    public ResponseEntity<Void> delete(@PathVariable("key") String key) throws Exception {
-        storage.delete(key);
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable("id") Long id) throws Exception {
+        storage.delete(id);
         return ResponseEntity.noContent().build();
     }
 }
