@@ -3,6 +3,7 @@ package kakha.kudava.filedrivespring.services;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.errors.*;
+import kakha.kudava.filedrivespring.dto.FolderCreateRequest;
 import kakha.kudava.filedrivespring.dto.FolderDTO;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
@@ -27,7 +28,7 @@ public class FolderService {
         this.minioClient = minioClient;
     }
 
-    public FolderDTO create(FolderDTO folderDTO)
+    public FolderDTO create(FolderCreateRequest req)
             throws ServerException,
             InsufficientDataException,
             ErrorResponseException,
@@ -35,17 +36,24 @@ public class FolderService {
             NoSuchAlgorithmException,
             InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
 
-        String name = folderDTO.getName();
-        String prefix = folderDTO.getPrefix();
+        String fullPrefix = buildFullPrefix(req.getName(), req.getParentId());
 
-        String normalizedName = name.replaceAll("^/|/$", "");
-        String normalizedPrefix = prefix.endsWith("/") ? prefix : prefix + "/";
-        String folderKey = normalizedPrefix + normalizedName + "/";
+        Folders entity = new Folders();
+        entity.setName(req.getName().replaceAll("^/|/$", ""));
+        entity.setPrefix(fullPrefix);
+
+        if (req.getParentId() != null) {
+            Folders parent = folderRepository.findById(req.getParentId())
+                    .orElseThrow(() -> new RuntimeException("Parent folder not found: " + req.getParentId()));
+            entity.setParent(parent);
+        }
+
+        Folders saved = folderRepository.save(entity);
 
         minioClient.putObject(
                 PutObjectArgs.builder()
                         .bucket(bucket)
-                        .object(folderKey)
+                        .object(fullPrefix)
                         .stream(
                                 new ByteArrayInputStream(new byte[]{}),
                                 0,
@@ -53,12 +61,33 @@ public class FolderService {
                         )
                         .build()
         );
-        Folders folder = new Folders();
-        folder.setName(name);
-        folder.setPrefix(prefix);
-        folderRepository.save(folder);
 
-        return folderDTO;
+        return toDto(entity);
+    }
+
+    private String buildFullPrefix(String folderName, Long parentId) {
+        String normalizedName = folderName.replaceAll("^/|/$", "");
+
+        if (parentId == null) {
+            return normalizedName + "/";
+        }
+
+        Folders parent = folderRepository.findById(parentId)
+                .orElseThrow(() -> new RuntimeException("Parent folder not found: " + parentId));
+
+        String parentPrefix = parent.getPrefix();
+        if (!parentPrefix.endsWith("/")) parentPrefix += "/";
+
+        return parentPrefix + normalizedName + "/";
+    }
+
+    private FolderDTO toDto(Folders f) {
+        FolderDTO dto = new FolderDTO();
+        dto.setId(f.getId());
+        dto.setName(f.getName());
+        dto.setPrefix(f.getPrefix());
+        dto.setParentId(f.getParent() != null ? f.getParent().getId() : null);
+        return dto;
     }
 
 }

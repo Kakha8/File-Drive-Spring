@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.controller;
 
 import io.minio.errors.*;
+import kakha.kudava.filedrivespring.dto.FolderCreateRequest;
 import kakha.kudava.filedrivespring.dto.FolderDTO;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
@@ -33,7 +34,7 @@ public class FoldersRestController {
     }
 
     @PostMapping
-    public ResponseEntity<Map<String, String>> create(@RequestBody FolderDTO folderDTO)
+    public ResponseEntity<Map<String, String>> create(@RequestBody FolderCreateRequest req)
             throws ServerException,
             InsufficientDataException,
             ErrorResponseException,
@@ -41,7 +42,7 @@ public class FoldersRestController {
             NoSuchAlgorithmException,
             InvalidKeyException,
             InvalidResponseException, XmlParserException, InternalException {
-        FolderDTO folder = folderService.create(folderDTO);
+        FolderDTO folder = folderService.create(req);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(Map.of("name", folder.getName(),
                         "prefix", folder.getPrefix()));
