@@ -7,6 +7,7 @@ import io.minio.RemoveObjectArgs;
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.FileMetaData;
+import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.repository.UserRepository;
@@ -43,13 +44,18 @@ public class ObjectStorageService {
         this.folderRepository = folderRepository;
     }
 
-    public UploadResult upload(MultipartFile file) throws Exception {
+    public FileMetaData upload(MultipartFile file, Long parentId) throws Exception {
 
         MessageDigest md = MessageDigest.getInstance("SHA-256");
 
+        Folders folder = folderRepository.findById(parentId)
+                .orElseThrow(() -> new RuntimeException("Folder not found: " + parentId));
 
         String safeName = file.getOriginalFilename() == null ? "file" : file.getOriginalFilename();
-        String objectKey = UUID.randomUUID() + "-" + safeName;
+        String prefix = folder.getPrefix();
+        if (!prefix.endsWith("/")) prefix += "/";
+        String objectKey = prefix + UUID.randomUUID() + "-" + safeName;
+
         try(InputStream in = file.getInputStream();
             DigestInputStream dis = new DigestInputStream(in, md)) {
             minioClient.putObject(
@@ -72,10 +78,10 @@ public class ObjectStorageService {
             entity.setFileName(file.getOriginalFilename());
             entity.setChecksum(checksum);
             entity.setSize(fileSize);
-            fileMetaDataRepository.save(entity);
+            entity.setParent(folder);
 
             log.info("File uploaded successfully {}", objectKey);
-            return new UploadResult(objectKey, checksum, fileSize);
+            return fileMetaDataRepository.save(entity);
 
         }
     }
@@ -86,6 +92,11 @@ public class ObjectStorageService {
             sb.append(String.format("%02x", b));
         }
         return sb.toString();
+    }
+
+    public FileMetaData getMeta(Long id) {
+        return fileMetaDataRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Object not found"));
     }
 
     public record UploadResult(String objectKey, String checksum, Long fileSize) {}

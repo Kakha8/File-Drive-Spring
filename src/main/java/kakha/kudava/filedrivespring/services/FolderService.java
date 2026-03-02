@@ -4,6 +4,7 @@ import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.errors.*;
 import kakha.kudava.filedrivespring.dto.FolderDTO;
+import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -52,6 +53,11 @@ public class FolderService {
                         )
                         .build()
         );
+        Folders folder = new Folders();
+        folder.setName(name);
+        folder.setPrefix(prefix);
+        folderRepository.save(folder);
+
         return folderDTO;
     }
 

@@ -3,17 +3,16 @@ package kakha.kudava.filedrivespring.controller;
 import io.minio.errors.*;
 import kakha.kudava.filedrivespring.dto.FolderDTO;
 import kakha.kudava.filedrivespring.model.Folders;
+import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.services.FolderService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -21,9 +20,16 @@ import java.util.Map;
 public class FoldersRestController {
 
     private final FolderService folderService;
+    private final FolderRepository folderRepository;
 
-    public FoldersRestController(FolderService folderService) {
+    public FoldersRestController(FolderService folderService, FolderRepository folderRepository) {
         this.folderService = folderService;
+        this.folderRepository = folderRepository;
+    }
+
+    @GetMapping
+    public List<Folders> list() {
+        return folderRepository.findAll();
     }
 
     @PostMapping
