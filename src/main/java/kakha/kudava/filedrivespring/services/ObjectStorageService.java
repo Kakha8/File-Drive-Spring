@@ -8,6 +8,8 @@ import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
+import kakha.kudava.filedrivespring.repository.FolderRepository;
+import kakha.kudava.filedrivespring.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -32,10 +34,13 @@ public class ObjectStorageService {
     private final String bucket;
     private final FileMetaDataRepository fileMetaDataRepository;
 
-    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository) {
+    private final FolderRepository folderRepository;
+
+    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
+        this.folderRepository = folderRepository;
     }
 
     public UploadResult upload(MultipartFile file) throws Exception {
