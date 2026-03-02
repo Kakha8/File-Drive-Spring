@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.UserRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -11,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+@Slf4j
 @Service
 public class UserService {
 
@@ -25,6 +27,7 @@ public class UserService {
         user.setUsername(userDTO.getUsername());
         user.setPassword(userDTO.getPassword());
         userRepository.save(user);
+        log.info("User saved successfully: {}", userDTO.getUsername());
         return userDTO;
     }
 
@@ -38,6 +41,7 @@ public class UserService {
 
             userDTOs.add(userDTO);
         }
+        log.info("Retuning all users from database...");
         return userDTOs;
     }
 
@@ -48,6 +52,7 @@ public class UserService {
     @Transactional
     public void delete(Long id) {
         userRepository.deleteById(id);
+        log.info("Object deleted successfully {}", id);
     }
 
     public List<User> getUsers() {

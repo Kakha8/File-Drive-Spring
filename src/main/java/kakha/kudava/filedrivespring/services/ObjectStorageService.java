@@ -8,6 +8,7 @@ import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ import java.util.UUID;
 
 import static org.apache.sshd.common.util.buffer.BufferUtils.toHex;
 
+@Slf4j
 @Service
 public class ObjectStorageService {
 
@@ -67,6 +69,7 @@ public class ObjectStorageService {
             entity.setSize(fileSize);
             fileMetaDataRepository.save(entity);
 
+            log.info("File uploaded successfully {}", objectKey);
             return new UploadResult(objectKey, checksum, fileSize);
 
         }
@@ -89,11 +92,7 @@ public class ObjectStorageService {
                 .orElseThrow(() -> new RuntimeException("Object not found"));
         String objectKey = fileMetaData.getObjectKey();
 
-/*        String contentType = URLConnection.guessContentTypeFromName(key);
-        if (contentType == null) {
-            contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
-        }*/
-
+        log.info("Downloading object from {}", objectKey);
         return minioClient.getObject(
                 GetObjectArgs.builder()
                         .bucket(bucket)
@@ -117,6 +116,7 @@ public class ObjectStorageService {
                             .object(objectKey)
                             .build()
             );
+            log.info("Object deleted successfully {}", objectKey);
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete object: " + objectKey, e);
         }
