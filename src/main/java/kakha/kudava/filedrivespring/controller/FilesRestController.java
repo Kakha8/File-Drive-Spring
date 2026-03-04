@@ -1,5 +1,8 @@
 package kakha.kudava.filedrivespring.controller;
 
+import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
+import kakha.kudava.filedrivespring.model.FileMetaData;
+import kakha.kudava.filedrivespring.services.FileService;
 import kakha.kudava.filedrivespring.services.ObjectStorageService;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
@@ -10,29 +13,43 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.net.URLConnection;
-import java.util.Map;
 
 @RestController
 @RequestMapping("api/files")
 public class FilesRestController {
 
     private final ObjectStorageService storage;
+    private final FileService fileService;
 
-    public FilesRestController(ObjectStorageService storage) {
+    public FilesRestController(ObjectStorageService storage, FileService fileService) {
         this.storage = storage;
+        this.fileService = fileService;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Map<String, ObjectStorageService.UploadResult>> upload(@RequestPart("file") MultipartFile file) throws Exception {
-        ObjectStorageService.UploadResult key = storage.upload(file);
-        return ResponseEntity.ok(Map.of("key", key));
+    public ResponseEntity<FileMetaDataDTO> upload(@RequestParam("file") MultipartFile file,
+                                                  @RequestParam("parentId") Long parentId) throws Exception {
+        FileMetaDataDTO dto = fileService.upload(file, parentId);
+        return ResponseEntity.status(201).body(dto);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<InputStreamResource> download(@PathVariable Long id) throws Exception {
+        FileMetaData meta = storage.getMeta(id);
         InputStream in = storage.download(id);
+
+        String contentType = meta.getObjectType();
+        if (contentType == null || contentType.isBlank()) {
+            contentType = URLConnection.guessContentTypeFromName(meta.getFileName());
+        }
+        if (contentType == null) {
+            contentType = "application/octet-stream";
+        }
+
         return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + meta.getFileName() + "\"")
+                .contentType(MediaType.parseMediaType(contentType))
                 .body(new InputStreamResource(in));
     }
 
