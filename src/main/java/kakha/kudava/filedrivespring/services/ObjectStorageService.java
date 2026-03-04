@@ -1,9 +1,9 @@
 package kakha.kudava.filedrivespring.services;
 
-import io.minio.GetObjectArgs;
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
-import io.minio.RemoveObjectArgs;
+import io.minio.*;
+import io.minio.messages.DeleteError;
+import io.minio.messages.DeleteObject;
+import io.minio.messages.Item;
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.FileMetaData;
@@ -23,7 +23,10 @@ import java.io.InputStream;
 import java.net.URLConnection;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.apache.sshd.common.util.buffer.BufferUtils.toHex;
 
@@ -137,4 +140,67 @@ public class ObjectStorageService {
             throw new RuntimeException("Failed to delete object: " + objectKey, e);
         }
     }
+
+    public void deleteByPrefix(String prefix) {
+        if (prefix == null) {
+            throw new IllegalArgumentException("prefix is null");
+        }
+
+        String p = prefix.trim().replace("\\", "/");
+        if (p.isEmpty()) {
+            throw new IllegalArgumentException("prefix is empty");
+        }
+
+        try {
+            Iterable<Result<Item>> results = minioClient.listObjects(
+                    ListObjectsArgs.builder()
+                            .bucket(bucket)
+                            .prefix(p)
+                            .recursive(true)   // include nested folders
+                            .build()
+            );
+
+            // Batch deletes so we don't keep everything in memory.
+            final int BATCH_SIZE = 1000;
+            List<DeleteObject> batch = new ArrayList<>(BATCH_SIZE);
+
+            for (Result<Item> r : results) {
+                Item item = r.get();
+
+                log.debug("Deleting object from bucket: {}", item.objectName());
+                batch.add(new DeleteObject(item.objectName()));
+
+                if (batch.size() >= BATCH_SIZE) {
+                    deleteBatch(batch);
+                    batch.clear();
+                }
+            }
+
+            if (!batch.isEmpty()) {
+                deleteBatch(batch);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to delete objects by prefix: " + p, e);
+        }
+    }
+
+    private void deleteBatch(List<DeleteObject> objects) throws Exception {
+        Iterable<Result<DeleteError>> errors = minioClient.removeObjects(
+                RemoveObjectsArgs.builder()
+                        .bucket(bucket)
+                        .objects(objects)
+                        .build()
+        );
+
+        for (Result<DeleteError> r : errors) {
+            DeleteError err = r.get();
+
+            throw new RuntimeException(
+                    "MinIO delete failed for object=" + err.objectName()
+                            + " message=" + err.message()
+                            + " code=" + err.code()
+            );
+        }
+    }
+
 }

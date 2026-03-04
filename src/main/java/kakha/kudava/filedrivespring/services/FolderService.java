@@ -3,10 +3,14 @@ package kakha.kudava.filedrivespring.services;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.errors.*;
+import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.dto.FolderCreateRequest;
 import kakha.kudava.filedrivespring.dto.FolderDTO;
+import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
+import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -14,18 +18,27 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
+import java.util.Optional;
 
+@Slf4j
 @Service
 public class FolderService {
 
     private final FolderRepository folderRepository;
+    private final ObjectStorageService objectStorageService;
 
     @Value("${s3.bucket}")
     private String bucket;
     private final MinioClient minioClient;
-    public FolderService(FolderRepository folderRepository, MinioClient minioClient) {
+    private final FileMetaDataRepository fileMetaDataRepository;
+    public FolderService(FolderRepository folderRepository, ObjectStorageService objectStorageService,
+                         MinioClient minioClient,
+                         FileMetaDataRepository fileMetaDataRepository) {
         this.folderRepository = folderRepository;
+        this.objectStorageService = objectStorageService;
         this.minioClient = minioClient;
+        this.fileMetaDataRepository = fileMetaDataRepository;
     }
 
     public FolderDTO create(FolderCreateRequest req)
@@ -81,6 +94,29 @@ public class FolderService {
         return parentPrefix + normalizedName + "/";
     }
 
+    @Transactional
+    public void delete(Long id) throws
+            InsufficientDataException,
+            ErrorResponseException,
+            IOException, NoSuchAlgorithmException, InvalidKeyException, InstantiationException, IllegalAccessException {
+        String prefix = folderRepository.findPrefixById(id);
+        if (prefix == null) {
+            throw new RuntimeException("Folder not found: " + id);
+        }
+
+        // normalizing
+        String p = prefix.trim().replace("\\", "/");
+        if (!p.endsWith("/")) {
+            p = p + "/";
+        }
+
+        objectStorageService.deleteByPrefix(p);
+
+        int filesDeleted = fileMetaDataRepository.softDeleteFilesByFolderPrefix(p);
+        int foldersDeleted = folderRepository.softDeleteTreeByPrefix(p);
+
+        log.info("Soft-deleted {} files and {} folders for prefix={}", filesDeleted, foldersDeleted, p);
+    }
     private FolderDTO toDto(Folders f) {
         FolderDTO dto = new FolderDTO();
         dto.setId(f.getId());

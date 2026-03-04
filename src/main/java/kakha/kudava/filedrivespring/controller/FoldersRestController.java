@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/directories")
+@RequestMapping("/api/folders")
 public class FoldersRestController {
 
     private final FolderService folderService;
@@ -46,6 +46,15 @@ public class FoldersRestController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(Map.of("name", folder.getName(),
                         "prefix", folder.getPrefix()));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Map<String, String>> delete(@PathVariable("id") Long id) throws InsufficientDataException,
+            ErrorResponseException,
+            IOException, NoSuchAlgorithmException,
+            InvalidKeyException, InstantiationException, IllegalAccessException {
+        folderService.delete(id);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 
 }

@@ -21,6 +21,9 @@ public class Folders {
     @Column(nullable = false)
     private String prefix;
 
+    @Column(nullable = false)
+    private boolean deleted;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
     private Folders parent;
