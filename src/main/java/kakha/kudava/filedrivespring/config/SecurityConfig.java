@@ -44,6 +44,12 @@ public class SecurityConfig {
 
                 .anyRequest().authenticated()
         );
+
+        http.logout(logout -> logout
+                .logoutUrl("/api/auth/logout")
+                .invalidateHttpSession(true)
+                .deleteCookies("JSESSIONID")
+        );
         return http.build();
     }
 
