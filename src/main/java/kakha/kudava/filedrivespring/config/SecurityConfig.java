@@ -1,6 +1,9 @@
 package kakha.kudava.filedrivespring.config;
 
 import kakha.kudava.filedrivespring.repository.UserRepository;
+import kakha.kudava.filedrivespring.services.DbUserDetailsService;
+import kakha.kudava.filedrivespring.services.JwtFilter;
+import kakha.kudava.filedrivespring.services.JwtService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
@@ -26,7 +29,9 @@ public class SecurityConfig {
     private String ADMIN_PASSWORD;
 
     @Bean
-    public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http,
+                                                      JwtService jwtService,
+                                                      DbUserDetailsService userDetailService) throws Exception {
         http.csrf(csrf -> csrf.disable());
 
         http
@@ -36,7 +41,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**", "/h2-console/**"))
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
 
-                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
 
                 .authorizeHttpRequests(auth -> auth
@@ -53,8 +58,8 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
         );
 
-/*        http.addFilterBefore(new JwtFilter(jwtService, userDetailService),
-                UsernamePasswordAuthenticationFilter.class);*/
+        http.addFilterBefore(new JwtFilter(jwtService, userDetailService),
+                UsernamePasswordAuthenticationFilter.class);
 
         http.logout(logout -> logout
                 .logoutUrl("/api/auth/logout")
@@ -76,14 +81,6 @@ public class SecurityConfig {
             }
         };
     }
-
-/*    @Bean
-    public UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) {
-        UserDetails user = User.withUsername("admin")
-                .password(passwordEncoder.encode(ADMIN_PASSWORD))
-                .roles("ADMIN").build();
-        return new InMemoryUserDetailsManager(user);
-    }*/
 
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
