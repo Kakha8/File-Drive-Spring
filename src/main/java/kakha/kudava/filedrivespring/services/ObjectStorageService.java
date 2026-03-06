@@ -1,13 +1,16 @@
 package kakha.kudava.filedrivespring.services;
 
-import io.minio.GetObjectArgs;
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
-import io.minio.RemoveObjectArgs;
+import io.minio.*;
+import io.minio.messages.DeleteError;
+import io.minio.messages.DeleteObject;
+import io.minio.messages.Item;
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.FileMetaData;
+import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
+import kakha.kudava.filedrivespring.repository.FolderRepository;
+import kakha.kudava.filedrivespring.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -20,7 +23,10 @@ import java.io.InputStream;
 import java.net.URLConnection;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.apache.sshd.common.util.buffer.BufferUtils.toHex;
 
@@ -32,19 +38,27 @@ public class ObjectStorageService {
     private final String bucket;
     private final FileMetaDataRepository fileMetaDataRepository;
 
-    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository) {
+    private final FolderRepository folderRepository;
+
+    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
+        this.folderRepository = folderRepository;
     }
 
-    public UploadResult upload(MultipartFile file) throws Exception {
+    public FileMetaData upload(MultipartFile file, Long parentId) throws Exception {
 
         MessageDigest md = MessageDigest.getInstance("SHA-256");
 
+        Folders folder = folderRepository.findById(parentId)
+                .orElseThrow(() -> new RuntimeException("Folder not found: " + parentId));
 
         String safeName = file.getOriginalFilename() == null ? "file" : file.getOriginalFilename();
-        String objectKey = UUID.randomUUID() + "-" + safeName;
+        String prefix = folder.getPrefix();
+        if (!prefix.endsWith("/")) prefix += "/";
+        String objectKey = prefix + UUID.randomUUID() + "-" + safeName;
+
         try(InputStream in = file.getInputStream();
             DigestInputStream dis = new DigestInputStream(in, md)) {
             minioClient.putObject(
@@ -67,10 +81,10 @@ public class ObjectStorageService {
             entity.setFileName(file.getOriginalFilename());
             entity.setChecksum(checksum);
             entity.setSize(fileSize);
-            fileMetaDataRepository.save(entity);
+            entity.setParent(folder);
 
             log.info("File uploaded successfully {}", objectKey);
-            return new UploadResult(objectKey, checksum, fileSize);
+            return fileMetaDataRepository.save(entity);
 
         }
     }
@@ -81,6 +95,11 @@ public class ObjectStorageService {
             sb.append(String.format("%02x", b));
         }
         return sb.toString();
+    }
+
+    public FileMetaData getMeta(Long id) {
+        return fileMetaDataRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Object not found"));
     }
 
     public record UploadResult(String objectKey, String checksum, Long fileSize) {}
@@ -121,4 +140,67 @@ public class ObjectStorageService {
             throw new RuntimeException("Failed to delete object: " + objectKey, e);
         }
     }
+
+    public void deleteByPrefix(String prefix) {
+        if (prefix == null) {
+            throw new IllegalArgumentException("prefix is null");
+        }
+
+        String p = prefix.trim().replace("\\", "/");
+        if (p.isEmpty()) {
+            throw new IllegalArgumentException("prefix is empty");
+        }
+
+        try {
+            Iterable<Result<Item>> results = minioClient.listObjects(
+                    ListObjectsArgs.builder()
+                            .bucket(bucket)
+                            .prefix(p)
+                            .recursive(true)   // include nested folders
+                            .build()
+            );
+
+            // Batch deletes so we don't keep everything in memory.
+            final int BATCH_SIZE = 1000;
+            List<DeleteObject> batch = new ArrayList<>(BATCH_SIZE);
+
+            for (Result<Item> r : results) {
+                Item item = r.get();
+
+                log.debug("Deleting object from bucket: {}", item.objectName());
+                batch.add(new DeleteObject(item.objectName()));
+
+                if (batch.size() >= BATCH_SIZE) {
+                    deleteBatch(batch);
+                    batch.clear();
+                }
+            }
+
+            if (!batch.isEmpty()) {
+                deleteBatch(batch);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to delete objects by prefix: " + p, e);
+        }
+    }
+
+    private void deleteBatch(List<DeleteObject> objects) throws Exception {
+        Iterable<Result<DeleteError>> errors = minioClient.removeObjects(
+                RemoveObjectsArgs.builder()
+                        .bucket(bucket)
+                        .objects(objects)
+                        .build()
+        );
+
+        for (Result<DeleteError> r : errors) {
+            DeleteError err = r.get();
+
+            throw new RuntimeException(
+                    "MinIO delete failed for object=" + err.objectName()
+                            + " message=" + err.message()
+                            + " code=" + err.code()
+            );
+        }
+    }
+
 }
