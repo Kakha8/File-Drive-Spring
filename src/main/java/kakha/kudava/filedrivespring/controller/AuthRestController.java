@@ -29,16 +29,20 @@ import java.time.Duration;
 @RequestMapping("/api/auth")
 public class AuthRestController {
 
+
     private static final String REFRESH_COOKIE = "refresh_token";
-    private final int refreshDays = 14;
+    private final int refreshDays;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final JwtRefreshService refreshService;
     private final UserService userService;
 
-    public AuthRestController(AuthenticationManager authenticationManager,
+    public AuthRestController(@Value("${JWT_REFRESH_DAYS}") int refreshDays,
+                              AuthenticationManager authenticationManager,
                               JwtService jwtService,
                               JwtRefreshService refreshService, UserService userService) {
+
+        this.refreshDays = refreshDays;
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
         this.refreshService = refreshService;

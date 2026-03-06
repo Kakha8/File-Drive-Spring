@@ -62,11 +62,11 @@ public class SecurityConfig {
         http.addFilterBefore(new JwtFilter(jwtService, userDetailService),
                 UsernamePasswordAuthenticationFilter.class);
 
-        http.logout(logout -> logout
+/*        http.logout(logout -> logout
                 .logoutUrl("/api/auth/logout")
                 .invalidateHttpSession(true)
                 .deleteCookies("JSESSIONID")
-        );
+        );*/
         return http.build();
     }
 

@@ -9,6 +9,7 @@ import kakha.kudava.filedrivespring.services.DbUserDetailsService;
 import kakha.kudava.filedrivespring.services.JwtRefreshService;
 import kakha.kudava.filedrivespring.services.JwtService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -23,18 +24,20 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/auth/refresh")
 public class RefreshRestController {
-    private static final String REFRESH_COOKIE = "refresh_token";
+    private final String REFRESH_COOKIE = "refresh_token";
 
     private final JwtRefreshService refreshService;
     private final JwtService jwtService;
 
-    private final int refreshDays = 14;
+    private final int refreshDays;
     private final DbUserDetailsService dbUserDetailsService;
 
     public RefreshRestController(JwtRefreshService refreshService,
-                                 JwtService jwtService, DbUserDetailsService dbUserDetailsService) {
+                                 JwtService jwtService,
+                                 @Value("${JWT_REFRESH_DAYS}") int refreshDays, DbUserDetailsService dbUserDetailsService) {
         this.refreshService = refreshService;
         this.jwtService = jwtService;
+        this.refreshDays = refreshDays;
         this.dbUserDetailsService = dbUserDetailsService;
     }
 
@@ -66,6 +69,9 @@ public class RefreshRestController {
         User user = stored.getUser();
         UserDetails userDetails = dbUserDetailsService.loadUserByUsername(user.getUsername());
         String newAccessToken = jwtService.generateAccessToken(userDetails);
+
+        String newRefresh = refreshService.createToken(user, refreshDays);
+        setRefreshCookie(response, newRefresh, refreshDays);
 
         log.info("[+]New refresh token issued");
         return ResponseEntity.ok(Map.of("accessToken", newAccessToken));
