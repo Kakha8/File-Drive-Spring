@@ -51,6 +51,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/api/auth/logout").permitAll()
                         .requestMatchers("/api/auth/me").permitAll()
+                        .requestMatchers("/api/auth/refresh").permitAll()
 
                 .requestMatchers("/api/files").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/api/folders/**").hasAnyRole("USER", "ADMIN")
