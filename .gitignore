@@ -35,5 +35,4 @@ build/
 /data
 .env
 
-/minio-data/.minio.sys
-/minio-data/file-drive-bucket
+/minio-data

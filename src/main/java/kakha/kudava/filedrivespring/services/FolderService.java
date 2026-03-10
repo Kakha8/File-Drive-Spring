@@ -4,8 +4,10 @@ import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.errors.*;
 import jakarta.transaction.Transactional;
+import kakha.kudava.filedrivespring.dto.FileItemDTO;
 import kakha.kudava.filedrivespring.dto.FolderCreateRequest;
 import kakha.kudava.filedrivespring.dto.FolderDTO;
+import kakha.kudava.filedrivespring.dto.FolderItemDTO;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
@@ -116,6 +118,38 @@ public class FolderService {
         int foldersDeleted = folderRepository.softDeleteTreeByPrefix(p);
 
         log.info("Soft-deleted {} files and {} folders for prefix={}", filesDeleted, foldersDeleted, p);
+    }
+
+    public List<FolderItemDTO> viewFolders(Long id){
+        List<Folders> folders = folderRepository.findFoldersByParent_Id(id);
+
+        List<FolderItemDTO> folderDtos = folders.stream().map(f -> {
+            FolderItemDTO dto = new FolderItemDTO();
+            dto.setId(f.getId());
+            dto.setName(f.getName());
+            dto.setPrefix(f.getPrefix());
+            return dto;
+        }).toList();
+
+        return folderDtos;
+    }
+
+    public List<FileItemDTO> viewFiles(Long id){
+        List<FileMetaData> files = fileMetaDataRepository.findByParent_Id(id);
+
+        List<FileItemDTO> resultFiles = files.stream().map(file -> {
+            FileItemDTO dto = new FileItemDTO();
+            dto.setId(file.getId());
+            dto.setFileName(file.getFileName());
+            dto.setObjectKey(file.getObjectKey());
+            dto.setObjectType(file.getObjectType());
+            dto.setSize(file.getSize());
+            dto.setDeleted(file.isDeleted());
+            dto.setParentId(file.getParent() != null ? file.getParent().getId() : null);
+            return dto;
+        }).toList();
+
+        return resultFiles;
     }
     private FolderDTO toDto(Folders f) {
         FolderDTO dto = new FolderDTO();

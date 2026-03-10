@@ -27,4 +27,7 @@ public interface FolderRepository extends JpaRepository<Folders, Long> {
         where f.deleted = false
           and f.prefix like concat(:prefix, '%')
     """)
-    int softDeleteTreeByPrefix(@Param("prefix") String prefix);}
+    int softDeleteTreeByPrefix(@Param("prefix") String prefix);
+
+    List<Folders> findFoldersByParent_Id(Long parentId);
+}

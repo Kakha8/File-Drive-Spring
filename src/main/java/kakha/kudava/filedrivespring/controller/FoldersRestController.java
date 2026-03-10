@@ -1,9 +1,10 @@
 package kakha.kudava.filedrivespring.controller;
 
 import io.minio.errors.*;
-import kakha.kudava.filedrivespring.dto.FolderCreateRequest;
-import kakha.kudava.filedrivespring.dto.FolderDTO;
+import kakha.kudava.filedrivespring.dto.*;
+import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
+import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.services.FolderService;
 import org.springframework.http.HttpStatus;
@@ -22,16 +23,30 @@ public class FoldersRestController {
 
     private final FolderService folderService;
     private final FolderRepository folderRepository;
+    private final FileMetaDataRepository fileMetaDataRepository;
 
-    public FoldersRestController(FolderService folderService, FolderRepository folderRepository) {
+    public FoldersRestController(FolderService folderService, FolderRepository folderRepository, FileMetaDataRepository fileMetaDataRepository) {
         this.folderService = folderService;
         this.folderRepository = folderRepository;
+        this.fileMetaDataRepository = fileMetaDataRepository;
     }
 
     @GetMapping
     public List<Folders> list() {
         return folderRepository.findAll();
     }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<FolderViewDTO> get(@PathVariable Long id) {
+        List<FolderItemDTO> folders = folderService.viewFolders(id);
+        List<FileItemDTO> files = folderService.viewFiles(id);
+
+        FolderViewDTO dto = new FolderViewDTO();
+        dto.setFolders(folders);
+        dto.setFiles(files);
+        return ResponseEntity.ok(dto);
+    }
+
 
     @PostMapping
     public ResponseEntity<Map<String, String>> create(@RequestBody FolderCreateRequest req)
