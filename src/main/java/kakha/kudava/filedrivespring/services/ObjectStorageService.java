@@ -310,10 +310,8 @@ public class ObjectStorageService {
         String folderPrefix = meta.getParent().getPrefix();
 
         String filePart = oldKey.substring(folderPrefix.length());
-        String uuid = filePart.substring(0, filePart.indexOf("-"));
-
-        String newKey = folderPrefix + uuid + newName;
-
+        String uuid = extractUuidPrefix(filePart);
+        String newKey = folderPrefix + uuid + "-" + newName;
         renameObject(oldKey, newKey);
 
         meta.setFileName(newName);
@@ -323,4 +321,19 @@ public class ObjectStorageService {
 
         //logsService.renameLog(oldKey, newKey, fileId);
     }
+
+    private String extractUuidPrefix(String filePart) {
+        if (filePart.length() < 37) {
+            throw new IllegalArgumentException("Invalid object key format: " + filePart);
+        }
+
+        String uuid = filePart.substring(0, 36);
+
+        if (filePart.charAt(36) != '-') {
+            throw new IllegalArgumentException("Invalid object key format: " + filePart);
+        }
+
+        return uuid;
+    }
+
 }
