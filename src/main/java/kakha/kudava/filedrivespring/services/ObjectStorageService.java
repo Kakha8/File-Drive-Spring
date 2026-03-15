@@ -4,6 +4,7 @@ import io.minio.*;
 import io.minio.messages.DeleteError;
 import io.minio.messages.DeleteObject;
 import io.minio.messages.Item;
+import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.FileMetaData;
@@ -265,4 +266,61 @@ public class ObjectStorageService {
         }
     }
 
+    public void renameObject(String oldKey, String newKey) {
+        try {
+
+            //Copy object to new key
+            minioClient.copyObject(
+                    CopyObjectArgs.builder()
+                            .bucket(bucket)
+                            .object(newKey)
+                            .source(
+                                    CopySource.builder()
+                                            .bucket(bucket)
+                                            .object(oldKey)
+                                            .build()
+                            )
+                            .build()
+            );
+
+            // Delete old object
+            minioClient.removeObject(
+                    RemoveObjectArgs.builder()
+                            .bucket(bucket)
+                            .object(oldKey)
+                            .build()
+            );
+
+            log.info("Renamed object {} -> {}", oldKey, newKey);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to rename object", e);
+        }
+    }
+
+    @Transactional
+    public void renameFile(Long fileId, String newName) {
+
+        FileMetaData meta = fileMetaDataRepository
+                .findById(fileId)
+                .orElseThrow();
+
+        String oldKey = meta.getObjectKey();
+
+        String folderPrefix = meta.getParent().getPrefix();
+
+        String filePart = oldKey.substring(folderPrefix.length());
+        String uuid = filePart.substring(0, filePart.indexOf("-"));
+
+        String newKey = folderPrefix + uuid + newName;
+
+        renameObject(oldKey, newKey);
+
+        meta.setFileName(newName);
+        meta.setObjectKey(newKey);
+
+        fileMetaDataRepository.save(meta);
+
+        //logsService.renameLog(oldKey, newKey, fileId);
+    }
 }

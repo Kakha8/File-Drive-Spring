@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.controller;
 
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
+import kakha.kudava.filedrivespring.dto.RenameRequest;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.services.FileService;
 import kakha.kudava.filedrivespring.services.ObjectStorageService;
@@ -56,6 +57,13 @@ public class FilesRestController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable("id") Long id) throws Exception {
         storage.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    //need to add overwrite
+    @PutMapping("/{id}/rename")
+    public ResponseEntity<Void> rename(@PathVariable Long id, @RequestBody RenameRequest req) throws Exception {
+        storage.renameFile(id, req.getNewName());
         return ResponseEntity.noContent().build();
     }
 }
