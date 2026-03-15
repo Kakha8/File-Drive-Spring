@@ -39,12 +39,14 @@ public class ObjectStorageService {
     private final FileMetaDataRepository fileMetaDataRepository;
 
     private final FolderRepository folderRepository;
+    private final LogsService logsService;
 
-    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository) {
+    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
+        this.logsService = logsService;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId) throws Exception {
@@ -84,6 +86,8 @@ public class ObjectStorageService {
             entity.setParent(folder);
 
             log.info("File uploaded successfully {}", objectKey);
+            logsService.uploadLog(file.getName(), parentId, "FILE");
+
             return fileMetaDataRepository.save(entity);
 
         }
@@ -112,6 +116,8 @@ public class ObjectStorageService {
         String objectKey = fileMetaData.getObjectKey();
 
         log.info("Downloading object from {}", objectKey);
+
+        logsService.downloadLog(objectKey, id, "FILE");
         return minioClient.getObject(
                 GetObjectArgs.builder()
                         .bucket(bucket)
