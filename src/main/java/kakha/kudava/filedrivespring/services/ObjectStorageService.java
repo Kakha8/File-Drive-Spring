@@ -25,6 +25,7 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -142,10 +143,12 @@ public class ObjectStorageService {
                             .build()
             );
             log.info("Object deleted successfully {}", objectKey);
+            logsService.deleteLog(objectKey, id, "FILE");
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete object: " + objectKey, e);
         }
     }
+
 
     public void deleteByPrefix(String prefix) {
         if (prefix == null) {
@@ -162,33 +165,86 @@ public class ObjectStorageService {
                     ListObjectsArgs.builder()
                             .bucket(bucket)
                             .prefix(p)
-                            .recursive(true)   // include nested folders
+                            .recursive(true)
                             .build()
             );
 
-            // Batch deletes so we don't keep everything in memory.
             final int BATCH_SIZE = 1000;
+
             List<DeleteObject> batch = new ArrayList<>(BATCH_SIZE);
+
+            List<String> fileObjectNames = new ArrayList<>(BATCH_SIZE);
+            List<Long> fileIds = new ArrayList<>(BATCH_SIZE);
+
+            List<String> folderObjectNames = new ArrayList<>(BATCH_SIZE);
+            List<Long> folderIds = new ArrayList<>(BATCH_SIZE);
 
             for (Result<Item> r : results) {
                 Item item = r.get();
+                String objectName = item.objectName();
 
-                log.debug("Deleting object from bucket: {}", item.objectName());
-                batch.add(new DeleteObject(item.objectName()));
+                log.debug("Deleting object from bucket: {}", objectName);
+
+                batch.add(new DeleteObject(objectName));
+
+                Optional<FileMetaData> file = fileMetaDataRepository.findByObjectKey(objectName);
+                Long fileId = file.map(FileMetaData::getId).orElse(null);
+                Optional<Folders> folder = folderRepository.findByPrefix(objectName);
+                Long folderId = folder.map(Folders::getId).orElse(null);
+
+                if (fileId != null) {
+                    fileObjectNames.add(objectName);
+                    fileIds.add(fileId);
+                } else if (folderId != null) {
+                    folderObjectNames.add(objectName);
+                    folderIds.add(folderId);
+                } else {
+                    log.warn("No DB metadata found for object '{}', skipping action log", objectName);
+                }
 
                 if (batch.size() >= BATCH_SIZE) {
                     deleteBatch(batch);
+
+                    for (int i = 0; i < fileObjectNames.size(); i++) {
+                        logsService.deleteLog(fileObjectNames.get(i), fileIds.get(i), "FILE");
+                    }
+
+                    for (int i = 0; i < folderObjectNames.size(); i++) {
+                        logsService.deleteLog(folderObjectNames.get(i), folderIds.get(i), "FOLDER");
+                    }
+
                     batch.clear();
+                    fileObjectNames.clear();
+                    fileIds.clear();
+                    folderObjectNames.clear();
+                    folderIds.clear();
                 }
             }
 
             if (!batch.isEmpty()) {
                 deleteBatch(batch);
+
+                for (int i = 0; i < fileObjectNames.size(); i++) {
+                    logsService.deleteLog(fileObjectNames.get(i), fileIds.get(i), "FILE");
+                }
+
+                for (int i = 0; i < folderObjectNames.size(); i++) {
+                    logsService.deleteLog(folderObjectNames.get(i), folderIds.get(i), "FOLDER");
+                }
+
+                batch.clear();
+                fileObjectNames.clear();
+                fileIds.clear();
+                folderObjectNames.clear();
+                folderIds.clear();
             }
+
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete objects by prefix: " + p, e);
         }
     }
+
+    public record DeletedFileLog(String objectName, Long folderId) {}
 
     private void deleteBatch(List<DeleteObject> objects) throws Exception {
         Iterable<Result<DeleteError>> errors = minioClient.removeObjects(

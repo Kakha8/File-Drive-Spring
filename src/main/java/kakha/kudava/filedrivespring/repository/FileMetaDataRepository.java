@@ -22,4 +22,12 @@ public interface FileMetaDataRepository extends JpaRepository<FileMetaData, Long
     int softDeleteFilesByFolderPrefix(@Param("prefix") String prefix);
 
     List<FileMetaData> findByParent_Id(Long parentId);
+    @Query("""
+    select f.parent.id
+    from FileMetaData f
+    where f.objectKey = :objectKey
+""")
+    Long findParentIdByObjectKey(@Param("objectKey") String objectKey);
+
+    Optional<FileMetaData> findByObjectKey(String objectKey);
 }

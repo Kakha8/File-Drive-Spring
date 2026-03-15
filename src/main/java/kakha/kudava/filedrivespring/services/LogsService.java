@@ -57,7 +57,13 @@ public class LogsService {
 
         ActionLogs actionLogs = logAction(ActionType.DOWNLOAD.name(), ActionType.DOWNLOAD.name(), parentId, entityType);
         actionLogsRepository.save(actionLogs);
-        log.info(String.format("Logging the download of %s to %s", fileName, parentId));
+        log.info(String.format("Logging the download of %s from %s", fileName, parentId));
+    }
+
+    public void deleteLog(String fileName, Long parentId, String entityType){
+        ActionLogs actionLogs = logAction(ActionType.DELETE.name(), ActionType.DELETE.name(), parentId, entityType);
+        actionLogsRepository.save(actionLogs);
+        log.info(String.format("Logging the delete of %s", fileName));
     }
 
 }

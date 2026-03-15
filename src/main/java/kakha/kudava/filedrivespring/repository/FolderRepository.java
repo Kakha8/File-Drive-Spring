@@ -30,4 +30,7 @@ public interface FolderRepository extends JpaRepository<Folders, Long> {
     int softDeleteTreeByPrefix(@Param("prefix") String prefix);
 
     List<Folders> findFoldersByParent_Id(Long parentId);
+    List<Folders> findByPrefixStartingWithAndDeletedFalse(String prefix);
+
+    Optional<Folders> findByPrefix(String prefix);
 }
