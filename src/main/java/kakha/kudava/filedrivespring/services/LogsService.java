@@ -25,8 +25,9 @@ public class LogsService {
         this.userRepository = userRepository;
     }
 
-    private ActionLogs logAction(String action, String actionType,
-                                 Long parentId, String entityType) {
+    private ActionLogs logAction(String actionType,
+                                 Long parentId, String entityType,
+                                 String detailsJson) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         Optional<User> user = userRepository.findByUsername(auth.getName());
 
@@ -36,6 +37,7 @@ public class LogsService {
         actionLogs.setEntityId(parentId);
         actionLogs.setUser(user.get());
         actionLogs.setEntityType(EntityType.valueOf(entityType));
+        actionLogs.setDetails(detailsJson);
         return actionLogs;
     }
     public void uploadLog(String fileName, Long parentId, String entityType){
@@ -55,15 +57,25 @@ public class LogsService {
 
     public void downloadLog(String fileName, Long parentId, String entityType){
 
-        ActionLogs actionLogs = logAction(ActionType.DOWNLOAD.name(), ActionType.DOWNLOAD.name(), parentId, entityType);
+        ActionLogs actionLogs = logAction(ActionType.DOWNLOAD.name(), parentId,
+                entityType, null);
         actionLogsRepository.save(actionLogs);
         log.info(String.format("Logging the download of %s from %s", fileName, parentId));
     }
 
     public void deleteLog(String fileName, Long parentId, String entityType){
-        ActionLogs actionLogs = logAction(ActionType.DELETE.name(), ActionType.DELETE.name(), parentId, entityType);
+        ActionLogs actionLogs = logAction(ActionType.DELETE.name(), parentId,
+                entityType, null);
         actionLogsRepository.save(actionLogs);
         log.info(String.format("Logging the delete of %s", fileName));
+    }
+
+    public void renameLog(String fileName, Long parentId,
+                          String entityType, String detailsJson){
+        ActionLogs actionLogs = logAction(ActionType.RENAME.name(), parentId,
+                entityType, detailsJson);
+        actionLogsRepository.save(actionLogs);
+        log.info(String.format("Logging the rename of %s", fileName));
     }
 
 }

@@ -1,5 +1,7 @@
 package kakha.kudava.filedrivespring.services;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.minio.*;
 import io.minio.messages.DeleteError;
 import io.minio.messages.DeleteObject;
@@ -24,10 +26,7 @@ import java.io.InputStream;
 import java.net.URLConnection;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.apache.sshd.common.util.buffer.BufferUtils.toHex;
@@ -42,13 +41,15 @@ public class ObjectStorageService {
 
     private final FolderRepository folderRepository;
     private final LogsService logsService;
+    private final ObjectMapper objectMapper;
 
-    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService) {
+    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
         this.logsService = logsService;
+        this.objectMapper = objectMapper;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId) throws Exception {
@@ -299,7 +300,7 @@ public class ObjectStorageService {
     }
 
     @Transactional
-    public void renameFile(Long fileId, String newName) {
+    public void renameFile(Long fileId, String newName) throws JsonProcessingException {
 
         FileMetaData meta = fileMetaDataRepository
                 .findById(fileId)
@@ -317,9 +318,20 @@ public class ObjectStorageService {
         meta.setFileName(newName);
         meta.setObjectKey(newKey);
 
+        String oldName = filePart.substring(37);
+
         fileMetaDataRepository.save(meta);
 
-        //logsService.renameLog(oldKey, newKey, fileId);
+        Map<String, Object> detailsMap = new HashMap<>();
+        detailsMap.put("oldKey", oldKey);
+        detailsMap.put("newKey", newKey);
+        detailsMap.put("oldName", oldName);
+        detailsMap.put("newName", newName);
+
+        String detailsJson = objectMapper.writeValueAsString(detailsMap);
+        Long parentId = meta.getParent().getId();
+
+        logsService.renameLog(oldKey, parentId, "FILE", detailsJson);
     }
 
     private String extractUuidPrefix(String filePart) {
