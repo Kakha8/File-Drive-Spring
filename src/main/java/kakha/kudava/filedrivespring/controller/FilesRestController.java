@@ -79,4 +79,10 @@ public class FilesRestController {
         moveService.moveFile(id, req.getTargetFolderId());
         return ResponseEntity.noContent().build();
     }
+
+    @PutMapping("/{id}/copy")
+    public ResponseEntity<Void> copy(@PathVariable Long id, @RequestBody MoveFileRequest req) throws Exception {
+        moveService.copyFile(id, req.getTargetFolderId());
+        return ResponseEntity.noContent().build();
+    }
 }
