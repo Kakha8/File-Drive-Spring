@@ -33,4 +33,5 @@ public interface FolderRepository extends JpaRepository<Folders, Long> {
     List<Folders> findByPrefixStartingWithAndDeletedFalse(String prefix);
 
     Optional<Folders> findByPrefix(String prefix);
+
 }

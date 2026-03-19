@@ -29,5 +29,6 @@ public interface FileMetaDataRepository extends JpaRepository<FileMetaData, Long
 """)
     Long findParentIdByObjectKey(@Param("objectKey") String objectKey);
 
+    List<FileMetaData> findByObjectKeyStartingWithAndDeletedFalse(String prefix);
     Optional<FileMetaData> findByObjectKey(String objectKey);
 }

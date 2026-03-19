@@ -1,7 +1,8 @@
-package kakha.kudava.filedrivespring.services;
+package kakha.kudava.filedrivespring.services.objects;
 
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.model.FileMetaData;
+import kakha.kudava.filedrivespring.services.ObjectStorageService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 

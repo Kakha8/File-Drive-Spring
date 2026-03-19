@@ -1,4 +1,4 @@
-package kakha.kudava.filedrivespring.services;
+package kakha.kudava.filedrivespring.services.jwt;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;

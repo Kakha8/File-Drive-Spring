@@ -1,11 +1,10 @@
-package kakha.kudava.filedrivespring.services;
+package kakha.kudava.filedrivespring.services.users;
 
 import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;

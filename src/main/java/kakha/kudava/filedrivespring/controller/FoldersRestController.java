@@ -1,12 +1,13 @@
 package kakha.kudava.filedrivespring.controller;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import io.minio.errors.*;
 import kakha.kudava.filedrivespring.dto.*;
-import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
-import kakha.kudava.filedrivespring.services.FolderService;
+import kakha.kudava.filedrivespring.services.objects.FolderService;
+import kakha.kudava.filedrivespring.services.RenameService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -24,11 +25,13 @@ public class FoldersRestController {
     private final FolderService folderService;
     private final FolderRepository folderRepository;
     private final FileMetaDataRepository fileMetaDataRepository;
+    private final RenameService renameService;
 
-    public FoldersRestController(FolderService folderService, FolderRepository folderRepository, FileMetaDataRepository fileMetaDataRepository) {
+    public FoldersRestController(FolderService folderService, FolderRepository folderRepository, FileMetaDataRepository fileMetaDataRepository, RenameService renameService) {
         this.folderService = folderService;
         this.folderRepository = folderRepository;
         this.fileMetaDataRepository = fileMetaDataRepository;
+        this.renameService = renameService;
     }
 
     @GetMapping
@@ -70,6 +73,13 @@ public class FoldersRestController {
             InvalidKeyException, InstantiationException, IllegalAccessException {
         folderService.delete(id);
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+
+    @PutMapping("/{id}/rename")
+    public ResponseEntity<Void> rename(@PathVariable Long id, @RequestBody RenameRequest req) throws InsufficientDataException,
+            ErrorResponseException, JsonProcessingException {
+        renameService.renameFolder(id, req.getNewName());
+        return ResponseEntity.noContent().build();
     }
 
 }

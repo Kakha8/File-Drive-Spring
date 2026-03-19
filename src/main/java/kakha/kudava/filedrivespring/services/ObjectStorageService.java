@@ -246,8 +246,6 @@ public class ObjectStorageService {
         }
     }
 
-    public record DeletedFileLog(String objectName, Long folderId) {}
-
     private void deleteBatch(List<DeleteObject> objects) throws Exception {
         Iterable<Result<DeleteError>> errors = minioClient.removeObjects(
                 RemoveObjectsArgs.builder()
@@ -267,85 +265,6 @@ public class ObjectStorageService {
         }
     }
 
-    public void renameObject(String oldKey, String newKey) {
-        try {
 
-            //Copy object to new key
-            minioClient.copyObject(
-                    CopyObjectArgs.builder()
-                            .bucket(bucket)
-                            .object(newKey)
-                            .source(
-                                    CopySource.builder()
-                                            .bucket(bucket)
-                                            .object(oldKey)
-                                            .build()
-                            )
-                            .build()
-            );
-
-            // Delete old object
-            minioClient.removeObject(
-                    RemoveObjectArgs.builder()
-                            .bucket(bucket)
-                            .object(oldKey)
-                            .build()
-            );
-
-            log.info("Renamed object {} -> {}", oldKey, newKey);
-
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to rename object", e);
-        }
-    }
-
-    @Transactional
-    public void renameFile(Long fileId, String newName) throws JsonProcessingException {
-
-        FileMetaData meta = fileMetaDataRepository
-                .findById(fileId)
-                .orElseThrow();
-
-        String oldKey = meta.getObjectKey();
-
-        String folderPrefix = meta.getParent().getPrefix();
-
-        String filePart = oldKey.substring(folderPrefix.length());
-        String uuid = extractUuidPrefix(filePart);
-        String newKey = folderPrefix + uuid + "-" + newName;
-        renameObject(oldKey, newKey);
-
-        meta.setFileName(newName);
-        meta.setObjectKey(newKey);
-
-        String oldName = filePart.substring(37);
-
-        fileMetaDataRepository.save(meta);
-
-        Map<String, Object> detailsMap = new HashMap<>();
-        detailsMap.put("oldKey", oldKey);
-        detailsMap.put("newKey", newKey);
-        detailsMap.put("oldName", oldName);
-        detailsMap.put("newName", newName);
-
-        String detailsJson = objectMapper.writeValueAsString(detailsMap);
-        Long parentId = meta.getParent().getId();
-
-        logsService.renameLog(oldKey, parentId, "FILE", detailsJson);
-    }
-
-    private String extractUuidPrefix(String filePart) {
-        if (filePart.length() < 37) {
-            throw new IllegalArgumentException("Invalid object key format: " + filePart);
-        }
-
-        String uuid = filePart.substring(0, 36);
-
-        if (filePart.charAt(36) != '-') {
-            throw new IllegalArgumentException("Invalid object key format: " + filePart);
-        }
-
-        return uuid;
-    }
 
 }

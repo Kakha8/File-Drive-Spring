@@ -1,4 +1,4 @@
-package kakha.kudava.filedrivespring.services;
+package kakha.kudava.filedrivespring.services.users;
 
 import kakha.kudava.filedrivespring.repository.UserRepository;
 import org.springframework.security.core.userdetails.UserDetails;

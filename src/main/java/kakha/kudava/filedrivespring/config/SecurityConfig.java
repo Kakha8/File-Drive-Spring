@@ -1,9 +1,9 @@
 package kakha.kudava.filedrivespring.config;
 
 import kakha.kudava.filedrivespring.repository.UserRepository;
-import kakha.kudava.filedrivespring.services.DbUserDetailsService;
-import kakha.kudava.filedrivespring.services.JwtFilter;
-import kakha.kudava.filedrivespring.services.JwtService;
+import kakha.kudava.filedrivespring.services.users.DbUserDetailsService;
+import kakha.kudava.filedrivespring.services.jwt.JwtFilter;
+import kakha.kudava.filedrivespring.services.jwt.JwtService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
@@ -12,12 +12,8 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;

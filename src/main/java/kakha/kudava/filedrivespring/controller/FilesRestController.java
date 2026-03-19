@@ -3,8 +3,9 @@ package kakha.kudava.filedrivespring.controller;
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.RenameRequest;
 import kakha.kudava.filedrivespring.model.FileMetaData;
-import kakha.kudava.filedrivespring.services.FileService;
+import kakha.kudava.filedrivespring.services.objects.FileService;
 import kakha.kudava.filedrivespring.services.ObjectStorageService;
+import kakha.kudava.filedrivespring.services.RenameService;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -21,10 +22,12 @@ public class FilesRestController {
 
     private final ObjectStorageService storage;
     private final FileService fileService;
+    private final RenameService renameService;
 
-    public FilesRestController(ObjectStorageService storage, FileService fileService) {
+    public FilesRestController(ObjectStorageService storage, FileService fileService, RenameService renameService) {
         this.storage = storage;
         this.fileService = fileService;
+        this.renameService = renameService;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -63,7 +66,7 @@ public class FilesRestController {
     //need to add overwrite
     @PutMapping("/{id}/rename")
     public ResponseEntity<Void> rename(@PathVariable Long id, @RequestBody RenameRequest req) throws Exception {
-        storage.renameFile(id, req.getNewName());
+        renameService.renameFile(id, req.getNewName());
         return ResponseEntity.noContent().build();
     }
 }
