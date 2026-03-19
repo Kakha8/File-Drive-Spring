@@ -1,8 +1,10 @@
 package kakha.kudava.filedrivespring.controller;
 
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
+import kakha.kudava.filedrivespring.dto.MoveFileRequest;
 import kakha.kudava.filedrivespring.dto.RenameRequest;
 import kakha.kudava.filedrivespring.model.FileMetaData;
+import kakha.kudava.filedrivespring.services.MoveService;
 import kakha.kudava.filedrivespring.services.objects.FileService;
 import kakha.kudava.filedrivespring.services.ObjectStorageService;
 import kakha.kudava.filedrivespring.services.RenameService;
@@ -23,11 +25,13 @@ public class FilesRestController {
     private final ObjectStorageService storage;
     private final FileService fileService;
     private final RenameService renameService;
+    private final MoveService moveService;
 
-    public FilesRestController(ObjectStorageService storage, FileService fileService, RenameService renameService) {
+    public FilesRestController(ObjectStorageService storage, FileService fileService, RenameService renameService, MoveService moveService) {
         this.storage = storage;
         this.fileService = fileService;
         this.renameService = renameService;
+        this.moveService = moveService;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -67,6 +71,12 @@ public class FilesRestController {
     @PutMapping("/{id}/rename")
     public ResponseEntity<Void> rename(@PathVariable Long id, @RequestBody RenameRequest req) throws Exception {
         renameService.renameFile(id, req.getNewName());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/move")
+    public ResponseEntity<Void> move(@PathVariable Long id, @RequestBody MoveFileRequest req) throws Exception {
+        moveService.moveFile(id, req.getTargetFolderId());
         return ResponseEntity.noContent().build();
     }
 }
