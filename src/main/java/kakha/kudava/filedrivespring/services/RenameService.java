@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -95,7 +96,7 @@ public class RenameService {
 
         fileMetaDataRepository.save(meta);
 
-        Map<String, Object> detailsMap = new HashMap<>();
+        Map<String, Object> detailsMap = new LinkedHashMap<>();
 
         detailsMap.put("oldName", oldName);
         detailsMap.put("newName", newName);
@@ -168,8 +169,7 @@ public class RenameService {
         }
         fileMetaDataRepository.saveAll(files);
 
-        Map<String, Object> detailsMap = new HashMap<>();
-
+        Map<String, Object> detailsMap = new LinkedHashMap<>();
         detailsMap.put("oldName", oldPrefix);
         detailsMap.put("newName", newName);
 

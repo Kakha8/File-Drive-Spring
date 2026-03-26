@@ -1,10 +1,12 @@
 package kakha.kudava.filedrivespring.services;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.minio.CopyObjectArgs;
 import io.minio.CopySource;
 import io.minio.MinioClient;
 import io.minio.RemoveObjectArgs;
 import jakarta.transaction.Transactional;
+import kakha.kudava.filedrivespring.enums.EntityType;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
@@ -12,6 +14,9 @@ import kakha.kudava.filedrivespring.repository.FolderRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -23,14 +28,16 @@ public class MoveService {
     private final FileMetaDataRepository fileMetaDataRepository;
     private final FolderRepository folderRepository;
     private final LogsService logsService;
+    private final ObjectMapper objectMapper;
 
     public MoveService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
-                       FolderRepository folderRepository, LogsService logsService) {
+                       FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
         this.logsService = logsService;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -96,7 +103,17 @@ public class MoveService {
         Folders targetFolder = folderRepository.findById(targetFolderId)
                 .orElseThrow(() -> new RuntimeException("Target folder not found"));
 
+        Folders currentFolder = fileMeta.getParent();
+        if (currentFolder == null) {
+            throw new RuntimeException("File has no parent folder");
+        }
+
         String oldKey = fileMeta.getObjectKey();
+        String oldFolder = currentFolder.getPrefix();
+        Long oldFolderId = currentFolder.getId();
+
+        Folders oldParentFolder = currentFolder.getParent(); // may be null for root
+        Long oldParentId = oldParentFolder != null ? oldParentFolder.getId() : null;
 
         String prefix = targetFolder.getPrefix();
         if (!prefix.endsWith("/")) prefix += "/";
@@ -104,7 +121,6 @@ public class MoveService {
         String newKey = prefix + UUID.randomUUID() + "-" + fileMeta.getFileName();
 
         try {
-            // copy
             minioClient.copyObject(
                     CopyObjectArgs.builder()
                             .bucket(bucket)
@@ -118,7 +134,6 @@ public class MoveService {
                             .build()
             );
 
-            // delete old
             minioClient.removeObject(
                     RemoveObjectArgs.builder()
                             .bucket(bucket)
@@ -129,12 +144,21 @@ public class MoveService {
             fileMeta.setObjectKey(newKey);
             fileMeta.setParent(targetFolder);
 
+            Map<String, Object> detailsMap = new LinkedHashMap<>();            detailsMap.put("oldFolder", oldFolder);
+            detailsMap.put("oldFolderId", oldFolderId);
+            detailsMap.put("targetFolder", targetFolder.getPrefix());
+            detailsMap.put("targetFolderId", targetFolder.getId());
+
             FileMetaData saved = fileMetaDataRepository.save(fileMeta);
 
-/*
-            logsService.deleteLog(oldKey, saved.getId(), "FILE");
-            logsService.uploadLog(newKey, saved.getId(), "FILE");
-*/
+            String detailsJson = objectMapper.writeValueAsString(detailsMap);
+
+            logsService.moveLog(
+                    fileMeta.getFileName(),
+                    fileMeta.getId(),
+                    "FILE",
+                    detailsJson
+            );
 
             return saved;
 
@@ -142,5 +166,4 @@ public class MoveService {
             throw new RuntimeException("Move failed", e);
         }
     }
-
 }

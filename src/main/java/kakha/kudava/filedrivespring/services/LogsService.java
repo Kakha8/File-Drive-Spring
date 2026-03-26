@@ -26,7 +26,7 @@ public class LogsService {
     }
 
     private ActionLogs logAction(String actionType,
-                                 Long parentId, String entityType,
+                                 Long entityId, String entityType,
                                  String detailsJson) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         Optional<User> user = userRepository.findByUsername(auth.getName());
@@ -34,7 +34,7 @@ public class LogsService {
         ActionLogs actionLogs = new ActionLogs();
         actionLogs.setAction(ActionType.valueOf(actionType));
         actionLogs.setDetails(null);
-        actionLogs.setEntityId(parentId);
+        actionLogs.setEntityId(entityId);
         actionLogs.setUser(user.get());
         actionLogs.setEntityType(EntityType.valueOf(entityType));
         actionLogs.setDetails(detailsJson);
@@ -76,6 +76,12 @@ public class LogsService {
                 entityType, detailsJson);
         actionLogsRepository.save(actionLogs);
         log.info(String.format("Logging the rename of %s", fileName));
+    }
+
+    public void moveLog(String name, Long entityId, String entityType, String detailsJson){
+        ActionLogs actionLogs = logAction(ActionType.MOVE.name(), entityId, entityType, detailsJson);
+        actionLogsRepository.save(actionLogs);
+        log.info(String.format("Logging the move of %s", name));
     }
 
 }
