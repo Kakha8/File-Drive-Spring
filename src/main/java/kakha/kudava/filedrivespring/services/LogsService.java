@@ -84,4 +84,10 @@ public class LogsService {
         log.info(String.format("Logging the move of %s", name));
     }
 
+    public void copyLog(String name, Long entityId, String entityType, String detailsJson){
+        ActionLogs actionLogs = logAction(ActionType.COPY.name(), entityId, entityType, detailsJson);
+        actionLogsRepository.save(actionLogs);
+        log.info(String.format("Logging the move of %s", name));
+    }
+
 }

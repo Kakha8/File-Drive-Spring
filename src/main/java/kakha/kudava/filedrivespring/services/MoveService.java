@@ -85,7 +85,19 @@ public class MoveService {
 
             FileMetaData saved = fileMetaDataRepository.save(fileMeta);
 */
+            Map<String, Object> detailsMap = new LinkedHashMap<>();
 
+            detailsMap.put("targetFolder", targetFolder.getPrefix());
+            detailsMap.put("targetFolderId", targetFolder.getId());
+
+            String detailsJson = objectMapper.writeValueAsString(detailsMap);
+
+            logsService.copyLog(
+                    fileMeta.getFileName(),
+                    fileMeta.getId(),
+                    "FILE",
+                    detailsJson
+            );
 
             return fileMetaDataRepository.save(newFile);
 
@@ -144,7 +156,8 @@ public class MoveService {
             fileMeta.setObjectKey(newKey);
             fileMeta.setParent(targetFolder);
 
-            Map<String, Object> detailsMap = new LinkedHashMap<>();            detailsMap.put("oldFolder", oldFolder);
+            Map<String, Object> detailsMap = new LinkedHashMap<>();
+            detailsMap.put("oldFolder", oldFolder);
             detailsMap.put("oldFolderId", oldFolderId);
             detailsMap.put("targetFolder", targetFolder.getPrefix());
             detailsMap.put("targetFolderId", targetFolder.getId());
