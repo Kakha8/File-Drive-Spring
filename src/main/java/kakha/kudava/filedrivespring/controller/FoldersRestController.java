@@ -6,6 +6,7 @@ import kakha.kudava.filedrivespring.dto.*;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
+import kakha.kudava.filedrivespring.services.MoveService;
 import kakha.kudava.filedrivespring.services.objects.FolderService;
 import kakha.kudava.filedrivespring.services.RenameService;
 import org.springframework.http.HttpStatus;
@@ -26,12 +27,14 @@ public class FoldersRestController {
     private final FolderRepository folderRepository;
     private final FileMetaDataRepository fileMetaDataRepository;
     private final RenameService renameService;
+    private final MoveService moveService;
 
-    public FoldersRestController(FolderService folderService, FolderRepository folderRepository, FileMetaDataRepository fileMetaDataRepository, RenameService renameService) {
+    public FoldersRestController(FolderService folderService, FolderRepository folderRepository, FileMetaDataRepository fileMetaDataRepository, RenameService renameService, MoveService moveService) {
         this.folderService = folderService;
         this.folderRepository = folderRepository;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.renameService = renameService;
+        this.moveService = moveService;
     }
 
     @GetMapping
@@ -79,6 +82,18 @@ public class FoldersRestController {
     public ResponseEntity<Void> rename(@PathVariable Long id, @RequestBody RenameRequest req) throws InsufficientDataException,
             ErrorResponseException, JsonProcessingException {
         renameService.renameFolder(id, req.getNewName());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/move")
+    public ResponseEntity<Void> moveFolder(@PathVariable Long id, @RequestBody MoveFolderRequest req){
+        moveService.moveFolder(id, req.getTargetFolderId());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/copy")
+    public ResponseEntity<Void> copyFolder(@PathVariable Long id, @RequestBody MoveFolderRequest req) {
+        moveService.copyFolder(id, req.getTargetFolderId());
         return ResponseEntity.noContent().build();
     }
 
