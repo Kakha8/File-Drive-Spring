@@ -1,4 +1,4 @@
-package kakha.kudava.filedrivespring.services;
+package kakha.kudava.filedrivespring.services.objects;
 
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
@@ -12,6 +12,7 @@ import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
+import kakha.kudava.filedrivespring.services.ObjectStorageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -21,7 +22,6 @@ import java.io.IOException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
-import java.util.Optional;
 
 @Slf4j
 @Service

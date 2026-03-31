@@ -1,16 +1,13 @@
 package kakha.kudava.filedrivespring.controller;
 
-import jdk.jshell.Snippet;
 import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.UserRepository;
-import kakha.kudava.filedrivespring.services.UserService;
+import kakha.kudava.filedrivespring.services.users.UserService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;

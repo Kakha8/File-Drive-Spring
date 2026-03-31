@@ -1,9 +1,10 @@
-package kakha.kudava.filedrivespring.services;
+package kakha.kudava.filedrivespring.services.jwt;
 
 import kakha.kudava.filedrivespring.model.JwtRefresher;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.JwtRefresherRepository;
 import kakha.kudava.filedrivespring.security.TokenHashUtil;
+import kakha.kudava.filedrivespring.services.users.UserService;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;

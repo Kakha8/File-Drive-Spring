@@ -1,9 +1,12 @@
 package kakha.kudava.filedrivespring.services;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.minio.*;
 import io.minio.messages.DeleteError;
 import io.minio.messages.DeleteObject;
 import io.minio.messages.Item;
+import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.FileMetaData;
@@ -23,9 +26,7 @@ import java.io.InputStream;
 import java.net.URLConnection;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.apache.sshd.common.util.buffer.BufferUtils.toHex;
@@ -39,12 +40,16 @@ public class ObjectStorageService {
     private final FileMetaDataRepository fileMetaDataRepository;
 
     private final FolderRepository folderRepository;
+    private final LogsService logsService;
+    private final ObjectMapper objectMapper;
 
-    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository) {
+    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
+        this.logsService = logsService;
+        this.objectMapper = objectMapper;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId) throws Exception {
@@ -84,6 +89,8 @@ public class ObjectStorageService {
             entity.setParent(folder);
 
             log.info("File uploaded successfully {}", objectKey);
+            logsService.uploadLog(file.getName(), parentId, "FILE");
+
             return fileMetaDataRepository.save(entity);
 
         }
@@ -112,6 +119,8 @@ public class ObjectStorageService {
         String objectKey = fileMetaData.getObjectKey();
 
         log.info("Downloading object from {}", objectKey);
+
+        logsService.downloadLog(objectKey, id, "FILE");
         return minioClient.getObject(
                 GetObjectArgs.builder()
                         .bucket(bucket)
@@ -136,10 +145,12 @@ public class ObjectStorageService {
                             .build()
             );
             log.info("Object deleted successfully {}", objectKey);
+            logsService.deleteLog(objectKey, id, "FILE");
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete object: " + objectKey, e);
         }
     }
+
 
     public void deleteByPrefix(String prefix) {
         if (prefix == null) {
@@ -156,29 +167,80 @@ public class ObjectStorageService {
                     ListObjectsArgs.builder()
                             .bucket(bucket)
                             .prefix(p)
-                            .recursive(true)   // include nested folders
+                            .recursive(true)
                             .build()
             );
 
-            // Batch deletes so we don't keep everything in memory.
             final int BATCH_SIZE = 1000;
+
             List<DeleteObject> batch = new ArrayList<>(BATCH_SIZE);
+
+            List<String> fileObjectNames = new ArrayList<>(BATCH_SIZE);
+            List<Long> fileIds = new ArrayList<>(BATCH_SIZE);
+
+            List<String> folderObjectNames = new ArrayList<>(BATCH_SIZE);
+            List<Long> folderIds = new ArrayList<>(BATCH_SIZE);
 
             for (Result<Item> r : results) {
                 Item item = r.get();
+                String objectName = item.objectName();
 
-                log.debug("Deleting object from bucket: {}", item.objectName());
-                batch.add(new DeleteObject(item.objectName()));
+                log.debug("Deleting object from bucket: {}", objectName);
+
+                batch.add(new DeleteObject(objectName));
+
+                Optional<FileMetaData> file = fileMetaDataRepository.findByObjectKey(objectName);
+                Long fileId = file.map(FileMetaData::getId).orElse(null);
+                Optional<Folders> folder = folderRepository.findByPrefix(objectName);
+                Long folderId = folder.map(Folders::getId).orElse(null);
+
+                if (fileId != null) {
+                    fileObjectNames.add(objectName);
+                    fileIds.add(fileId);
+                } else if (folderId != null) {
+                    folderObjectNames.add(objectName);
+                    folderIds.add(folderId);
+                } else {
+                    log.warn("No DB metadata found for object '{}', skipping action log", objectName);
+                }
 
                 if (batch.size() >= BATCH_SIZE) {
                     deleteBatch(batch);
+
+                    for (int i = 0; i < fileObjectNames.size(); i++) {
+                        logsService.deleteLog(fileObjectNames.get(i), fileIds.get(i), "FILE");
+                    }
+
+                    for (int i = 0; i < folderObjectNames.size(); i++) {
+                        logsService.deleteLog(folderObjectNames.get(i), folderIds.get(i), "FOLDER");
+                    }
+
                     batch.clear();
+                    fileObjectNames.clear();
+                    fileIds.clear();
+                    folderObjectNames.clear();
+                    folderIds.clear();
                 }
             }
 
             if (!batch.isEmpty()) {
                 deleteBatch(batch);
+
+                for (int i = 0; i < fileObjectNames.size(); i++) {
+                    logsService.deleteLog(fileObjectNames.get(i), fileIds.get(i), "FILE");
+                }
+
+                for (int i = 0; i < folderObjectNames.size(); i++) {
+                    logsService.deleteLog(folderObjectNames.get(i), folderIds.get(i), "FOLDER");
+                }
+
+                batch.clear();
+                fileObjectNames.clear();
+                fileIds.clear();
+                folderObjectNames.clear();
+                folderIds.clear();
             }
+
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete objects by prefix: " + p, e);
         }
@@ -202,5 +264,7 @@ public class ObjectStorageService {
             );
         }
     }
+
+
 
 }
