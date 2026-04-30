@@ -42,14 +42,16 @@ public class ObjectStorageService {
     private final FolderRepository folderRepository;
     private final LogsService logsService;
     private final ObjectMapper objectMapper;
+    private final SseCustomerKeyService sseCustomerKeyService;
 
-    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper) {
+    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper, SseCustomerKeyService sseCustomerKeyService) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
         this.logsService = logsService;
         this.objectMapper = objectMapper;
+        this.sseCustomerKeyService = sseCustomerKeyService;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId) throws Exception {
@@ -66,14 +68,17 @@ public class ObjectStorageService {
 
         try(InputStream in = file.getInputStream();
             DigestInputStream dis = new DigestInputStream(in, md)) {
-            minioClient.putObject(
-                    PutObjectArgs.builder()
-                            .bucket(bucket)
-                            .object(objectKey)
-                            .stream(dis, file.getSize(), -1)
-                            .contentType(file.getContentType())
-                            .build()
-            );
+            PutObjectArgs.Builder putBuilder = PutObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(objectKey)
+                    .stream(dis, file.getSize(), -1)
+                    .contentType(file.getContentType());
+
+            if (sseCustomerKeyService.isEnabled()) {
+                putBuilder.sse(sseCustomerKeyService.customerKey());
+            }
+
+            minioClient.putObject(putBuilder.build());
 
             byte[] hash = md.digest();
             String checksum = toHex(hash);
@@ -121,12 +126,15 @@ public class ObjectStorageService {
         log.info("Downloading object from {}", objectKey);
 
         logsService.downloadLog(objectKey, id, "FILE");
-        return minioClient.getObject(
-                GetObjectArgs.builder()
-                        .bucket(bucket)
-                        .object(objectKey)
-                        .build()
-        );
+        GetObjectArgs.Builder getBuilder = GetObjectArgs.builder()
+                .bucket(bucket)
+                .object(objectKey);
+
+        if (sseCustomerKeyService.isEnabled()) {
+            getBuilder.ssec(sseCustomerKeyService.customerKey());
+        }
+
+        return minioClient.getObject(getBuilder.build());
     }
 
     public void delete(Long id){
