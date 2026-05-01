@@ -21,6 +21,7 @@ services:
 
     volumes:
       - ./data:/app/data
+      - ./keys:/app/keys
       - ./certs/app/truststore.p12:/certs/truststore.p12:ro
 
     depends_on:
@@ -31,9 +32,16 @@ services:
     image: minio/minio:latest
     container_name: minio
     command: server /data --console-address ":9001"
+    depends_on:
+      - kes
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin123
+
+      MINIO_KMS_KES_ENDPOINT: https://kes:7373
+      MINIO_KMS_KES_API_KEY: ${MINIO_KMS_KES_API_KEY}
+      MINIO_KMS_KES_CAPATH: /certs/rootCA.crt
+      MINIO_KMS_KES_KEY_NAME: file-drive-master-key
     ports:
       - "9000:9000" # S3 API
       - "9001:9001" # Web console
@@ -41,6 +49,19 @@ services:
       - ./minio-data:/data
       - ./certs/minio/public.crt:/root/.minio/certs/public.crt:ro
       - ./certs/minio/private.key:/root/.minio/certs/private.key:ro
+      - ./certs/rootCA.crt:/certs/rootCA.crt:ro
+
+  kes:
+    image: minio/kes:latest
+    container_name: kes
+    command: server --config /config/server-config.yml
+    ports:
+      - "7373:7373"
+    volumes:
+      - ./kes/server-config.yml:/config/server-config.yml:ro
+      - ./certs/kes/public.crt:/certs/public.crt:ro
+      - ./certs/kes/private.key:/certs/private.key:ro
+      - ./kes-data:/kes-data
 
   # Create the bucket once MinIO is up
   minio-init:
@@ -54,6 +75,9 @@ services:
         sleep 2;
       done;
       mc mb -p local/file-drive-bucket --insecure || true;
+      mc admin kms key create local file-drive-master-key --insecure || true;
+      mc encrypt set sse-s3 local/file-drive-bucket --insecure || true;
+      mc encrypt info local/file-drive-bucket --insecure || true;
       mc anonymous set download local/file-drive-bucket --insecure || true;
       echo 'Bucket is ready';
       "
