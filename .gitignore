@@ -38,3 +38,4 @@ build/
 /minio-data
 /certs
 /kes
+/kes-data
