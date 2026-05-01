@@ -42,16 +42,14 @@ public class ObjectStorageService {
     private final FolderRepository folderRepository;
     private final LogsService logsService;
     private final ObjectMapper objectMapper;
-    private final SseCustomerKeyService sseCustomerKeyService;
 
-    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper, SseCustomerKeyService sseCustomerKeyService) {
+    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
         this.logsService = logsService;
         this.objectMapper = objectMapper;
-        this.sseCustomerKeyService = sseCustomerKeyService;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId) throws Exception {
@@ -74,9 +72,7 @@ public class ObjectStorageService {
                     .stream(dis, file.getSize(), -1)
                     .contentType(file.getContentType());
 
-            if (sseCustomerKeyService.isEnabled()) {
-                putBuilder.sse(sseCustomerKeyService.customerKey());
-            }
+
 
             minioClient.putObject(putBuilder.build());
 
@@ -130,9 +126,7 @@ public class ObjectStorageService {
                 .bucket(bucket)
                 .object(objectKey);
 
-        if (sseCustomerKeyService.isEnabled()) {
-            getBuilder.ssec(sseCustomerKeyService.customerKey());
-        }
+
 
         return minioClient.getObject(getBuilder.build());
     }
