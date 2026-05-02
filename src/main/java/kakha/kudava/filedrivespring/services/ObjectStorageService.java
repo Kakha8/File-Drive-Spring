@@ -66,14 +66,15 @@ public class ObjectStorageService {
 
         try(InputStream in = file.getInputStream();
             DigestInputStream dis = new DigestInputStream(in, md)) {
-            minioClient.putObject(
-                    PutObjectArgs.builder()
-                            .bucket(bucket)
-                            .object(objectKey)
-                            .stream(dis, file.getSize(), -1)
-                            .contentType(file.getContentType())
-                            .build()
-            );
+            PutObjectArgs.Builder putBuilder = PutObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(objectKey)
+                    .stream(dis, file.getSize(), -1)
+                    .contentType(file.getContentType());
+
+
+
+            minioClient.putObject(putBuilder.build());
 
             byte[] hash = md.digest();
             String checksum = toHex(hash);
@@ -121,12 +122,13 @@ public class ObjectStorageService {
         log.info("Downloading object from {}", objectKey);
 
         logsService.downloadLog(objectKey, id, "FILE");
-        return minioClient.getObject(
-                GetObjectArgs.builder()
-                        .bucket(bucket)
-                        .object(objectKey)
-                        .build()
-        );
+        GetObjectArgs.Builder getBuilder = GetObjectArgs.builder()
+                .bucket(bucket)
+                .object(objectKey);
+
+
+
+        return minioClient.getObject(getBuilder.build());
     }
 
     public void delete(Long id){

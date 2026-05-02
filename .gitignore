@@ -36,3 +36,6 @@ build/
 .env
 
 /minio-data
+/certs
+/kes
+/kes-data
