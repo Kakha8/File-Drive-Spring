@@ -51,6 +51,21 @@ services:
       - ./certs/minio/private.key:/root/.minio/certs/private.key:ro
       - ./certs/rootCA.crt:/certs/rootCA.crt:ro
 
+  sftpgo:
+    image: drakkan/sftpgo:v2.6
+    container_name: sftpgo
+    depends_on:
+      - minio
+      - minio-init
+    ports:
+      - "2022:2022"   # SFTP
+      - "8081:8080"   # SFTPGo Web Admin / REST API
+    environment:
+      SFTPGO_HTTPD__BINDINGS__0__PORT: 8080
+      SFTPGO_SFTPD__BINDINGS__0__PORT: 2022
+    volumes:
+      - ./sftpgo-data:/srv/sftpgo
+
   kes:
     image: minio/kes:latest
     container_name: kes
