@@ -13,6 +13,7 @@ import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
+import kakha.kudava.filedrivespring.repository.QuarantinedFilesRepository;
 import kakha.kudava.filedrivespring.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,8 +46,10 @@ public class ObjectStorageService {
     private final LogsService logsService;
     private final ObjectMapper objectMapper;
     private final ClamAvScannerService clamAvScannerService;
+    private final QuarantinedFilesRepository quarantinedFilesRepository;
+    private final String quarantineBucket;
 
-    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper, ClamAvScannerService clamAvScannerService) {
+    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper, ClamAvScannerService clamAvScannerService, QuarantinedFilesRepository quarantinedFilesRepository, @Value("${s3.quarantine-bucket}") String quarantineBucket) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
@@ -54,6 +57,8 @@ public class ObjectStorageService {
         this.logsService = logsService;
         this.objectMapper = objectMapper;
         this.clamAvScannerService = clamAvScannerService;
+        this.quarantinedFilesRepository = quarantinedFilesRepository;
+        this.quarantineBucket = quarantineBucket;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId) throws Exception {

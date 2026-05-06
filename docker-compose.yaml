@@ -21,6 +21,7 @@ services:
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin123
       S3_BUCKET: file-drive-bucket
+      S3_QUARANTINE_BUCKET: file-drive-quarantine
 
     volumes:
       - ./data:/app/data
@@ -95,5 +96,7 @@ services:
       mc encrypt set sse-s3 local/file-drive-bucket --insecure || true;
       mc encrypt info local/file-drive-bucket --insecure || true;
       mc anonymous set download local/file-drive-bucket --insecure || true;
+      mc mb -p local/file-drive-quarantine --insecure || true;
+      mc anonymous set none local/file-drive-quarantine --insecure || true;
       echo 'Bucket is ready';
       "
