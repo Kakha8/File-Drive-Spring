@@ -39,3 +39,4 @@ build/
 /certs
 /kes
 /kes-data
+/clamav-db
