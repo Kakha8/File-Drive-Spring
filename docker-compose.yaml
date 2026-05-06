@@ -3,7 +3,7 @@ services:
     build: .
     container_name: file-drive
     ports:
-      - "8080:8080"
+      - "8443:8443"
     env_file:
       - .env
     environment:
@@ -26,6 +26,7 @@ services:
       - ./data:/app/data
       - ./keys:/app/keys
       - ./certs/app/truststore.p12:/certs/truststore.p12:ro
+      - ./certs/app/server-keystore.p12:/certs/app/server-keystore.p12:ro
 
     depends_on:
       - minio

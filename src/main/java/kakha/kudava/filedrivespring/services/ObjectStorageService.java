@@ -24,6 +24,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLConnection;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.util.*;
@@ -42,58 +44,74 @@ public class ObjectStorageService {
     private final FolderRepository folderRepository;
     private final LogsService logsService;
     private final ObjectMapper objectMapper;
+    private final ClamAvScannerService clamAvScannerService;
 
-    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper) {
+    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper, ClamAvScannerService clamAvScannerService) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
         this.logsService = logsService;
         this.objectMapper = objectMapper;
+        this.clamAvScannerService = clamAvScannerService;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId) throws Exception {
-
         MessageDigest md = MessageDigest.getInstance("SHA-256");
 
         Folders folder = folderRepository.findById(parentId)
                 .orElseThrow(() -> new RuntimeException("Folder not found: " + parentId));
 
         String safeName = file.getOriginalFilename() == null ? "file" : file.getOriginalFilename();
+
         String prefix = folder.getPrefix();
         if (!prefix.endsWith("/")) prefix += "/";
+
         String objectKey = prefix + UUID.randomUUID() + "-" + safeName;
 
-        try(InputStream in = file.getInputStream();
-            DigestInputStream dis = new DigestInputStream(in, md)) {
-            PutObjectArgs.Builder putBuilder = PutObjectArgs.builder()
-                    .bucket(bucket)
-                    .object(objectKey)
-                    .stream(dis, file.getSize(), -1)
-                    .contentType(file.getContentType());
+        Path tempFile = Files.createTempFile("upload-", ".scan");
 
+        try {
+            file.transferTo(tempFile);
 
+            ClamAvScannerService.ScanResult scanResult = clamAvScannerService.scan(tempFile);
 
-            minioClient.putObject(putBuilder.build());
+            if (!scanResult.clean()) {
+                log.warn("Blocked infected upload: fileName={}, response={}", safeName, scanResult.response());
+                throw new RuntimeException("Upload rejected: malware detected");
+            }
 
-            byte[] hash = md.digest();
-            String checksum = toHex(hash);
-            Long fileSize = file.getSize();
+            try (InputStream in = Files.newInputStream(tempFile);
+                 DigestInputStream dis = new DigestInputStream(in, md)) {
 
-            FileMetaData entity = new FileMetaData();
-            entity.setDeleted(false);
-            entity.setObjectKey(objectKey);
-            entity.setObjectType(file.getContentType());
-            entity.setFileName(file.getOriginalFilename());
-            entity.setChecksum(checksum);
-            entity.setSize(fileSize);
-            entity.setParent(folder);
+                PutObjectArgs.Builder putBuilder = PutObjectArgs.builder()
+                        .bucket(bucket)
+                        .object(objectKey)
+                        .stream(dis, Files.size(tempFile), -1)
+                        .contentType(file.getContentType());
 
-            log.info("File uploaded successfully {}", objectKey);
-            logsService.uploadLog(file.getName(), parentId, "FILE");
+                minioClient.putObject(putBuilder.build());
 
-            return fileMetaDataRepository.save(entity);
+                byte[] hash = md.digest();
+                String checksum = toHex(hash);
+                Long fileSize = Files.size(tempFile);
 
+                FileMetaData entity = new FileMetaData();
+                entity.setDeleted(false);
+                entity.setObjectKey(objectKey);
+                entity.setObjectType(file.getContentType());
+                entity.setFileName(file.getOriginalFilename());
+                entity.setChecksum(checksum);
+                entity.setSize(fileSize);
+                entity.setParent(folder);
+
+                log.info("File uploaded successfully {}", objectKey);
+                logsService.uploadLog(file.getOriginalFilename(), parentId, "FILE");
+
+                return fileMetaDataRepository.save(entity);
+            }
+        } finally {
+            Files.deleteIfExists(tempFile);
         }
     }
 
