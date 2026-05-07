@@ -9,8 +9,10 @@ import io.minio.messages.Item;
 import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.UserDTO;
+import kakha.kudava.filedrivespring.exceptions.MalwareDetectedException;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
+import kakha.kudava.filedrivespring.model.QuarantinedFiles;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.repository.QuarantinedFilesRepository;
@@ -82,8 +84,41 @@ public class ObjectStorageService {
             ClamAvScannerService.ScanResult scanResult = clamAvScannerService.scan(tempFile);
 
             if (!scanResult.clean()) {
-                log.warn("Blocked infected upload: fileName={}, response={}", safeName, scanResult.response());
-                throw new RuntimeException("Upload rejected: malware detected");
+                String quarantineKey = "quarantine/" + UUID.randomUUID() + "-" + safeName;
+
+                try (InputStream quarantineIn = Files.newInputStream(tempFile)) {
+                    minioClient.putObject(
+                            PutObjectArgs.builder()
+                                    .bucket(quarantineBucket)
+                                    .object(quarantineKey)
+                                    .stream(quarantineIn, Files.size(tempFile), -1)
+                                    .contentType(file.getContentType())
+                                    .build()
+                    );
+                }
+
+                QuarantinedFiles quarantinedFile = new QuarantinedFiles();
+                quarantinedFile.setOriginalFilename(safeName);
+                quarantinedFile.setObjectKey(quarantineKey);
+                quarantinedFile.setContentType(
+                        file.getContentType() == null ? "application/octet-stream" : file.getContentType()
+                );
+                quarantinedFile.setSize(Files.size(tempFile));
+                quarantinedFile.setChecksum(sha256(tempFile));
+                quarantinedFile.setClamAvResponse(scanResult.response());
+                quarantinedFile.setParentFolderId(parentId);
+
+                quarantinedFilesRepository.save(quarantinedFile);
+
+                log.warn(
+                        "Blocked infected upload and moved to quarantine: fileName={}, quarantineBucket={}, quarantineKey={}, response={}",
+                        safeName,
+                        quarantineBucket,
+                        quarantineKey,
+                        scanResult.response()
+                );
+
+                throw new MalwareDetectedException("Upload rejected: malware detected");
             }
 
             try (InputStream in = Files.newInputStream(tempFile);
@@ -288,6 +323,21 @@ public class ObjectStorageService {
                             + " code=" + err.code()
             );
         }
+    }
+
+    private String sha256(Path path) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+
+        try (InputStream in = Files.newInputStream(path);
+             DigestInputStream dis = new DigestInputStream(in, digest)) {
+
+            byte[] buffer = new byte[8192];
+            while (dis.read(buffer) != -1) {
+                // reading updates digest
+            }
+        }
+
+        return toHex(digest.digest());
     }
 
 
