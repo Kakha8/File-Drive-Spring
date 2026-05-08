@@ -52,6 +52,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/files").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/api/folders/**").hasAnyRole("USER", "ADMIN")
 
+                        .requestMatchers("/api/quarantine/**").hasRole("ADMIN")
+
                 .anyRequest().authenticated()
         );
 
