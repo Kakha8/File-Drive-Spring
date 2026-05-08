@@ -9,8 +9,9 @@ import kakha.kudava.filedrivespring.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
@@ -90,4 +91,16 @@ public class LogsService {
         log.info(String.format("Logging the move of %s", name));
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void malwareUploadLog(String name, Long parentId, String entityType, String detailsJson) {
+        ActionLogs actionLogs = logAction(
+                ActionType.MALWARE_UPLOAD.name(),
+                parentId,
+                entityType,
+                detailsJson
+        );
+
+        actionLogsRepository.saveAndFlush(actionLogs);
+        log.warn("Logging the malware upload of {}", name);
+    }
 }

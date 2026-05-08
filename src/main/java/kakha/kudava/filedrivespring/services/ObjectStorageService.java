@@ -13,6 +13,7 @@ import kakha.kudava.filedrivespring.exceptions.MalwareDetectedException;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.QuarantinedFiles;
+import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.repository.QuarantinedFilesRepository;
@@ -20,6 +21,8 @@ import kakha.kudava.filedrivespring.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -50,8 +53,15 @@ public class ObjectStorageService {
     private final ClamAvScannerService clamAvScannerService;
     private final QuarantinedFilesRepository quarantinedFilesRepository;
     private final String quarantineBucket;
+    private final UserRepository userRepository;
+    private final QuarantineService quarantineService;
 
-    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper, ClamAvScannerService clamAvScannerService, QuarantinedFilesRepository quarantinedFilesRepository, @Value("${s3.quarantine-bucket}") String quarantineBucket) {
+
+    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
+                                FolderRepository folderRepository,
+                                LogsService logsService, ObjectMapper objectMapper, ClamAvScannerService clamAvScannerService,
+                                QuarantinedFilesRepository quarantinedFilesRepository, @Value("${s3.quarantine-bucket}") String quarantineBucket,
+                                UserRepository userRepository, QuarantineService quarantineService) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
@@ -61,6 +71,8 @@ public class ObjectStorageService {
         this.clamAvScannerService = clamAvScannerService;
         this.quarantinedFilesRepository = quarantinedFilesRepository;
         this.quarantineBucket = quarantineBucket;
+        this.userRepository = userRepository;
+        this.quarantineService = quarantineService;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId) throws Exception {
@@ -97,6 +109,10 @@ public class ObjectStorageService {
                     );
                 }
 
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                User user = userRepository.findByUsername(auth.getName())
+                        .orElseThrow(() -> new RuntimeException("Authenticated user not found: " + auth.getName()));
+
                 QuarantinedFiles quarantinedFile = new QuarantinedFiles();
                 quarantinedFile.setOriginalFilename(safeName);
                 quarantinedFile.setObjectKey(quarantineKey);
@@ -107,8 +123,22 @@ public class ObjectStorageService {
                 quarantinedFile.setChecksum(sha256(tempFile));
                 quarantinedFile.setClamAvResponse(scanResult.response());
                 quarantinedFile.setParentFolderId(parentId);
+                quarantinedFile.setUser(user);
 
-                quarantinedFilesRepository.save(quarantinedFile);
+                quarantineService.save(quarantinedFile);
+
+                Map<String, Object> details = new LinkedHashMap<>();
+                details.put("originalFilename", safeName);
+                details.put("quarantineBucket", quarantineBucket);
+                details.put("quarantineKey", quarantineKey);
+                details.put("clamAvResponse", scanResult.response());
+                details.put("size", Files.size(tempFile));
+                details.put("checksum", quarantinedFile.getChecksum());
+                details.put("user_id", quarantinedFile.getUser().getId());
+
+                String detailsJson = objectMapper.writeValueAsString(details);
+
+                logsService.malwareUploadLog(safeName, parentId, "FILE", detailsJson);
 
                 log.warn(
                         "Blocked infected upload and moved to quarantine: fileName={}, quarantineBucket={}, quarantineKey={}, response={}",

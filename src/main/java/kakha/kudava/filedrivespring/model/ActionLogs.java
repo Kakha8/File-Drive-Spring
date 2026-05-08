@@ -36,7 +36,7 @@ public class ActionLogs {
     @Column(nullable = false)
     private Instant timestamp = Instant.now();
 
-    @Column
+    @Column(columnDefinition = "TEXT")
     private String details;
 
     @Column
