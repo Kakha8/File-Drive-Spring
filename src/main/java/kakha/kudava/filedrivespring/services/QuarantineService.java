@@ -9,6 +9,7 @@ import kakha.kudava.filedrivespring.repository.ActionLogsRepository;
 import kakha.kudava.filedrivespring.repository.QuarantinedFilesRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,8 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,14 +37,17 @@ public class QuarantineService {
     private final String quarantineBucket;
     private final LogsService logsService;
     private final ActionLogsRepository actionLogsRepository;
+    private final int retentionDays;
 
     public QuarantineService(QuarantinedFilesRepository quarantinedFilesRepository, MinioClient minioClient,
-                             @Value("${s3.quarantine-bucket}") String quarantineBucket, LogsService logsService, ActionLogsRepository actionLogsRepository) {
+                             @Value("${s3.quarantine-bucket}") String quarantineBucket, LogsService logsService,
+                             ActionLogsRepository actionLogsRepository, @Value("${quarantine.retention-days}") int retentionDays) {
         this.quarantinedFilesRepository = quarantinedFilesRepository;
         this.minioClient = minioClient;
         this.quarantineBucket = quarantineBucket;
         this.logsService = logsService;
         this.actionLogsRepository = actionLogsRepository;
+        this.retentionDays = retentionDays;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -131,8 +137,7 @@ public class QuarantineService {
                             .build()
             );
             log.info("Object in quarantine bucket deleted successfully {}", objectKey);
-            logsService.deleteLog(objectKey, quarantineId, "FILE");
-            //add specific malware delete log!
+            logsService.malwareDeleteLog(objectKey, quarantineId, "FILE");
             file.setDeleted(true);
             quarantinedFilesRepository.save(file);
         } catch (Exception e) {
@@ -140,5 +145,51 @@ public class QuarantineService {
         }
         quarantinedFilesRepository.deleteById(quarantineId);
 
+    }
+
+    //@Scheduled(cron = "0 * * * * *")
+    @Scheduled(cron = "0 0 3 * * *")
+    @Transactional
+    public void deleteExpiredQuarantinedFiles() {
+        Instant cutoff = Instant.now().minus(retentionDays, ChronoUnit.DAYS);
+
+        List<QuarantinedFiles> expiredFiles =
+                quarantinedFilesRepository.findByCreatedAtBeforeAndDeletedFalse(cutoff);
+
+        if (expiredFiles.isEmpty()) {
+            log.info("No expired quarantined files found");
+            return;
+        }
+
+        for (QuarantinedFiles file : expiredFiles) {
+            String objectKey = file.getObjectKey();
+
+            try {
+                minioClient.removeObject(
+                        RemoveObjectArgs.builder()
+                                .bucket(quarantineBucket)
+                                .object(objectKey)
+                                .build()
+                );
+
+                file.setDeleted(true);
+                quarantinedFilesRepository.save(file);
+
+                log.warn(
+                        "Deleted expired quarantined file: id={}, objectKey={}, createdAt={}",
+                        file.getId(),
+                        objectKey,
+                        file.getCreatedAt()
+                );
+                logsService.malwareScheduleLog(objectKey, file.getId(), "FILE");
+            } catch (Exception e) {
+                log.error(
+                        "Failed to delete expired quarantined file: id={}, objectKey={}",
+                        file.getId(),
+                        objectKey,
+                        e
+                );
+            }
+        }
     }
 }

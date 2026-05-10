@@ -103,4 +103,23 @@ public class LogsService {
         actionLogsRepository.saveAndFlush(actionLogs);
         log.warn("Logging the malware upload of {}", name);
     }
+
+    public void malwareDeleteLog(String name, Long parentId, String entityType) {
+        ActionLogs actionLogs = logAction(ActionType.MALWARE_DELETE.name(), parentId, entityType, null);
+        actionLogsRepository.save(actionLogs);
+        log.info(String.format("Logging the malware delete of {}", name));
+    }
+
+    public void malwareScheduleLog(String name, Long parentId, String entityType) {
+
+        ActionLogs actionLogs = new ActionLogs();
+        actionLogs.setAction(ActionType.valueOf(ActionType.MALWARE_SCHEDULED_DELETION.name()));
+        actionLogs.setDetails(null);
+        actionLogs.setEntityId(null);
+        actionLogs.setUser(null);
+        actionLogs.setEntityType(EntityType.valueOf(entityType));
+        actionLogs.setDetails(null);
+        log.info(String.format("Logging the scheduled deletion of malware {} from quarantine", name));
+        actionLogsRepository.save(actionLogs);
+    }
 }
