@@ -7,10 +7,13 @@ services:
     env_file:
       - .env
     environment:
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: 3310
       JAVA_TOOL_OPTIONS: >-
         -Djavax.net.ssl.trustStore=/certs/truststore.p12
         -Djavax.net.ssl.trustStorePassword=changeit
         -Djavax.net.ssl.trustStoreType=PKCS12
+        
 
       SPRING_DATASOURCE_URL: jdbc:h2:file:/app/data/mydb;AUTO_SERVER=TRUE
 
@@ -18,16 +21,22 @@ services:
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin123
       S3_BUCKET: file-drive-bucket
+      S3_QUARANTINE_BUCKET: file-drive-quarantine
 
     volumes:
       - ./data:/app/data
       - ./keys:/app/keys
       - ./certs/app/truststore.p12:/certs/truststore.p12:ro
-      - ./certs/app/server-keystore.p12:/certs/server-keystore.p12:ro
+      - ./certs/app/server-keystore.p12:/certs/app/server-keystore.p12:ro
+
+
 
     depends_on:
       - minio
       - minio-init
+      - clamav
+
+
 
   minio:
     image: minio/minio:latest
@@ -64,6 +73,15 @@ services:
       - ./certs/kes/private.key:/certs/private.key:ro
       - ./kes-data:/kes-data
 
+  clamav:
+    image: clamav/clamav:stable
+    container_name: clamav
+    restart: unless-stopped
+    expose:
+      - "3310"
+    volumes:
+      - ./clamav-db:/var/lib/clamav
+
   # Create the bucket once MinIO is up
   minio-init:
     image: minio/mc:latest
@@ -80,5 +98,7 @@ services:
       mc encrypt set sse-s3 local/file-drive-bucket --insecure || true;
       mc encrypt info local/file-drive-bucket --insecure || true;
       mc anonymous set download local/file-drive-bucket --insecure || true;
+      mc mb -p local/file-drive-quarantine --insecure || true;
+      mc anonymous set none local/file-drive-quarantine --insecure || true;
       echo 'Bucket is ready';
       "

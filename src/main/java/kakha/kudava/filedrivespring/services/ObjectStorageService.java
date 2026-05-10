@@ -9,14 +9,20 @@ import io.minio.messages.Item;
 import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.UserDTO;
+import kakha.kudava.filedrivespring.exceptions.MalwareDetectedException;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
+import kakha.kudava.filedrivespring.model.QuarantinedFiles;
+import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
+import kakha.kudava.filedrivespring.repository.QuarantinedFilesRepository;
 import kakha.kudava.filedrivespring.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -24,6 +30,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLConnection;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.util.*;
@@ -42,58 +50,138 @@ public class ObjectStorageService {
     private final FolderRepository folderRepository;
     private final LogsService logsService;
     private final ObjectMapper objectMapper;
+    private final ClamAvScannerService clamAvScannerService;
+    private final QuarantinedFilesRepository quarantinedFilesRepository;
+    private final String quarantineBucket;
+    private final UserRepository userRepository;
+    private final QuarantineService quarantineService;
 
-    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper) {
+
+    public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
+                                FolderRepository folderRepository,
+                                LogsService logsService, ObjectMapper objectMapper, ClamAvScannerService clamAvScannerService,
+                                QuarantinedFilesRepository quarantinedFilesRepository, @Value("${s3.quarantine-bucket}") String quarantineBucket,
+                                UserRepository userRepository, QuarantineService quarantineService) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
         this.logsService = logsService;
         this.objectMapper = objectMapper;
+        this.clamAvScannerService = clamAvScannerService;
+        this.quarantinedFilesRepository = quarantinedFilesRepository;
+        this.quarantineBucket = quarantineBucket;
+        this.userRepository = userRepository;
+        this.quarantineService = quarantineService;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId) throws Exception {
-
         MessageDigest md = MessageDigest.getInstance("SHA-256");
 
         Folders folder = folderRepository.findById(parentId)
                 .orElseThrow(() -> new RuntimeException("Folder not found: " + parentId));
 
         String safeName = file.getOriginalFilename() == null ? "file" : file.getOriginalFilename();
+
         String prefix = folder.getPrefix();
         if (!prefix.endsWith("/")) prefix += "/";
+
         String objectKey = prefix + UUID.randomUUID() + "-" + safeName;
 
-        try(InputStream in = file.getInputStream();
-            DigestInputStream dis = new DigestInputStream(in, md)) {
-            PutObjectArgs.Builder putBuilder = PutObjectArgs.builder()
-                    .bucket(bucket)
-                    .object(objectKey)
-                    .stream(dis, file.getSize(), -1)
-                    .contentType(file.getContentType());
+        Path tempFile = Files.createTempFile("upload-", ".scan");
 
+        try {
+            file.transferTo(tempFile);
 
+            ClamAvScannerService.ScanResult scanResult = clamAvScannerService.scan(tempFile);
 
-            minioClient.putObject(putBuilder.build());
+            if (!scanResult.clean()) {
+                String quarantineKey = "quarantine/" + UUID.randomUUID() + "-" + safeName;
 
-            byte[] hash = md.digest();
-            String checksum = toHex(hash);
-            Long fileSize = file.getSize();
+                try (InputStream quarantineIn = Files.newInputStream(tempFile)) {
+                    minioClient.putObject(
+                            PutObjectArgs.builder()
+                                    .bucket(quarantineBucket)
+                                    .object(quarantineKey)
+                                    .stream(quarantineIn, Files.size(tempFile), -1)
+                                    .contentType(file.getContentType())
+                                    .build()
+                    );
+                }
 
-            FileMetaData entity = new FileMetaData();
-            entity.setDeleted(false);
-            entity.setObjectKey(objectKey);
-            entity.setObjectType(file.getContentType());
-            entity.setFileName(file.getOriginalFilename());
-            entity.setChecksum(checksum);
-            entity.setSize(fileSize);
-            entity.setParent(folder);
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                User user = userRepository.findByUsername(auth.getName())
+                        .orElseThrow(() -> new RuntimeException("Authenticated user not found: " + auth.getName()));
 
-            log.info("File uploaded successfully {}", objectKey);
-            logsService.uploadLog(file.getName(), parentId, "FILE");
+                QuarantinedFiles quarantinedFile = new QuarantinedFiles();
+                quarantinedFile.setOriginalFilename(safeName);
+                quarantinedFile.setObjectKey(quarantineKey);
+                quarantinedFile.setContentType(
+                        file.getContentType() == null ? "application/octet-stream" : file.getContentType()
+                );
+                quarantinedFile.setSize(Files.size(tempFile));
+                quarantinedFile.setChecksum(sha256(tempFile));
+                quarantinedFile.setClamAvResponse(scanResult.response());
+                quarantinedFile.setParentFolderId(parentId);
+                quarantinedFile.setUser(user);
 
-            return fileMetaDataRepository.save(entity);
+                quarantineService.save(quarantinedFile);
 
+                Map<String, Object> details = new LinkedHashMap<>();
+                details.put("originalFilename", safeName);
+                details.put("quarantineBucket", quarantineBucket);
+                details.put("quarantineKey", quarantineKey);
+                details.put("clamAvResponse", scanResult.response());
+                details.put("size", Files.size(tempFile));
+                details.put("checksum", quarantinedFile.getChecksum());
+                details.put("user_id", quarantinedFile.getUser().getId());
+
+                String detailsJson = objectMapper.writeValueAsString(details);
+
+                logsService.malwareUploadLog(safeName, parentId, "FILE", detailsJson);
+
+                log.warn(
+                        "Blocked infected upload and moved to quarantine: fileName={}, quarantineBucket={}, quarantineKey={}, response={}",
+                        safeName,
+                        quarantineBucket,
+                        quarantineKey,
+                        scanResult.response()
+                );
+
+                throw new MalwareDetectedException("Upload rejected: malware detected");
+            }
+
+            try (InputStream in = Files.newInputStream(tempFile);
+                 DigestInputStream dis = new DigestInputStream(in, md)) {
+
+                PutObjectArgs.Builder putBuilder = PutObjectArgs.builder()
+                        .bucket(bucket)
+                        .object(objectKey)
+                        .stream(dis, Files.size(tempFile), -1)
+                        .contentType(file.getContentType());
+
+                minioClient.putObject(putBuilder.build());
+
+                byte[] hash = md.digest();
+                String checksum = toHex(hash);
+                Long fileSize = Files.size(tempFile);
+
+                FileMetaData entity = new FileMetaData();
+                entity.setDeleted(false);
+                entity.setObjectKey(objectKey);
+                entity.setObjectType(file.getContentType());
+                entity.setFileName(file.getOriginalFilename());
+                entity.setChecksum(checksum);
+                entity.setSize(fileSize);
+                entity.setParent(folder);
+
+                log.info("File uploaded successfully {}", objectKey);
+                logsService.uploadLog(file.getOriginalFilename(), parentId, "FILE");
+
+                return fileMetaDataRepository.save(entity);
+            }
+        } finally {
+            Files.deleteIfExists(tempFile);
         }
     }
 
@@ -265,6 +353,21 @@ public class ObjectStorageService {
                             + " code=" + err.code()
             );
         }
+    }
+
+    private String sha256(Path path) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+
+        try (InputStream in = Files.newInputStream(path);
+             DigestInputStream dis = new DigestInputStream(in, digest)) {
+
+            byte[] buffer = new byte[8192];
+            while (dis.read(buffer) != -1) {
+                // reading updates digest
+            }
+        }
+
+        return toHex(digest.digest());
     }
 
 

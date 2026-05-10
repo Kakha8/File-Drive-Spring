@@ -20,8 +20,8 @@ public class ActionLogs {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = true)
     private User user;
 
     @Enumerated(EnumType.STRING)
@@ -36,7 +36,7 @@ public class ActionLogs {
     @Column(nullable = false)
     private Instant timestamp = Instant.now();
 
-    @Column
+    @Column(columnDefinition = "TEXT")
     private String details;
 
     @Column
