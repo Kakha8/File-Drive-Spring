@@ -29,6 +29,8 @@ services:
       - ./certs/app/truststore.p12:/certs/truststore.p12:ro
       - ./certs/app/server-keystore.p12:/certs/app/server-keystore.p12:ro
 
+
+
     depends_on:
       - minio
       - minio-init
