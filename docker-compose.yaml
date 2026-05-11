@@ -29,13 +29,20 @@ services:
       - ./certs/app/truststore.p12:/certs/truststore.p12:ro
       - ./certs/app/server-keystore.p12:/certs/app/server-keystore.p12:ro
 
-
-
     depends_on:
       - minio
       - minio-init
       - clamav
-
+  frontend:
+    build: ./frontend
+    container_name: file-drive-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - app
 
 
   minio:
