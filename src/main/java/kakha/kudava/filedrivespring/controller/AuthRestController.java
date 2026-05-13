@@ -77,9 +77,9 @@ public class AuthRestController {
                 REFRESH_COOKIE + "=" + token
                         + "; Max-Age=" + maxAge
                         + "; Path=/api/auth"
+                        + "; Secure"
                         + "; HttpOnly"
-                        + "; SameSite=Lax");
+                        + "; SameSite=None");
     }
-
 
 }
