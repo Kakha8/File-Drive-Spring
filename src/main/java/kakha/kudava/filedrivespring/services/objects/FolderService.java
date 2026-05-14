@@ -10,11 +10,15 @@ import kakha.kudava.filedrivespring.dto.FolderDTO;
 import kakha.kudava.filedrivespring.dto.FolderItemDTO;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
+import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
+import kakha.kudava.filedrivespring.repository.UserRepository;
 import kakha.kudava.filedrivespring.services.ObjectStorageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
@@ -29,39 +33,59 @@ public class FolderService {
 
     private final FolderRepository folderRepository;
     private final ObjectStorageService objectStorageService;
+    private final UserRepository userRepository;
+    private final RootFolderService rootFolderService;
 
     @Value("${s3.bucket}")
     private String bucket;
     private final MinioClient minioClient;
     private final FileMetaDataRepository fileMetaDataRepository;
-    public FolderService(FolderRepository folderRepository, ObjectStorageService objectStorageService,
+    public FolderService(FolderRepository folderRepository, ObjectStorageService objectStorageService, UserRepository userRepository, RootFolderService rootFolderService,
                          MinioClient minioClient,
                          FileMetaDataRepository fileMetaDataRepository) {
         this.folderRepository = folderRepository;
         this.objectStorageService = objectStorageService;
+        this.userRepository = userRepository;
+        this.rootFolderService = rootFolderService;
         this.minioClient = minioClient;
         this.fileMetaDataRepository = fileMetaDataRepository;
     }
 
-    public FolderDTO create(FolderCreateRequest req)
-            throws ServerException,
-            InsufficientDataException,
-            ErrorResponseException,
-            IOException,
-            NoSuchAlgorithmException,
-            InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+    private User currentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 
-        String fullPrefix = buildFullPrefix(req.getName(), req.getParentId());
+        if (auth == null || auth.getName() == null) {
+            throw new RuntimeException("Not authenticated");
+        }
+
+        return userRepository.findByUsername(auth.getName())
+                .orElseThrow(() -> new RuntimeException("Authenticated user not found: " + auth.getName()));
+    }
+
+    public FolderDTO create(FolderCreateRequest req) throws Exception {
+        User user = currentUser();
+
+        Folders parent;
+
+        if (req.getParentId() == null) {
+            parent = rootFolderService.ensureRootFolder(user);
+        } else {
+            parent = folderRepository.findByIdAndOwnerAndDeletedFalse(req.getParentId(), user)
+                    .orElseThrow(() -> new RuntimeException("Parent folder not found or not owned by user"));
+        }
+
+        String cleanName = req.getName().replaceAll("^/|/$", "");
+        String parentPrefix = parent.getPrefix();
+        if (!parentPrefix.endsWith("/")) parentPrefix += "/";
+
+        String fullPrefix = parentPrefix + cleanName + "/";
 
         Folders entity = new Folders();
-        entity.setName(req.getName().replaceAll("^/|/$", ""));
+        entity.setName(cleanName);
         entity.setPrefix(fullPrefix);
-
-        if (req.getParentId() != null) {
-            Folders parent = folderRepository.findById(req.getParentId())
-                    .orElseThrow(() -> new RuntimeException("Parent folder not found: " + req.getParentId()));
-            entity.setParent(parent);
-        }
+        entity.setParent(parent);
+        entity.setOwner(user);
+        entity.setDeleted(false);
 
         Folders saved = folderRepository.save(entity);
 
@@ -69,15 +93,12 @@ public class FolderService {
                 PutObjectArgs.builder()
                         .bucket(bucket)
                         .object(fullPrefix)
-                        .stream(
-                                new ByteArrayInputStream(new byte[]{}),
-                                0,
-                                -1
-                        )
+                        .stream(new ByteArrayInputStream(new byte[]{}), 0, -1)
+                        .contentType("application/x-directory")
                         .build()
         );
 
-        return toDto(entity);
+        return toDto(saved);
     }
 
     private String buildFullPrefix(String folderName, Long parentId) {

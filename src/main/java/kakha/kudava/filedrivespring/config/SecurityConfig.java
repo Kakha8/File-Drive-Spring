@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.config;
 
 import kakha.kudava.filedrivespring.repository.UserRepository;
+import kakha.kudava.filedrivespring.services.objects.RootFolderService;
 import kakha.kudava.filedrivespring.services.users.DbUserDetailsService;
 import kakha.kudava.filedrivespring.services.jwt.JwtFilter;
 import kakha.kudava.filedrivespring.services.jwt.JwtService;
@@ -92,7 +93,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    CommandLineRunner createAdmin(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    CommandLineRunner createAdmin(UserRepository userRepository, PasswordEncoder passwordEncoder,
+                                  RootFolderService rootFolderService) {
         return args -> {
             if (userRepository.findByUsername("admin").isEmpty()) {
                 kakha.kudava.filedrivespring.model.User admin = new kakha.kudava.filedrivespring.model.User();
@@ -100,6 +102,7 @@ public class SecurityConfig {
                 admin.setPassword(passwordEncoder.encode(ADMIN_PASSWORD));
                 admin.setRole(kakha.kudava.filedrivespring.model.User.Role.ADMIN);
                 userRepository.save(admin);
+                rootFolderService.ensureRootFolder(admin);
             }
         };
     }

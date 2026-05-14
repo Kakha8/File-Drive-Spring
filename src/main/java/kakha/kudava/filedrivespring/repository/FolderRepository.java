@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.repository;
 
 import kakha.kudava.filedrivespring.model.Folders;
+import kakha.kudava.filedrivespring.model.User;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -34,4 +35,8 @@ public interface FolderRepository extends JpaRepository<Folders, Long> {
 
     Optional<Folders> findByPrefix(String prefix);
 
+    Optional<Folders> findByOwnerAndParentIsNullAndDeletedFalse(User user);
+    Optional<Folders> findByIdAndOwnerAndDeletedFalse(Long id, User owner);
+
+    List<Folders> findFoldersByParent_IdAndOwnerAndDeletedFalse(Long parentId, User owner);
 }

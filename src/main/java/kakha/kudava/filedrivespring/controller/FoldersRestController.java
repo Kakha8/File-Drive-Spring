@@ -56,13 +56,7 @@ public class FoldersRestController {
 
     @PostMapping
     public ResponseEntity<Map<String, String>> create(@RequestBody FolderCreateRequest req)
-            throws ServerException,
-            InsufficientDataException,
-            ErrorResponseException,
-            IOException,
-            NoSuchAlgorithmException,
-            InvalidKeyException,
-            InvalidResponseException, XmlParserException, InternalException {
+            throws Exception {
         FolderDTO folder = folderService.create(req);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(Map.of("name", folder.getName(),

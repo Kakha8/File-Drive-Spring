@@ -4,7 +4,9 @@ import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.UserRepository;
+import kakha.kudava.filedrivespring.services.objects.RootFolderService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -16,16 +18,24 @@ import java.util.Optional;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final RootFolderService rootFolderService;
+    private final PasswordEncoder passwordEncoder;
 
-    public UserService(UserRepository userRepository) {
+    public UserService(UserRepository userRepository, RootFolderService rootFolderService, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.rootFolderService = rootFolderService;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public UserDTO saveUser(UserDTO userDTO) {
         User user = new User();
         user.setUsername(userDTO.getUsername());
-        user.setPassword(userDTO.getPassword());
-        userRepository.save(user);
+        user.setPassword(passwordEncoder.encode(userDTO.getPassword()));
+        user.setRole(User.Role.valueOf(userDTO.getRole()));
+        User saved = userRepository.save(user);
+
+        rootFolderService.ensureRootFolder(saved);
+
         log.info("User saved successfully: {}", userDTO.getUsername());
         return userDTO;
     }
