@@ -4,10 +4,7 @@ import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.errors.*;
 import jakarta.transaction.Transactional;
-import kakha.kudava.filedrivespring.dto.FileItemDTO;
-import kakha.kudava.filedrivespring.dto.FolderCreateRequest;
-import kakha.kudava.filedrivespring.dto.FolderDTO;
-import kakha.kudava.filedrivespring.dto.FolderItemDTO;
+import kakha.kudava.filedrivespring.dto.*;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.User;
@@ -181,4 +178,33 @@ public class FolderService {
         return dto;
     }
 
+    public FolderViewDTO viewCurrentUserRoot(String username) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found: " + username));
+
+        String prefixWithoutSlash = "users/" + user.getId();
+        String prefixWithSlash = prefixWithoutSlash + "/";
+
+        Folders root = folderRepository.findByPrefixAndDeletedFalse(prefixWithSlash)
+                .or(() -> folderRepository.findByPrefixAndDeletedFalse(prefixWithoutSlash))
+                .orElseThrow(() -> new RuntimeException(
+                        "Root folder not found for user id: " + user.getId()
+                                + ". Tried: " + prefixWithSlash + " and " + prefixWithoutSlash
+                ));
+
+        return viewFolder(root.getId());
+    }
+
+    public FolderViewDTO viewFolder(Long id) {
+        Folders folder = folderRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Folder not found: " + id));
+
+        FolderViewDTO dto = new FolderViewDTO();
+        dto.setId(folder.getId());
+        dto.setName(folder.getName());
+        dto.setFolders(viewFolders(id));
+        dto.setFiles(viewFiles(id));
+
+        return dto;
+    }
 }

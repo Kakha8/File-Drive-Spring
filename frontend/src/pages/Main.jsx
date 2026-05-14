@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { logout as apiLogout } from "../api/auth";
+import { getFileBlob, getFolder, getRootFolder } from "../api/drive";
 
 function Icon({ children, className = "" }) {
     return (
@@ -48,15 +49,6 @@ const Icons = {
         <Icon className={className}>
             <rect x="3" y="5" width="18" height="14" rx="3" />
             <path d="m8 14 2.5-3 3.5 4 2-2 3 4" />
-        </Icon>
-    ),
-    Figma: ({ className }) => (
-        <Icon className={className}>
-            <path d="M9 3h3v6H9a3 3 0 0 1 0-6Z" />
-            <path d="M12 3h3a3 3 0 0 1 0 6h-3z" />
-            <path d="M12 9h3a3 3 0 0 1 0 6h-3z" />
-            <path d="M9 9h3v6H9a3 3 0 0 1 0-6Z" />
-            <path d="M9 15h3v3a3 3 0 1 1-3-3Z" />
         </Icon>
     ),
     Shared: ({ className }) => (
@@ -134,6 +126,18 @@ const Icons = {
             <circle cx="12" cy="19" r="1" />
         </Icon>
     ),
+    ArrowLeft: ({ className }) => (
+        <Icon className={className}>
+            <path d="M19 12H5" />
+            <path d="m12 19-7-7 7-7" />
+        </Icon>
+    ),
+    ArrowRight: ({ className }) => (
+        <Icon className={className}>
+            <path d="M5 12h14" />
+            <path d="m12 5 7 7-7 7" />
+        </Icon>
+    ),
 };
 
 const navItems = [
@@ -145,184 +149,138 @@ const navItems = [
     { key: "trash", label: "Trash", icon: Icons.Trash },
 ];
 
-const files = [
-    {
-        id: "assets",
-        name: "Assets",
-        type: "folder",
-        owner: "Olivia Rhye",
-        ownerInitials: "OR",
-        tags: ["Shared"],
-        lastEdited: "May 16, 2024",
-        time: "2:30 PM",
-        size: "—",
-        shared: true,
-        favorite: true,
-    },
-    {
-        id: "brand-refresh",
-        name: "Brand Refresh",
-        type: "folder",
-        owner: "Liam Chen",
-        ownerInitials: "LC",
-        tags: ["Private"],
-        lastEdited: "May 15, 2024",
-        time: "10:21 AM",
-        size: "—",
-    },
-    {
-        id: "research",
-        name: "Research",
-        type: "folder",
-        owner: "Olivia Rhye",
-        ownerInitials: "OR",
-        tags: ["Research", "Shared"],
-        lastEdited: "May 10, 2024",
-        time: "4:42 PM",
-        size: "—",
-        shared: true,
-    },
-    {
-        id: "product-brief",
-        name: "Product Brief.md",
-        type: "markdown",
-        owner: "Liam Chen",
-        ownerInitials: "LC",
-        tags: ["Draft", "Shared"],
-        lastEdited: "May 16, 2024",
-        time: "2:30 PM",
-        size: "24 KB",
-        shared: true,
-        favorite: true,
-    },
-    {
-        id: "design-system",
-        name: "Design System.fig",
-        type: "figma",
-        owner: "Olivia Rhye",
-        ownerInitials: "OR",
-        tags: ["Design", "Shared"],
-        lastEdited: "May 16, 2024",
-        time: "12:45 PM",
-        size: "8.4 MB",
-        shared: true,
-    },
-    {
-        id: "wireframe",
-        name: "Homepage Wireframe.png",
-        type: "image",
-        owner: "Liam Chen",
-        ownerInitials: "LC",
-        tags: ["Design"],
-        lastEdited: "May 15, 2024",
-        time: "5:20 PM",
-        size: "2.1 MB",
-    },
-    {
-        id: "meeting-notes",
-        name: "Meeting Notes.docx",
-        type: "document",
-        owner: "Olivia Rhye",
-        ownerInitials: "OR",
-        tags: ["Shared"],
-        lastEdited: "May 14, 2024",
-        time: "11:03 AM",
-        size: "112 KB",
-        shared: true,
-    },
-    {
-        id: "marketing-plan",
-        name: "Marketing Plan.pdf",
-        type: "pdf",
-        owner: "Olivia Rhye",
-        ownerInitials: "OR",
-        tags: ["Final", "Shared"],
-        lastEdited: "May 12, 2024",
-        time: "3:18 PM",
-        size: "1.6 MB",
-        shared: true,
-    },
-    {
-        id: "competitive-analysis",
-        name: "Competitive Analysis.xlsx",
-        type: "sheet",
-        owner: "Liam Chen",
-        ownerInitials: "LC",
-        tags: ["Private", "Research"],
-        lastEdited: "May 11, 2024",
-        time: "9:47 AM",
-        size: "320 KB",
-    },
-    {
-        id: "brand-guidelines",
-        name: "Brand Guidelines.pdf",
-        type: "pdf",
-        owner: "Olivia Rhye",
-        ownerInitials: "OR",
-        tags: ["Final", "Shared"],
-        lastEdited: "May 9, 2024",
-        time: "4:28 PM",
-        size: "4.7 MB",
-        shared: true,
-        favorite: true,
-    },
-    {
-        id: "logo-variations",
-        name: "Logo Variations.zip",
-        type: "archive",
-        owner: "Liam Chen",
-        ownerInitials: "LC",
-        tags: ["Shared"],
-        lastEdited: "May 8, 2024",
-        time: "1:15 PM",
-        size: "12.3 MB",
-        shared: true,
-    },
-];
+function formatBytes(bytes) {
+    if (!bytes && bytes !== 0) return "—";
+    if (bytes === 0) return "0 B";
+
+    const units = ["B", "KB", "MB", "GB"];
+    let value = bytes;
+    let index = 0;
+
+    while (value >= 1024 && index < units.length - 1) {
+        value /= 1024;
+        index += 1;
+    }
+
+    return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
 
 function getFileIcon(type) {
     if (type === "folder") return Icons.Folder;
-    if (type === "figma") return Icons.Figma;
-    if (type === "image") return Icons.Image;
+    if (type && type.startsWith("image/")) return Icons.Image;
     return Icons.File;
 }
 
 function getTypeLabel(type) {
     if (type === "folder") return "Folder";
-    if (type === "markdown") return "Markdown document";
-    if (type === "figma") return "Figma design";
-    if (type === "image") return "Image";
-    if (type === "document") return "Word document";
-    if (type === "pdf") return "PDF document";
-    if (type === "sheet") return "Spreadsheet";
-    if (type === "archive") return "Archive";
-    return "File";
+    if (type === "application/pdf") return "PDF document";
+    if (type && type.startsWith("image/")) return "Image";
+    if (type && type.startsWith("video/")) return "Video";
+    if (type && type.startsWith("audio/")) return "Audio";
+    if (type === "application/zip") return "Archive";
+    if (type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+        return "Word document";
+    }
+    return type || "File";
 }
 
 function tagClass(tag) {
-    if (tag === "Shared") return "tag shared";
-    if (tag === "Draft") return "tag draft";
-    if (tag === "Design") return "tag design";
-    if (tag === "Private") return "tag private";
-    if (tag === "Final") return "tag final";
-    return "tag research";
+    if (tag === "Folder") return "tag shared";
+    if (tag === "PDF") return "tag final";
+    if (tag === "Image") return "tag design";
+    if (tag === "Video") return "tag draft";
+    if (tag === "Audio") return "tag research";
+    return "tag private";
 }
 
-function filteredByNav(item, nav) {
-    if (nav === "shared") return item.shared;
-    if (nav === "favorites") return item.favorite;
-    if (nav === "archived") return item.archived;
-    if (nav === "trash") return false;
-    return true;
+function getFileTag(item) {
+    if (item.type === "folder") return "Folder";
+    if (item.type === "application/pdf") return "PDF";
+    if (item.type && item.type.startsWith("image/")) return "Image";
+    if (item.type && item.type.startsWith("video/")) return "Video";
+    if (item.type && item.type.startsWith("audio/")) return "Audio";
+    return "File";
+}
+
+function normalizeFolderItems(folderData) {
+    if (!folderData) return [];
+
+    const folders = (folderData.folders || []).map((folder) => ({
+        id: `folder-${folder.id}`,
+        rawId: folder.id,
+        name: folder.name || "Untitled folder",
+        type: "folder",
+        owner: folderData.name || "You",
+        ownerInitials: "ME",
+        tag: "Folder",
+        lastEdited: "—",
+        time: "",
+        size: "—",
+        folder,
+    }));
+
+    const files = (folderData.files || [])
+        .filter((file) => !file.deleted)
+        .map((file) => ({
+            id: `file-${file.id}`,
+            rawId: file.id,
+            name: file.fileName || "Untitled file",
+            type: file.objectType || "file",
+            owner: folderData.name || "You",
+            ownerInitials: "ME",
+            tag: getFileTag({ type: file.objectType || "file" }),
+            lastEdited: "—",
+            time: "",
+            size: formatBytes(file.size),
+            file,
+        }));
+
+    return [...folders, ...files];
 }
 
 function Main({ onLogout }) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [nav, setNav] = useState("my");
     const [query, setQuery] = useState("");
-    const [selectedIds, setSelectedIds] = useState(["product-brief"]);
+    const [currentFolder, setCurrentFolder] = useState(null);
+    const [path, setPath] = useState([]);
+    const [forwardStack, setForwardStack] = useState([]);
+    const [selectedIds, setSelectedIds] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [viewer, setViewer] = useState(null);
     const [confirmLogout, setConfirmLogout] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+    useEffect(() => {
+        async function loadRoot() {
+            try {
+                setLoading(true);
+                setError("");
+
+                const root = await getRootFolder();
+
+                setCurrentFolder(root);
+                setPath([{ id: root.id, name: root.name || "My Drive" }]);
+                setForwardStack([]);
+                setSelectedIds([]);
+            } catch (err) {
+                setError(err.message || "Failed to load folder");
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        loadRoot();
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (viewer?.url) {
+                URL.revokeObjectURL(viewer.url);
+            }
+        };
+    }, [viewer]);
 
     async function handleLogout() {
         if (!confirmLogout) {
@@ -342,36 +300,168 @@ function Main({ onLogout }) {
         }
     }
 
-    function handleFileSelect(event, fileId) {
+    async function openFolder(folder) {
+        if (!folder?.id) return;
+
+        try {
+            setLoading(true);
+            setError("");
+
+            const nextFolder = await getFolder(folder.id);
+
+            setCurrentFolder(nextFolder);
+            setPath((current) => [
+                ...current,
+                { id: folder.id, name: folder.name || "Folder" },
+            ]);
+            setForwardStack([]);
+            setSelectedIds([]);
+        } catch (err) {
+            setError(err.message || "Failed to open folder");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function openFile(item) {
+        if (!item?.file?.id) return;
+
+        if (viewer?.url) {
+            URL.revokeObjectURL(viewer.url);
+        }
+
+        try {
+            setViewer({
+                item,
+                url: "",
+                loading: true,
+                error: "",
+            });
+
+            const blob = await getFileBlob(item.file.id);
+            const url = URL.createObjectURL(blob);
+
+            setViewer({
+                item,
+                url,
+                loading: false,
+                error: "",
+            });
+        } catch (err) {
+            setViewer({
+                item,
+                url: "",
+                loading: false,
+                error: err.message || "Failed to open file",
+            });
+        }
+    }
+
+    function closeViewer() {
+        if (viewer?.url) {
+            URL.revokeObjectURL(viewer.url);
+        }
+
+        setViewer(null);
+    }
+
+    async function goToPathIndex(index) {
+        const target = path[index];
+
+        if (!target) return;
+
+        try {
+            setLoading(true);
+            setError("");
+
+            const folder =
+                index === 0 ? await getRootFolder() : await getFolder(target.id);
+
+            setCurrentFolder(folder);
+            setPath((current) => current.slice(0, index + 1));
+            setForwardStack([]);
+            setSelectedIds([]);
+        } catch (err) {
+            setError(err.message || "Failed to open folder");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function goBack() {
+        if (path.length <= 1) return;
+
+        const currentLocation = path[path.length - 1];
+        const targetIndex = path.length - 2;
+        const target = path[targetIndex];
+
+        try {
+            setLoading(true);
+            setError("");
+
+            const folder =
+                targetIndex === 0 ? await getRootFolder() : await getFolder(target.id);
+
+            setCurrentFolder(folder);
+            setPath((current) => current.slice(0, targetIndex + 1));
+            setForwardStack((current) => [currentLocation, ...current]);
+            setSelectedIds([]);
+        } catch (err) {
+            setError(err.message || "Failed to go back");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function goForward() {
+        if (forwardStack.length === 0) return;
+
+        const nextLocation = forwardStack[0];
+
+        try {
+            setLoading(true);
+            setError("");
+
+            const folder = await getFolder(nextLocation.id);
+
+            setCurrentFolder(folder);
+            setPath((current) => [...current, nextLocation]);
+            setForwardStack((current) => current.slice(1));
+            setSelectedIds([]);
+        } catch (err) {
+            setError(err.message || "Failed to go forward");
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function handleFileSelect(event, itemId) {
         const multiSelect = event.ctrlKey || event.metaKey;
 
         setSelectedIds((currentSelected) => {
             if (!multiSelect) {
-                return [fileId];
+                return [itemId];
             }
 
-            if (currentSelected.includes(fileId)) {
-                return currentSelected.filter((id) => id !== fileId);
+            if (currentSelected.includes(itemId)) {
+                return currentSelected.filter((id) => id !== itemId);
             }
 
-            return [...currentSelected, fileId];
+            return [...currentSelected, itemId];
         });
     }
 
+    const allItems = useMemo(() => {
+        return normalizeFolderItems(currentFolder);
+    }, [currentFolder]);
+
     const visibleFiles = useMemo(() => {
-        return files
-            .filter((item) => filteredByNav(item, nav))
-            .filter((item) =>
-                `${item.name} ${item.owner} ${item.tags.join(" ")}`
-                    .toLowerCase()
-                    .includes(query.toLowerCase())
-            )
-            .sort((a, b) => {
-                if (a.type === "folder" && b.type !== "folder") return -1;
-                if (a.type !== "folder" && b.type === "folder") return 1;
-                return 0;
-            });
-    }, [nav, query]);
+        return allItems.filter((item) =>
+            `${item.name} ${item.owner} ${item.type}`
+                .toLowerCase()
+                .includes(query.toLowerCase())
+        );
+    }, [allItems, query]);
 
     return (
         <main className="drive-page">
@@ -392,7 +482,7 @@ function Main({ onLogout }) {
                             <div className="workspace-mark">W</div>
                             <div className="workspace-text">
                                 <strong>Workspace</strong>
-                                <span>olivia@workspace.com</span>
+                                <span>{path[0]?.name || "My Drive"}</span>
                             </div>
                         </>
                     )}
@@ -425,22 +515,16 @@ function Main({ onLogout }) {
 
                     {sidebarOpen && (
                         <div className="label-section">
-                            <p>Labels</p>
+                            <p>Location</p>
 
-                            {["Design", "Draft", "Shared", "Final"].map((label) => (
-                                <button key={label} type="button">
-                                    <span
-                                        className={`dot ${
-                                            label === "Design"
-                                                ? "design-dot"
-                                                : label === "Draft"
-                                                    ? "draft-dot"
-                                                    : label === "Final"
-                                                        ? "final-dot"
-                                                        : "shared-dot"
-                                        }`}
-                                    />
-                                    {label}
+                            {path.map((part, index) => (
+                                <button
+                                    key={`${part.id}-${index}`}
+                                    type="button"
+                                    onClick={() => goToPathIndex(index)}
+                                >
+                                    <span className="dot shared-dot" />
+                                    {part.name}
                                 </button>
                             ))}
                         </div>
@@ -478,27 +562,55 @@ function Main({ onLogout }) {
                             {isLoggingOut ? "Logging out..." : "Yes, log me out"}
                         </button>
                     )}
-
-                    {sidebarOpen && (
-                        <div className="storage-box">
-                            <div className="storage-bar">
-                                <div />
-                            </div>
-                            <p>28.4 GB of 100 GB used</p>
-                            <button type="button">Upgrade plan</button>
-                        </div>
-                    )}
                 </div>
             </aside>
 
             <section className="drive-main">
                 <header className="drive-header">
-                    <div className="breadcrumbs">
-                        <span>Workspace</span>
-                        <span>/</span>
-                        <span>Projects</span>
-                        <span>/</span>
-                        <strong>Brand Refresh</strong>
+                    <div className="header-location">
+                        {(path.length > 1 || forwardStack.length > 0) && (
+                            <div className="history-controls">
+                                {path.length > 1 && (
+                                    <button
+                                        className="history-button"
+                                        type="button"
+                                        onClick={goBack}
+                                        disabled={loading}
+                                        title="Go back"
+                                    >
+                                        <Icons.ArrowLeft className="history-icon" />
+                                    </button>
+                                )}
+
+                                {forwardStack.length > 0 && (
+                                    <button
+                                        className="history-button"
+                                        type="button"
+                                        onClick={goForward}
+                                        disabled={loading}
+                                        title="Go forward"
+                                    >
+                                        <Icons.ArrowRight className="history-icon" />
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="breadcrumbs">
+                            {path.map((part, index) => (
+                                <span key={`${part.id}-${index}`} className="breadcrumb-part">
+                                    {index > 0 && <span className="breadcrumb-slash">/</span>}
+
+                                    <button
+                                        type="button"
+                                        onClick={() => goToPathIndex(index)}
+                                        className={index === path.length - 1 ? "current" : ""}
+                                    >
+                                        {part.name}
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
                     </div>
 
                     <button className="invite-button" type="button">
@@ -509,11 +621,13 @@ function Main({ onLogout }) {
                 <div className="toolbar">
                     <div className="search-box">
                         <Icons.Search className="search-icon" />
+
                         <input
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
                             placeholder="Search files"
                         />
+
                         <kbd>⌘ K</kbd>
                     </div>
 
@@ -551,37 +665,60 @@ function Main({ onLogout }) {
                                 <div>Size</div>
                             </div>
 
-                            {visibleFiles.map((item) => (
-                                <FileRow
-                                    key={item.id}
-                                    item={item}
-                                    selected={selectedIds.includes(item.id)}
-                                    onSelect={(event) => handleFileSelect(event, item.id)}
-                                />
-                            ))}
+                            {loading && (
+                                <div className="empty-state">Loading files...</div>
+                            )}
 
-                            {visibleFiles.length === 0 && (
-                                <div className="empty-state">No files match this view.</div>
+                            {!loading && error && (
+                                <div className="empty-state">{error}</div>
+                            )}
+
+                            {!loading &&
+                                !error &&
+                                visibleFiles.map((item) => (
+                                    <FileRow
+                                        key={item.id}
+                                        item={item}
+                                        selected={selectedIds.includes(item.id)}
+                                        onSelect={(event) =>
+                                            handleFileSelect(event, item.id)
+                                        }
+                                        onOpen={() => {
+                                            if (item.type === "folder") {
+                                                openFolder(item.folder);
+                                            } else {
+                                                openFile(item);
+                                            }
+                                        }}
+                                    />
+                                ))}
+
+                            {!loading && !error && visibleFiles.length === 0 && (
+                                <div className="empty-state">This folder is empty.</div>
                             )}
                         </div>
 
                         <p className="item-count">
                             {visibleFiles.length} items
-                            {selectedIds.length > 0 && ` · ${selectedIds.length} selected`}
+                            {selectedIds.length > 0 &&
+                                ` · ${selectedIds.length} selected`}
                         </p>
                     </section>
                 </div>
             </section>
+
+            {viewer && <FileViewer viewer={viewer} onClose={closeViewer} />}
         </main>
     );
 }
 
-function FileRow({ item, selected, onSelect }) {
+function FileRow({ item, selected, onSelect, onOpen }) {
     const FileIcon = getFileIcon(item.type);
 
     return (
         <button
             onClick={onSelect}
+            onDoubleClick={onOpen}
             className={`file-row ${selected ? "selected" : ""}`}
             type="button"
         >
@@ -606,14 +743,12 @@ function FileRow({ item, selected, onSelect }) {
             </div>
 
             <div className="tags-cell">
-                {item.tags.slice(0, 2).map((tag) => (
-                    <TagPill key={tag} tag={tag} />
-                ))}
+                <TagPill tag={item.tag} />
             </div>
 
             <div>
                 {item.lastEdited}
-                <small>{item.time}</small>
+                {item.time && <small>{item.time}</small>}
             </div>
 
             <div className="size-cell">
@@ -621,6 +756,87 @@ function FileRow({ item, selected, onSelect }) {
                 <Icons.More className="row-more-icon" />
             </div>
         </button>
+    );
+}
+
+function FileViewer({ viewer, onClose }) {
+    const { item, url, loading, error } = viewer;
+    const type = item.type || "";
+    const isPdf = type === "application/pdf";
+    const isImage = type.startsWith("image/");
+    const isVideo = type.startsWith("video/");
+    const isAudio = type.startsWith("audio/");
+    const canPreview = isPdf || isImage || isVideo || isAudio;
+
+    return (
+        <div className="file-viewer-backdrop" onClick={onClose}>
+            <section
+                className="file-viewer"
+                onClick={(event) => event.stopPropagation()}
+            >
+                <header className="file-viewer-header">
+                    <div>
+                        <h2>{item.name}</h2>
+                        <p>
+                            {getTypeLabel(item.type)} · {item.size}
+                        </p>
+                    </div>
+
+                    <div className="file-viewer-actions">
+                        {url && (
+                            <a
+                                href={url}
+                                download={item.name}
+                                className="file-viewer-download"
+                            >
+                                Download
+                            </a>
+                        )}
+
+                        <button type="button" onClick={onClose}>
+                            ×
+                        </button>
+                    </div>
+                </header>
+
+                <div className="file-viewer-body">
+                    {loading && <div className="viewer-message">Opening file...</div>}
+
+                    {!loading && error && (
+                        <div className="viewer-message viewer-error">{error}</div>
+                    )}
+
+                    {!loading && !error && url && isPdf && (
+                        <iframe
+                            title={item.name}
+                            src={url}
+                            className="viewer-frame"
+                        />
+                    )}
+
+                    {!loading && !error && url && isImage && (
+                        <img src={url} alt={item.name} className="viewer-image" />
+                    )}
+
+                    {!loading && !error && url && isVideo && (
+                        <video src={url} controls className="viewer-video" />
+                    )}
+
+                    {!loading && !error && url && isAudio && (
+                        <audio src={url} controls className="viewer-audio" />
+                    )}
+
+                    {!loading && !error && url && !canPreview && (
+                        <div className="viewer-message">
+                            <p>This file type cannot be previewed here.</p>
+                            <a href={url} download={item.name}>
+                                Download {item.name}
+                            </a>
+                        </div>
+                    )}
+                </div>
+            </section>
+        </div>
     );
 }
 

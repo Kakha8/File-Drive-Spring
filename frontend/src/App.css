@@ -1152,3 +1152,264 @@ body {
 .item-count {
   user-select: none;
 }
+
+/* =========================
+   FILE VIEWER MODAL
+   ========================= */
+
+.file-viewer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+}
+
+.file-viewer {
+  width: min(1120px, 100%);
+  height: min(760px, 100%);
+  background: #191919;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.45);
+}
+
+.file-viewer-header {
+  height: 72px;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.file-viewer-header h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 17px;
+}
+
+.file-viewer-header p {
+  margin: 4px 0 0;
+  color: #929292;
+  font-size: 13px;
+}
+
+.file-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.file-viewer-actions button,
+.file-viewer-download {
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: #252525;
+  color: #ededed;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.file-viewer-actions button {
+  width: 38px;
+  padding: 0;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.file-viewer-actions button:hover,
+.file-viewer-download:hover {
+  background: #303030;
+}
+
+.file-viewer-body {
+  flex: 1;
+  min-height: 0;
+  background: #101010;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+
+.viewer-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #ffffff;
+}
+
+.viewer-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.viewer-video {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.viewer-audio {
+  width: min(620px, 90%);
+}
+
+.viewer-message {
+  color: #cfcfcf;
+  text-align: center;
+  padding: 24px;
+}
+
+.viewer-message a {
+  color: #ffffff;
+  display: inline-block;
+  margin-top: 12px;
+}
+
+.viewer-error {
+  color: #ffd0d0;
+}
+
+/* Back button */
+.header-location {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.back-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: #242424;
+  color: #d0d0d0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 18px;
+}
+
+.back-button:hover:not(:disabled) {
+  background: #2d2d2d;
+  color: #ffffff;
+}
+
+.back-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.breadcrumbs {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Sleek breadcrumb + back/forward controls */
+.header-location {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.history-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.history-button {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: #a8a8a8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.history-button:hover:not(:disabled) {
+  background: #252525;
+  color: #ffffff;
+}
+
+.history-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+.breadcrumb-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.breadcrumb-slash {
+  color: #555;
+  user-select: none;
+}
+
+.breadcrumbs button {
+  border: none;
+  background: transparent;
+  color: #8e8e8e;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 0;
+  line-height: 1;
+  box-shadow: none;
+  outline: none;
+}
+
+.breadcrumbs button:hover {
+  color: #ffffff;
+  background: transparent;
+}
+
+.breadcrumbs button.current {
+  color: #ffffff;
+  font-weight: 700;
+  background: transparent;
+}
+
+/* remove old back button styling if still present */
+.back-button {
+  display: none;
+}

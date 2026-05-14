@@ -39,4 +39,6 @@ public interface FolderRepository extends JpaRepository<Folders, Long> {
     Optional<Folders> findByIdAndOwnerAndDeletedFalse(Long id, User owner);
 
     List<Folders> findFoldersByParent_IdAndOwnerAndDeletedFalse(Long parentId, User owner);
+
+    Optional<Folders> findByPrefixAndDeletedFalse(String rootPrefix);
 }

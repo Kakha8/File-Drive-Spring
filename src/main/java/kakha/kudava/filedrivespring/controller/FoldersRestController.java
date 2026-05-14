@@ -11,6 +11,7 @@ import kakha.kudava.filedrivespring.services.objects.FolderService;
 import kakha.kudava.filedrivespring.services.RenameService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
@@ -53,6 +54,10 @@ public class FoldersRestController {
         return ResponseEntity.ok(dto);
     }
 
+    @GetMapping("/root")
+    public ResponseEntity<FolderViewDTO> getRoot(Authentication authentication) {
+        return ResponseEntity.ok(folderService.viewCurrentUserRoot(authentication.getName()));
+    }
 
     @PostMapping
     public ResponseEntity<Map<String, String>> create(@RequestBody FolderCreateRequest req)
