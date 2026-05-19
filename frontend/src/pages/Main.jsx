@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { logout as apiLogout } from "../api/auth";
-import { getFileBlob, getFolder, getRootFolder } from "../api/drive";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { logout as apiLogout, refresh } from "../api/auth";
+import {
+    createFolder,
+    getFileBlob,
+    getFolder,
+    getRootFolder,
+    uploadFile,
+} from "../api/drive";
 
 function Icon({ children, className = "" }) {
     return (
@@ -252,27 +258,58 @@ function Main({ onLogout }) {
     const [confirmLogout, setConfirmLogout] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
 
+    const [newMenuOpen, setNewMenuOpen] = useState(false);
+    const [newFolderDraft, setNewFolderDraft] = useState(null);
+    const [creatingFolder, setCreatingFolder] = useState(false);
+    const newFolderInputRef = useRef(null);
+    const draftHandledRef = useRef(false);
+
+    const fileInputRef = useRef(null);
+    const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [uploadName, setUploadName] = useState("");
+
     useEffect(() => {
+        let cancelled = false;
+
         async function loadRoot() {
             try {
                 setLoading(true);
                 setError("");
 
+                await refresh();
+
+                if (cancelled) return;
+
                 const root = await getRootFolder();
+
+                if (cancelled) return;
 
                 setCurrentFolder(root);
                 setPath([{ id: root.id, name: root.name || "My Drive" }]);
                 setForwardStack([]);
                 setSelectedIds([]);
             } catch (err) {
+                if (cancelled) return;
+
                 setError(err.message || "Failed to load folder");
+
+                if (onLogout) {
+                    onLogout();
+                }
             } finally {
-                setLoading(false);
+                if (!cancelled) {
+                    setLoading(false);
+                }
             }
         }
 
         loadRoot();
-    }, []);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [onLogout]);
 
     useEffect(() => {
         return () => {
@@ -281,6 +318,13 @@ function Main({ onLogout }) {
             }
         };
     }, [viewer]);
+
+    useEffect(() => {
+        if (newFolderDraft && newFolderInputRef.current) {
+            newFolderInputRef.current.focus();
+            newFolderInputRef.current.select();
+        }
+    }, [newFolderDraft]);
 
     async function handleLogout() {
         if (!confirmLogout) {
@@ -300,6 +344,102 @@ function Main({ onLogout }) {
         }
     }
 
+    async function reloadCurrentFolder() {
+        if (!currentFolder?.id) return;
+
+        const folder =
+            path.length <= 1 ? await getRootFolder() : await getFolder(currentFolder.id);
+
+        setCurrentFolder(folder);
+        setSelectedIds([]);
+    }
+
+    function openUploadPicker() {
+        if (!currentFolder?.id || uploading) return;
+        fileInputRef.current?.click();
+    }
+
+    async function handleUploadSelected(event) {
+        const file = event.target.files?.[0];
+
+        if (!file || !currentFolder?.id) return;
+
+        try {
+            setUploading(true);
+            setUploadProgress(0);
+            setUploadName(file.name);
+            setError("");
+
+            await uploadFile(currentFolder.id, file, (percent) => {
+                setUploadProgress(percent);
+            });
+
+            await reloadCurrentFolder();
+        } catch (err) {
+            setError(err.message || "Failed to upload file");
+        } finally {
+            setUploading(false);
+            setUploadProgress(0);
+            setUploadName("");
+            event.target.value = "";
+        }
+    }
+
+    function startCreateFolder() {
+        if (!currentFolder?.id || creatingFolder) return;
+
+        const draftId = `draft-folder-${Date.now()}`;
+        draftHandledRef.current = false;
+
+        setNewMenuOpen(false);
+        setError("");
+        setNewFolderDraft({
+            id: draftId,
+            name: "New folder",
+        });
+        setSelectedIds([draftId]);
+    }
+
+    function cancelCreateFolder() {
+        if (draftHandledRef.current) return;
+
+        draftHandledRef.current = true;
+        setNewFolderDraft(null);
+        setSelectedIds([]);
+    }
+
+    async function commitNewFolderName(name) {
+        if (draftHandledRef.current) return;
+
+        draftHandledRef.current = true;
+
+        const cleanName = name.trim();
+
+        if (!cleanName) {
+            setNewFolderDraft(null);
+            setSelectedIds([]);
+            return;
+        }
+
+        try {
+            setCreatingFolder(true);
+            setLoading(true);
+            setError("");
+
+            await createFolder(currentFolder.id, cleanName);
+            setNewFolderDraft(null);
+            setSelectedIds([]);
+            await reloadCurrentFolder();
+        } catch (err) {
+            setError(err.message || "Failed to create folder");
+            setNewFolderDraft(null);
+            setSelectedIds([]);
+        } finally {
+            setCreatingFolder(false);
+            setLoading(false);
+        }
+    }
+
     async function openFolder(folder) {
         if (!folder?.id) return;
 
@@ -316,6 +456,7 @@ function Main({ onLogout }) {
             ]);
             setForwardStack([]);
             setSelectedIds([]);
+            setNewFolderDraft(null);
         } catch (err) {
             setError(err.message || "Failed to open folder");
         } finally {
@@ -381,6 +522,7 @@ function Main({ onLogout }) {
             setPath((current) => current.slice(0, index + 1));
             setForwardStack([]);
             setSelectedIds([]);
+            setNewFolderDraft(null);
         } catch (err) {
             setError(err.message || "Failed to open folder");
         } finally {
@@ -406,6 +548,7 @@ function Main({ onLogout }) {
             setPath((current) => current.slice(0, targetIndex + 1));
             setForwardStack((current) => [currentLocation, ...current]);
             setSelectedIds([]);
+            setNewFolderDraft(null);
         } catch (err) {
             setError(err.message || "Failed to go back");
         } finally {
@@ -428,6 +571,7 @@ function Main({ onLogout }) {
             setPath((current) => [...current, nextLocation]);
             setForwardStack((current) => current.slice(1));
             setSelectedIds([]);
+            setNewFolderDraft(null);
         } catch (err) {
             setError(err.message || "Failed to go forward");
         } finally {
@@ -452,8 +596,30 @@ function Main({ onLogout }) {
     }
 
     const allItems = useMemo(() => {
-        return normalizeFolderItems(currentFolder);
-    }, [currentFolder]);
+        const items = normalizeFolderItems(currentFolder);
+
+        if (!newFolderDraft) {
+            return items;
+        }
+
+        return [
+            {
+                id: newFolderDraft.id,
+                rawId: null,
+                name: newFolderDraft.name,
+                type: "folder",
+                owner: currentFolder?.name || "You",
+                ownerInitials: "ME",
+                tag: "Folder",
+                lastEdited: "—",
+                time: "",
+                size: "—",
+                folder: null,
+                isDraft: true,
+            },
+            ...items,
+        ];
+    }, [currentFolder, newFolderDraft]);
 
     const visibleFiles = useMemo(() => {
         return allItems.filter((item) =>
@@ -642,17 +808,67 @@ function Main({ onLogout }) {
                             Sort
                         </button>
 
-                        <button className="primary-action" type="button">
-                            <Icons.Plus className="button-icon" />
-                            New
+                        <div className="new-menu-wrap">
+                            <button
+                                className="primary-action"
+                                type="button"
+                                onClick={() => setNewMenuOpen((open) => !open)}
+                            >
+                                <Icons.Plus className="button-icon" />
+                                New
+                            </button>
+
+                            {newMenuOpen && (
+                                <div className="new-menu">
+                                    <button type="button" onClick={startCreateFolder}>
+                                        <Icons.Folder className="button-icon" />
+                                        Folder
+                                    </button>
+
+                                    <button type="button">
+                                        <Icons.File className="button-icon" />
+                                        Text
+                                    </button>
+
+                                    <button type="button">
+                                        <Icons.File className="button-icon" />
+                                        Docx
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        <button
+                            className="primary-action"
+                            type="button"
+                            onClick={openUploadPicker}
+                            disabled={uploading}
+                        >
+                            <Icons.Upload className="button-icon" />
+                            {uploading ? `${uploadProgress}%` : "Upload"}
                         </button>
 
-                        <button className="primary-action" type="button">
-                            <Icons.Upload className="button-icon" />
-                            Upload
-                        </button>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            className="hidden-file-input"
+                            onChange={handleUploadSelected}
+                        />
                     </div>
                 </div>
+
+                {uploading && (
+                    <div className="upload-progress-wrap">
+                        <div className="upload-progress-info">
+                            <span>Uploading {uploadName}</span>
+                            <span>{uploadProgress}%</span>
+                        </div>
+
+                        <div className="upload-progress-bar">
+                            <div style={{ width: `${uploadProgress}%` }} />
+                        </div>
+                    </div>
+                )}
 
                 <div className="content-layout">
                     <section className="file-table-wrap">
@@ -665,7 +881,7 @@ function Main({ onLogout }) {
                                 <div>Size</div>
                             </div>
 
-                            {loading && (
+                            {loading && !newFolderDraft && !uploading && (
                                 <div className="empty-state">Loading files...</div>
                             )}
 
@@ -673,17 +889,23 @@ function Main({ onLogout }) {
                                 <div className="empty-state">{error}</div>
                             )}
 
-                            {!loading &&
-                                !error &&
+                            {!error &&
                                 visibleFiles.map((item) => (
                                     <FileRow
                                         key={item.id}
                                         item={item}
                                         selected={selectedIds.includes(item.id)}
+                                        isDraft={item.isDraft}
+                                        draftInputRef={newFolderInputRef}
+                                        creatingFolder={creatingFolder}
+                                        onDraftCommit={commitNewFolderName}
+                                        onDraftCancel={cancelCreateFolder}
                                         onSelect={(event) =>
                                             handleFileSelect(event, item.id)
                                         }
                                         onOpen={() => {
+                                            if (item.isDraft) return;
+
                                             if (item.type === "folder") {
                                                 openFolder(item.folder);
                                             } else {
@@ -712,7 +934,17 @@ function Main({ onLogout }) {
     );
 }
 
-function FileRow({ item, selected, onSelect, onOpen }) {
+function FileRow({
+                     item,
+                     selected,
+                     onSelect,
+                     onOpen,
+                     isDraft,
+                     draftInputRef,
+                     onDraftCommit,
+                     onDraftCancel,
+                     creatingFolder,
+                 }) {
     const FileIcon = getFileIcon(item.type);
 
     return (
@@ -732,8 +964,32 @@ function FileRow({ item, selected, onSelect, onOpen }) {
                 </span>
 
                 <span>
-                    <strong>{item.name}</strong>
-                    <small>{getTypeLabel(item.type)}</small>
+                    {isDraft ? (
+                        <input
+                            ref={draftInputRef}
+                            className="new-folder-name-input"
+                            defaultValue={item.name}
+                            disabled={creatingFolder}
+                            onClick={(event) => event.stopPropagation()}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                            onBlur={(event) => onDraftCommit(event.target.value)}
+                            onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    onDraftCommit(event.currentTarget.value);
+                                }
+
+                                if (event.key === "Escape") {
+                                    event.preventDefault();
+                                    onDraftCancel();
+                                }
+                            }}
+                        />
+                    ) : (
+                        <strong>{item.name}</strong>
+                    )}
+
+                    <small>{isDraft ? "Folder" : getTypeLabel(item.type)}</small>
                 </span>
             </div>
 

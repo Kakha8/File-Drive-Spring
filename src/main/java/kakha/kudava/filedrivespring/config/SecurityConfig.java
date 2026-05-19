@@ -9,7 +9,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -31,52 +33,40 @@ public class SecurityConfig {
     private String ADMIN_PASSWORD;
 
     @Bean
-    public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http,
-                                                      JwtService jwtService,
-                                                      DbUserDetailsService userDetailService) throws Exception {
-       // http.csrf(csrf -> csrf.disable());
-
+    public SecurityFilterChain apiSecurityFilterChain(
+            HttpSecurity http,
+            JwtService jwtService,
+            DbUserDetailsService userDetailService
+    ) throws Exception {
         http
-                .cors(cors -> {})
-                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**", "/h2-console/**"))
+                .cors(Customizer.withDefaults())
+                .csrf(csrf -> csrf.disable())
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
-                .securityContext(sc -> sc
-                        .securityContextRepository(new HttpSessionSecurityContextRepository())
-                )
-                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**", "/h2-console/**"))
-                .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
-
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-
-
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        .requestMatchers("/h2-console/**").permitAll() // temporary. gonna change it to admin
+                        .requestMatchers("/h2-console/**").permitAll()
 
-                .requestMatchers("/api/auth/login").permitAll()
-                .requestMatchers("/api/auth/logout").permitAll()
+                        .requestMatchers("/api/auth/login").permitAll()
+                        .requestMatchers("/api/auth/logout").permitAll()
                         .requestMatchers("/api/auth/me").permitAll()
                         .requestMatchers("/api/auth/refresh").permitAll()
 
-                .requestMatchers("/api/files").hasAnyRole("USER", "ADMIN")
+                        .requestMatchers("/api/files", "/api/files/**").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/api/folders/**").hasAnyRole("USER", "ADMIN")
-
                         .requestMatchers("/api/quarantine/**").hasRole("ADMIN")
 
-                .anyRequest().authenticated()
+                        .anyRequest().authenticated()
+                );
+
+        http.addFilterBefore(
+                new JwtFilter(jwtService, userDetailService),
+                UsernamePasswordAuthenticationFilter.class
         );
 
-        http.addFilterBefore(new JwtFilter(jwtService, userDetailService),
-                UsernamePasswordAuthenticationFilter.class);
-
-/*        http.logout(logout -> logout
-                .logoutUrl("/api/auth/logout")
-                .invalidateHttpSession(true)
-                .deleteCookies("JSESSIONID")
-        );*/
         return http.build();
     }
-
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
@@ -84,10 +74,11 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of("http://localhost:5173"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        config.setExposedHeaders(List.of("Authorization"));
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/api/**", config);
+        source.registerCorsConfiguration("/**", config);
 
         return source;
     }
