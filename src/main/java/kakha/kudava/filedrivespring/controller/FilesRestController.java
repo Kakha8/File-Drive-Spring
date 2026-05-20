@@ -35,8 +35,10 @@ public class FilesRestController {
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<FileMetaDataDTO> upload(@RequestParam("file") MultipartFile file,
-                                                  @RequestParam("parentId") Long parentId) throws Exception {
+    public ResponseEntity<FileMetaDataDTO> upload(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "parentId", required = false) Long parentId
+    ) throws Exception {
         FileMetaDataDTO dto = fileService.upload(file, parentId);
         return ResponseEntity.status(201).body(dto);
     }

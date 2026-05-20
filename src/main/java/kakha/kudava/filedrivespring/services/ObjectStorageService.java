@@ -18,6 +18,7 @@ import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.repository.QuarantinedFilesRepository;
 import kakha.kudava.filedrivespring.repository.UserRepository;
+import kakha.kudava.filedrivespring.services.objects.RootFolderService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -55,13 +56,14 @@ public class ObjectStorageService {
     private final String quarantineBucket;
     private final UserRepository userRepository;
     private final QuarantineService quarantineService;
+    private final RootFolderService rootFolderService;
 
 
     public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
                                 FolderRepository folderRepository,
                                 LogsService logsService, ObjectMapper objectMapper, ClamAvScannerService clamAvScannerService,
                                 QuarantinedFilesRepository quarantinedFilesRepository, @Value("${s3.quarantine-bucket}") String quarantineBucket,
-                                UserRepository userRepository, QuarantineService quarantineService) {
+                                UserRepository userRepository, QuarantineService quarantineService, RootFolderService rootFolderService) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
@@ -73,14 +75,25 @@ public class ObjectStorageService {
         this.quarantineBucket = quarantineBucket;
         this.userRepository = userRepository;
         this.quarantineService = quarantineService;
+        this.rootFolderService = rootFolderService;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId) throws Exception {
         MessageDigest md = MessageDigest.getInstance("SHA-256");
 
-        Folders folder = folderRepository.findById(parentId)
-                .orElseThrow(() -> new RuntimeException("Folder not found: " + parentId));
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 
+        User user = userRepository.findByUsername(auth.getName())
+                .orElseThrow(() -> new RuntimeException("Authenticated user not found: " + auth.getName()));
+
+        Folders folder;
+
+        if (parentId == null) {
+            folder = rootFolderService.ensureRootFolder(user);
+        } else {
+            folder = folderRepository.findByIdAndOwnerAndDeletedFalse(parentId, user)
+                    .orElseThrow(() -> new RuntimeException("Folder not found or not owned by user: " + parentId));
+        }
         String safeName = file.getOriginalFilename() == null ? "file" : file.getOriginalFilename();
 
         String prefix = folder.getPrefix();
@@ -109,9 +122,6 @@ public class ObjectStorageService {
                     );
                 }
 
-                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-                User user = userRepository.findByUsername(auth.getName())
-                        .orElseThrow(() -> new RuntimeException("Authenticated user not found: " + auth.getName()));
 
                 QuarantinedFiles quarantinedFile = new QuarantinedFiles();
                 quarantinedFile.setOriginalFilename(safeName);
@@ -122,7 +132,7 @@ public class ObjectStorageService {
                 quarantinedFile.setSize(Files.size(tempFile));
                 quarantinedFile.setChecksum(sha256(tempFile));
                 quarantinedFile.setClamAvResponse(scanResult.response());
-                quarantinedFile.setParentFolderId(parentId);
+                quarantinedFile.setParentFolderId(folder.getId());
                 quarantinedFile.setUser(user);
 
                 quarantineService.save(quarantinedFile);
@@ -138,7 +148,7 @@ public class ObjectStorageService {
 
                 String detailsJson = objectMapper.writeValueAsString(details);
 
-                logsService.malwareUploadLog(safeName, parentId, "FILE", detailsJson);
+                logsService.malwareUploadLog(safeName, folder.getId(), "FILE", detailsJson);
 
                 log.warn(
                         "Blocked infected upload and moved to quarantine: fileName={}, quarantineBucket={}, quarantineKey={}, response={}",
@@ -176,7 +186,7 @@ public class ObjectStorageService {
                 entity.setParent(folder);
 
                 log.info("File uploaded successfully {}", objectKey);
-                logsService.uploadLog(file.getOriginalFilename(), parentId, "FILE");
+                logsService.uploadLog(safeName, folder.getId(), "FILE");
 
                 return fileMetaDataRepository.save(entity);
             }

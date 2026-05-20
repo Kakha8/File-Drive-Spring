@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.config;
 
 import kakha.kudava.filedrivespring.repository.UserRepository;
+import kakha.kudava.filedrivespring.services.objects.RootFolderService;
 import kakha.kudava.filedrivespring.services.users.DbUserDetailsService;
 import kakha.kudava.filedrivespring.services.jwt.JwtFilter;
 import kakha.kudava.filedrivespring.services.jwt.JwtService;
@@ -8,7 +9,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -17,6 +20,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.List;
 
 @Configuration
 public class SecurityConfig {
@@ -25,51 +33,59 @@ public class SecurityConfig {
     private String ADMIN_PASSWORD;
 
     @Bean
-    public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http,
-                                                      JwtService jwtService,
-                                                      DbUserDetailsService userDetailService) throws Exception {
-        http.csrf(csrf -> csrf.disable());
-
+    public SecurityFilterChain apiSecurityFilterChain(
+            HttpSecurity http,
+            JwtService jwtService,
+            DbUserDetailsService userDetailService
+    ) throws Exception {
         http
-                .securityContext(sc -> sc
-                        .securityContextRepository(new HttpSessionSecurityContextRepository())
-                )
-                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**", "/h2-console/**"))
+                .cors(Customizer.withDefaults())
+                .csrf(csrf -> csrf.disable())
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
-
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-
-
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        .requestMatchers("/h2-console/**").permitAll() // temporary. gonna change it to admin
+                        .requestMatchers("/h2-console/**").permitAll()
 
-                .requestMatchers("/api/auth/login").permitAll()
-                .requestMatchers("/api/auth/logout").permitAll()
+                        .requestMatchers("/api/auth/login").permitAll()
+                        .requestMatchers("/api/auth/logout").permitAll()
                         .requestMatchers("/api/auth/me").permitAll()
                         .requestMatchers("/api/auth/refresh").permitAll()
 
-                .requestMatchers("/api/files").hasAnyRole("USER", "ADMIN")
+                        .requestMatchers("/api/files", "/api/files/**").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/api/folders/**").hasAnyRole("USER", "ADMIN")
-
                         .requestMatchers("/api/quarantine/**").hasRole("ADMIN")
 
-                .anyRequest().authenticated()
+                        .anyRequest().authenticated()
+                );
+
+        http.addFilterBefore(
+                new JwtFilter(jwtService, userDetailService),
+                UsernamePasswordAuthenticationFilter.class
         );
 
-        http.addFilterBefore(new JwtFilter(jwtService, userDetailService),
-                UsernamePasswordAuthenticationFilter.class);
-
-/*        http.logout(logout -> logout
-                .logoutUrl("/api/auth/logout")
-                .invalidateHttpSession(true)
-                .deleteCookies("JSESSIONID")
-        );*/
         return http.build();
+    }
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+
+        config.setAllowedOrigins(List.of("http://localhost:5173"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        config.setExposedHeaders(List.of("Authorization"));
+        config.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+
+        return source;
     }
 
     @Bean
-    CommandLineRunner createAdmin(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    CommandLineRunner createAdmin(UserRepository userRepository, PasswordEncoder passwordEncoder,
+                                  RootFolderService rootFolderService) {
         return args -> {
             if (userRepository.findByUsername("admin").isEmpty()) {
                 kakha.kudava.filedrivespring.model.User admin = new kakha.kudava.filedrivespring.model.User();
@@ -77,6 +93,7 @@ public class SecurityConfig {
                 admin.setPassword(passwordEncoder.encode(ADMIN_PASSWORD));
                 admin.setRole(kakha.kudava.filedrivespring.model.User.Role.ADMIN);
                 userRepository.save(admin);
+                rootFolderService.ensureRootFolder(admin);
             }
         };
     }

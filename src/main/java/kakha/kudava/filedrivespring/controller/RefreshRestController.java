@@ -88,7 +88,6 @@ public class RefreshRestController {
     }
 
     private void setRefreshCookie(HttpServletResponse response, String token, int days) {
-        // Prefer Set-Cookie header to include SameSite reliably
         int maxAge = (int) Duration.ofDays(days).getSeconds();
 
         log.info("Setting refresh cookie days={}, maxAgeSeconds={}", days, maxAge);
@@ -96,13 +95,19 @@ public class RefreshRestController {
         response.addHeader("Set-Cookie",
                 REFRESH_COOKIE + "=" + token
                         + "; Max-Age=" + maxAge
-                        + "; Path=/"
+                        + "; Path=/api/auth"
+                        + "; Secure"
                         + "; HttpOnly"
-                        + "; SameSite=Lax");
+                        + "; SameSite=None");
     }
 
     private void clearRefreshCookie(HttpServletResponse response) {
         response.addHeader("Set-Cookie",
-                REFRESH_COOKIE + "=; Max-Age=0; Path=/api/auth; Secure; HttpOnly; SameSite=None");
+                REFRESH_COOKIE
+                        + "=; Max-Age=0"
+                        + "; Path=/api/auth"
+                        + "; Secure"
+                        + "; HttpOnly"
+                        + "; SameSite=None");
     }
 }

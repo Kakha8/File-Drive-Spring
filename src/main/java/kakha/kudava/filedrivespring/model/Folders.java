@@ -31,4 +31,8 @@ public class Folders {
     @OneToMany(mappedBy = "parent")
     private List<Folders> children;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id")
+    private User owner;
+
 }

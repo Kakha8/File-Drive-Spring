@@ -8,6 +8,9 @@ import java.util.List;
 @Getter
 @Setter
 public class FolderViewDTO {
+    private Long id;
+    private String name;
+
     private List<FolderItemDTO> folders;
     private List<FileItemDTO> files;
 }
