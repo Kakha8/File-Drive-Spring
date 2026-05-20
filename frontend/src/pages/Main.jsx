@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { logout as apiLogout, refresh } from "../api/auth";
+import { logout as apiLogout } from "../api/auth";
 import {
     createFolder,
     getFileBlob,
@@ -130,6 +130,41 @@ const Icons = {
             <circle cx="12" cy="5" r="1" />
             <circle cx="12" cy="12" r="1" />
             <circle cx="12" cy="19" r="1" />
+        </Icon>
+    ),
+    Download: ({ className }) => (
+        <Icon className={className}>
+            <path d="M12 3v12" />
+            <path d="m7 10 5 5 5-5" />
+            <path d="M5 21h14" />
+        </Icon>
+    ),
+    Rename: ({ className }) => (
+        <Icon className={className}>
+            <path d="M4 20h16" />
+            <path d="m14.5 4.5 5 5" />
+            <path d="M13 6 5 14l-1 5 5-1 8-8" />
+        </Icon>
+    ),
+    Copy: ({ className }) => (
+        <Icon className={className}>
+            <rect x="8" y="8" width="12" height="12" rx="2" />
+            <path d="M4 16V6a2 2 0 0 1 2-2h10" />
+        </Icon>
+    ),
+    Cut: ({ className }) => (
+        <Icon className={className}>
+            <circle cx="6" cy="6" r="2" />
+            <circle cx="6" cy="18" r="2" />
+            <path d="M20 4 8 16" />
+            <path d="M8 8l12 12" />
+        </Icon>
+    ),
+    Properties: ({ className }) => (
+        <Icon className={className}>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 10v6" />
+            <path d="M12 7h.01" />
         </Icon>
     ),
     ArrowLeft: ({ className }) => (
@@ -268,6 +303,7 @@ function Main({ onLogout }) {
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [uploadName, setUploadName] = useState("");
+    const [openMenuId, setOpenMenuId] = useState(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -276,8 +312,6 @@ function Main({ onLogout }) {
             try {
                 setLoading(true);
                 setError("");
-
-                await refresh();
 
                 if (cancelled) return;
 
@@ -325,6 +359,18 @@ function Main({ onLogout }) {
             newFolderInputRef.current.select();
         }
     }, [newFolderDraft]);
+
+    useEffect(() => {
+        function closeMenus() {
+            setOpenMenuId(null);
+        }
+
+        window.addEventListener("click", closeMenus);
+
+        return () => {
+            window.removeEventListener("click", closeMenus);
+        };
+    }, []);
 
     async function handleLogout() {
         if (!confirmLogout) {
@@ -577,6 +623,54 @@ function Main({ onLogout }) {
         } finally {
             setLoading(false);
         }
+    }
+
+    async function handleDownload(item) {
+        if (!item?.file?.id) return;
+
+        try {
+            setError("");
+
+            const blob = await getFileBlob(item.file.id);
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = item.name || "download";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            setError(err.message || "Failed to download file");
+        }
+    }
+
+    function handleRename(item) {
+        setError(`Rename coming soon for ${item.name}`);
+    }
+
+    function handleCopy(item) {
+        setError(`Copy coming soon for ${item.name}`);
+    }
+
+    function handleCut(item) {
+        setError(`Cut coming soon for ${item.name}`);
+    }
+
+    function handleDelete(item) {
+        setError(`Delete coming soon for ${item.name}`);
+    }
+
+    function handleProperties(item) {
+        setViewer({
+            item,
+            url: "",
+            loading: false,
+            error: "",
+            propertiesOnly: true,
+        });
     }
 
     function handleFileSelect(event, itemId) {
@@ -879,6 +973,7 @@ function Main({ onLogout }) {
                                 <div>Tags</div>
                                 <div>Last edited</div>
                                 <div>Size</div>
+                                <div />
                             </div>
 
                             {loading && !newFolderDraft && !uploading && (
@@ -898,8 +993,16 @@ function Main({ onLogout }) {
                                         isDraft={item.isDraft}
                                         draftInputRef={newFolderInputRef}
                                         creatingFolder={creatingFolder}
+                                        openMenuId={openMenuId}
+                                        setOpenMenuId={setOpenMenuId}
                                         onDraftCommit={commitNewFolderName}
                                         onDraftCancel={cancelCreateFolder}
+                                        onDownload={handleDownload}
+                                        onRename={handleRename}
+                                        onCopy={handleCopy}
+                                        onCut={handleCut}
+                                        onDelete={handleDelete}
+                                        onProperties={handleProperties}
                                         onSelect={(event) =>
                                             handleFileSelect(event, item.id)
                                         }
@@ -944,8 +1047,28 @@ function FileRow({
                      onDraftCommit,
                      onDraftCancel,
                      creatingFolder,
+                     openMenuId,
+                     setOpenMenuId,
+                     onDownload,
+                     onRename,
+                     onCopy,
+                     onCut,
+                     onDelete,
+                     onProperties,
                  }) {
     const FileIcon = getFileIcon(item.type);
+    const menuOpen = openMenuId === item.id;
+
+    function handleMenuButtonClick(event) {
+        event.stopPropagation();
+        setOpenMenuId(menuOpen ? null : item.id);
+    }
+
+    function runAction(event, action) {
+        event.stopPropagation();
+        setOpenMenuId(null);
+        action?.(item);
+    }
 
     return (
         <button
@@ -1009,7 +1132,76 @@ function FileRow({
 
             <div className="size-cell">
                 <span>{item.size}</span>
-                <Icons.More className="row-more-icon" />
+            </div>
+
+            <div className="row-actions" onClick={(event) => event.stopPropagation()}>
+                {!isDraft && (
+                    <>
+                        <button
+                            className="row-more-button"
+                            type="button"
+                            onClick={handleMenuButtonClick}
+                            aria-label={`Open actions for ${item.name}`}
+                        >
+                            <Icons.More className="row-more-icon" />
+                        </button>
+
+                        {menuOpen && (
+                            <div className="row-action-menu">
+                                {item.type !== "folder" && (
+                                    <button
+                                        type="button"
+                                        onClick={(event) => runAction(event, onDownload)}
+                                    >
+                                        <Icons.Download className="menu-action-icon" />
+                                        Download
+                                    </button>
+                                )}
+
+                                <button
+                                    type="button"
+                                    onClick={(event) => runAction(event, onRename)}
+                                >
+                                    <Icons.Rename className="menu-action-icon" />
+                                    Rename
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={(event) => runAction(event, onCopy)}
+                                >
+                                    <Icons.Copy className="menu-action-icon" />
+                                    Copy
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={(event) => runAction(event, onCut)}
+                                >
+                                    <Icons.Cut className="menu-action-icon" />
+                                    Cut
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={(event) => runAction(event, onDelete)}
+                                    className="danger-menu-action"
+                                >
+                                    <Icons.Trash className="menu-action-icon" />
+                                    Delete
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={(event) => runAction(event, onProperties)}
+                                >
+                                    <Icons.Properties className="menu-action-icon" />
+                                    Properties
+                                </button>
+                            </div>
+                        )}
+                    </>
+                )}
             </div>
         </button>
     );
@@ -1023,6 +1215,40 @@ function FileViewer({ viewer, onClose }) {
     const isVideo = type.startsWith("video/");
     const isAudio = type.startsWith("audio/");
     const canPreview = isPdf || isImage || isVideo || isAudio;
+
+    if (viewer.propertiesOnly) {
+        return (
+            <div className="file-viewer-backdrop" onClick={onClose}>
+                <section
+                    className="file-viewer"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <header className="file-viewer-header">
+                        <div>
+                            <h2>{item.name}</h2>
+                            <p>Properties</p>
+                        </div>
+
+                        <div className="file-viewer-actions">
+                            <button type="button" onClick={onClose}>
+                                ×
+                            </button>
+                        </div>
+                    </header>
+
+                    <div className="file-viewer-body">
+                        <div className="viewer-message">
+                            <p><strong>Name:</strong> {item.name}</p>
+                            <p><strong>Type:</strong> {getTypeLabel(item.type)}</p>
+                            <p><strong>Owner:</strong> {item.owner}</p>
+                            <p><strong>Size:</strong> {item.size}</p>
+                            <p><strong>Last edited:</strong> {item.lastEdited}</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        );
+    }
 
     return (
         <div className="file-viewer-backdrop" onClick={onClose}>

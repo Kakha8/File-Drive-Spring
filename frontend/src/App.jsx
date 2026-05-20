@@ -1,46 +1,74 @@
 import { useEffect, useState } from "react";
 import { refresh } from "./api/auth";
-import { getAccessToken, subscribeAccessToken } from "./api/tokenStore";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login";
 import Main from "./pages/Main";
 import "./App.css";
 
 function App() {
-  const [checkingAuth, setCheckingAuth] = useState(true);
-  const [isAuthed, setIsAuthed] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
 
   useEffect(() => {
-    async function restoreSession() {
+    async function checkAuth() {
       try {
         await refresh();
-        setIsAuthed(Boolean(getAccessToken()));
+        setLoggedIn(true);
       } catch {
-        setIsAuthed(false);
+        setLoggedIn(false);
       } finally {
-        setCheckingAuth(false);
+        setAuthChecked(true);
       }
     }
 
-    restoreSession();
-
-    return subscribeAccessToken((token) => {
-      setIsAuthed(Boolean(token));
-    });
+    checkAuth();
   }, []);
 
-  if (checkingAuth) {
-    return (
-        <main className="page">
-          <p className="loading-text">Checking session...</p>
-        </main>
-    );
+  if (!authChecked) {
+    return <div>Loading...</div>;
   }
 
-  if (!isAuthed) {
-    return <Login onLogin={() => setIsAuthed(Boolean(getAccessToken()))} />;
-  }
+  return (
+      <BrowserRouter>
+        <Routes>
+          <Route
+              path="/login"
+              element={
+                loggedIn ? (
+                    <Navigate to="/main" replace />
+                ) : (
+                    <Login onLogin={() => setLoggedIn(true)} />
+                )
+              }
+          />
 
-  return <Main onLogout={() => setIsAuthed(false)} />;
+          <Route
+              path="/main"
+              element={
+                loggedIn ? (
+                    <Main onLogout={() => setLoggedIn(false)} />
+                ) : (
+                    <Navigate to="/login" replace />
+                )
+              }
+          />
+
+          <Route
+              path="/"
+              element={
+                <Navigate to={loggedIn ? "/main" : "/login"} replace />
+              }
+          />
+
+          <Route
+              path="*"
+              element={
+                <Navigate to={loggedIn ? "/main" : "/login"} replace />
+              }
+          />
+        </Routes>
+      </BrowserRouter>
+  );
 }
 
 export default App;
