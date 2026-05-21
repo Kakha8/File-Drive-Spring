@@ -132,3 +132,33 @@ export async function uploadFile(parentId, file, onProgress) {
         return uploadFileOnce(parentId, file, result.accessToken, onProgress);
     }
 }
+
+export async function renameFile(fileId, newName) {
+    const response = await apiFetch(`/api/files/${fileId}/rename`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ newName }),
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to rename file");
+    }
+}
+
+export async function renameFolder(folderId, newName) {
+    const response = await apiFetch(`/api/folders/${folderId}/rename`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ newName }),
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to rename folder");
+    }
+}

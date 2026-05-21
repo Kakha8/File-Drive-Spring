@@ -5,6 +5,8 @@ import {
     getFileBlob,
     getFolder,
     getRootFolder,
+    renameFile,
+    renameFolder,
     uploadFile,
 } from "../api/drive";
 
@@ -305,6 +307,9 @@ function Main({ onLogout }) {
     const [uploadName, setUploadName] = useState("");
     const [openMenuId, setOpenMenuId] = useState(null);
 
+    const [renamingItem, setRenamingItem] = useState(null);
+    const renameInputRef = useRef(null);
+
     useEffect(() => {
         let cancelled = false;
 
@@ -359,6 +364,13 @@ function Main({ onLogout }) {
             newFolderInputRef.current.select();
         }
     }, [newFolderDraft]);
+
+    useEffect(() => {
+        if (renamingItem && renameInputRef.current) {
+            renameInputRef.current.focus();
+            renameInputRef.current.select();
+        }
+    }, [renamingItem]);
 
     useEffect(() => {
         function closeMenus() {
@@ -648,7 +660,44 @@ function Main({ onLogout }) {
     }
 
     function handleRename(item) {
-        setError(`Rename coming soon for ${item.name}`);
+        setError("");
+        setOpenMenuId(null);
+        setSelectedIds([item.id]);
+        setRenamingItem({
+            id: item.id,
+            rawId: item.rawId,
+            type: item.type,
+            name: item.name,
+        });
+    }
+
+    function cancelRename() {
+        setRenamingItem(null);
+    }
+
+    async function commitRename(item, value) {
+        const cleanName = value.trim();
+
+        if (!cleanName || cleanName === item.name) {
+            setRenamingItem(null);
+            return;
+        }
+
+        try {
+            setError("");
+
+            if (item.type === "folder") {
+                await renameFolder(item.rawId, cleanName);
+            } else {
+                await renameFile(item.rawId, cleanName);
+            }
+
+            setRenamingItem(null);
+            await reloadCurrentFolder();
+        } catch (err) {
+            setError(err.message || "Failed to rename item");
+            setRenamingItem(null);
+        }
     }
 
     function handleCopy(item) {
@@ -995,6 +1044,10 @@ function Main({ onLogout }) {
                                         creatingFolder={creatingFolder}
                                         openMenuId={openMenuId}
                                         setOpenMenuId={setOpenMenuId}
+                                        renamingItem={renamingItem}
+                                        renameInputRef={renameInputRef}
+                                        onRenameCommit={commitRename}
+                                        onRenameCancel={cancelRename}
                                         onDraftCommit={commitNewFolderName}
                                         onDraftCancel={cancelCreateFolder}
                                         onDownload={handleDownload}
@@ -1007,7 +1060,7 @@ function Main({ onLogout }) {
                                             handleFileSelect(event, item.id)
                                         }
                                         onOpen={() => {
-                                            if (item.isDraft) return;
+                                            if (item.isDraft || renamingItem?.id === item.id) return;
 
                                             if (item.type === "folder") {
                                                 openFolder(item.folder);
@@ -1049,6 +1102,10 @@ function FileRow({
                      creatingFolder,
                      openMenuId,
                      setOpenMenuId,
+                     renamingItem,
+                     renameInputRef,
+                     onRenameCommit,
+                     onRenameCancel,
                      onDownload,
                      onRename,
                      onCopy,
@@ -1058,6 +1115,7 @@ function FileRow({
                  }) {
     const FileIcon = getFileIcon(item.type);
     const menuOpen = openMenuId === item.id;
+    const isRenaming = renamingItem?.id === item.id;
 
     function handleMenuButtonClick(event) {
         event.stopPropagation();
@@ -1072,8 +1130,14 @@ function FileRow({
 
     return (
         <button
-            onClick={onSelect}
-            onDoubleClick={onOpen}
+            onClick={(event) => {
+                if (isRenaming) return;
+                onSelect(event);
+            }}
+            onDoubleClick={() => {
+                if (isRenaming) return;
+                onOpen();
+            }}
             className={`file-row ${selected ? "selected" : ""}`}
             type="button"
         >
@@ -1105,6 +1169,26 @@ function FileRow({
                                 if (event.key === "Escape") {
                                     event.preventDefault();
                                     onDraftCancel();
+                                }
+                            }}
+                        />
+                    ) : isRenaming ? (
+                        <input
+                            ref={renameInputRef}
+                            className="new-folder-name-input"
+                            defaultValue={item.name}
+                            onClick={(event) => event.stopPropagation()}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                            onBlur={(event) => onRenameCommit(item, event.target.value)}
+                            onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    onRenameCommit(item, event.currentTarget.value);
+                                }
+
+                                if (event.key === "Escape") {
+                                    event.preventDefault();
+                                    onRenameCancel();
                                 }
                             }}
                         />
@@ -1238,11 +1322,21 @@ function FileViewer({ viewer, onClose }) {
 
                     <div className="file-viewer-body">
                         <div className="viewer-message">
-                            <p><strong>Name:</strong> {item.name}</p>
-                            <p><strong>Type:</strong> {getTypeLabel(item.type)}</p>
-                            <p><strong>Owner:</strong> {item.owner}</p>
-                            <p><strong>Size:</strong> {item.size}</p>
-                            <p><strong>Last edited:</strong> {item.lastEdited}</p>
+                            <p>
+                                <strong>Name:</strong> {item.name}
+                            </p>
+                            <p>
+                                <strong>Type:</strong> {getTypeLabel(item.type)}
+                            </p>
+                            <p>
+                                <strong>Owner:</strong> {item.owner}
+                            </p>
+                            <p>
+                                <strong>Size:</strong> {item.size}
+                            </p>
+                            <p>
+                                <strong>Last edited:</strong> {item.lastEdited}
+                            </p>
                         </div>
                     </div>
                 </section>
