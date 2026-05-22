@@ -3,18 +3,25 @@ package kakha.kudava.filedrivespring.controller;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.minio.errors.*;
 import kakha.kudava.filedrivespring.dto.*;
+import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
+import kakha.kudava.filedrivespring.records.FolderDownloadResult;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.services.MoveService;
 import kakha.kudava.filedrivespring.services.objects.FolderService;
 import kakha.kudava.filedrivespring.services.RenameService;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URLConnection;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
@@ -52,6 +59,19 @@ public class FoldersRestController {
         dto.setFolders(folders);
         dto.setFiles(files);
         return ResponseEntity.ok(dto);
+    }
+
+    @GetMapping("/{id}/download")
+    public ResponseEntity<InputStreamResource> download(@PathVariable Long id) throws Exception {
+        FolderDownloadResult result = folderService.downloadFolderAsZip(id);
+
+        return ResponseEntity.ok()
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + result.fileName() + "\""
+                )
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(new InputStreamResource(result.inputStream()));
     }
 
     @GetMapping("/root")

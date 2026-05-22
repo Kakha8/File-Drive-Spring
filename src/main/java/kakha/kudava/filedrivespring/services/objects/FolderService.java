@@ -8,6 +8,7 @@ import kakha.kudava.filedrivespring.dto.*;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.User;
+import kakha.kudava.filedrivespring.records.FolderDownloadResult;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.repository.UserRepository;
@@ -19,10 +20,14 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Slf4j
 @Service
@@ -206,5 +211,71 @@ public class FolderService {
         dto.setFiles(viewFiles(id));
 
         return dto;
+    }
+
+    public FolderDownloadResult downloadFolderAsZip(Long folderId) throws Exception {
+        Folders rootFolder = folderRepository.findById(folderId)
+                .orElseThrow(() -> new RuntimeException("Folder not found"));
+
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+
+        try (ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream)) {
+            String rootPath = sanitizeZipName(rootFolder.getName()) + "/";
+
+            addFolderToZip(rootFolder, rootPath, zipOutputStream);
+        }
+
+        String zipName = sanitizeZipName(rootFolder.getName()) + ".zip";
+
+        return new FolderDownloadResult(
+                zipName,
+                new ByteArrayInputStream(byteArrayOutputStream.toByteArray())
+        );
+    }
+
+    private void addFolderToZip(Folders folder, String currentPath, ZipOutputStream zipOutputStream) throws Exception {
+        ZipEntry folderEntry = new ZipEntry(currentPath);
+        zipOutputStream.putNextEntry(folderEntry);
+        zipOutputStream.closeEntry();
+
+        List<FileMetaData> files = fileMetaDataRepository.findByParentId(folder.getId());
+
+        for (FileMetaData file : files) {
+            String filePath = currentPath + sanitizeZipName(file.getFileName());
+
+            try (InputStream fileInputStream = objectStorageService.download(file.getId())) {
+                ZipEntry fileEntry = new ZipEntry(filePath);
+                zipOutputStream.putNextEntry(fileEntry);
+
+                fileInputStream.transferTo(zipOutputStream);
+
+                zipOutputStream.closeEntry();
+            }
+        }
+
+        List<Folders> childFolders = folderRepository.findByParentId(folder.getId());
+
+        for (Folders childFolder : childFolders) {
+            String childPath = currentPath + sanitizeZipName(childFolder.getName()) + "/";
+            addFolderToZip(childFolder, childPath, zipOutputStream);
+        }
+    }
+
+    private String sanitizeZipName(String name) {
+        if (name == null || name.isBlank()) {
+            return "untitled";
+        }
+
+        return name
+                .replace("\\", "_")
+                .replace("/", "_")
+                .replace(":", "_")
+                .replace("*", "_")
+                .replace("?", "_")
+                .replace("\"", "_")
+                .replace("<", "_")
+                .replace(">", "_")
+                .replace("|", "_")
+                .trim();
     }
 }

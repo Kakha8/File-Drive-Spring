@@ -36,6 +36,17 @@ export async function getFileBlob(fileId) {
     return response.blob();
 }
 
+export async function getFolderZipBlob(folderId) {
+    const response = await apiFetch(`/api/folders/${folderId}/download`);
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to download folder");
+    }
+
+    return response.blob();
+}
+
 export async function createFolder(parentId, name) {
     const response = await apiFetch("/api/folders", {
         method: "POST",

@@ -4,6 +4,7 @@ import {
     createFolder,
     getFileBlob,
     getFolder,
+    getFolderZipBlob,
     getRootFolder,
     renameFile,
     renameFolder,
@@ -537,7 +538,7 @@ function Main({ onLogout }) {
                 error: "",
             });
 
-            const blob = await getFileBlob(item.file.id);
+            const blob = await getFileBlob(item.rawId);
             const url = URL.createObjectURL(blob);
 
             setViewer({
@@ -638,24 +639,32 @@ function Main({ onLogout }) {
     }
 
     async function handleDownload(item) {
-        if (!item?.file?.id) return;
-
         try {
             setError("");
 
-            const blob = await getFileBlob(item.file.id);
+            let blob;
+            let downloadName;
+
+            if (item.type === "folder") {
+                blob = await getFolderZipBlob(item.rawId);
+                downloadName = `${item.name || "folder"}.zip`;
+            } else {
+                blob = await getFileBlob(item.rawId);
+                downloadName = item.name || "download";
+            }
+
             const url = URL.createObjectURL(blob);
 
             const link = document.createElement("a");
             link.href = url;
-            link.download = item.name || "download";
+            link.download = downloadName;
             document.body.appendChild(link);
             link.click();
             link.remove();
 
             URL.revokeObjectURL(url);
         } catch (err) {
-            setError(err.message || "Failed to download file");
+            setError(err.message || "Failed to download item");
         }
     }
 
@@ -1232,15 +1241,13 @@ function FileRow({
 
                         {menuOpen && (
                             <div className="row-action-menu">
-                                {item.type !== "folder" && (
-                                    <button
-                                        type="button"
-                                        onClick={(event) => runAction(event, onDownload)}
-                                    >
-                                        <Icons.Download className="menu-action-icon" />
-                                        Download
-                                    </button>
-                                )}
+                                <button
+                                    type="button"
+                                    onClick={(event) => runAction(event, onDownload)}
+                                >
+                                    <Icons.Download className="menu-action-icon" />
+                                    Download
+                                </button>
 
                                 <button
                                     type="button"

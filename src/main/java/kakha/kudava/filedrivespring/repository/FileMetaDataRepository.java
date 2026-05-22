@@ -33,4 +33,6 @@ public interface FileMetaDataRepository extends JpaRepository<FileMetaData, Long
     Optional<FileMetaData> findByObjectKey(String objectKey);
 
     List<FileMetaData> findAllByParentId(Long parentId);
+
+    List<FileMetaData> findByParentId(Long id);
 }
