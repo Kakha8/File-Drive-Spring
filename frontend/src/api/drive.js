@@ -68,6 +68,44 @@ export async function createFolder(parentId, name) {
     return text ? JSON.parse(text) : null;
 }
 
+export async function getFilesZipBlob(fileIds) {
+    const response = await apiFetch("/api/files/download-zip", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            fileIds,
+        }),
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to download selected files");
+    }
+
+    return response.blob();
+}
+
+export async function getMixedZipBlob(fileIds, folderIds) {
+    const response = await apiFetch("/api/download/zip", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            fileIds,
+            folderIds,
+        }),
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to download selected items");
+    }
+
+    return response.blob();
+}
 function uploadFileOnce(parentId, file, token, onProgress) {
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();

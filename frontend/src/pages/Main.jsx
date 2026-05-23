@@ -3,8 +3,10 @@ import { logout as apiLogout } from "../api/auth";
 import {
     createFolder,
     getFileBlob,
+    getFilesZipBlob,
     getFolder,
     getFolderZipBlob,
+    getMixedZipBlob,
     getRootFolder,
     renameFile,
     renameFolder,
@@ -642,32 +644,52 @@ function Main({ onLogout }) {
         try {
             setError("");
 
-            let blob;
-            let downloadName;
+            const selectedItems = allItems.filter((currentItem) =>
+                selectedIds.includes(currentItem.id)
+            );
 
-            if (item.type === "folder") {
-                blob = await getFolderZipBlob(item.rawId);
-                downloadName = `${item.name || "folder"}.zip`;
-            } else {
-                blob = await getFileBlob(item.rawId);
-                downloadName = item.name || "download";
+            const shouldDownloadSelection =
+                selectedItems.length > 1 && selectedIds.includes(item.id);
+
+            if (shouldDownloadSelection) {
+                const fileIds = selectedItems
+                    .filter((currentItem) => currentItem.type !== "folder")
+                    .map((currentItem) => currentItem.rawId);
+
+                const folderIds = selectedItems
+                    .filter((currentItem) => currentItem.type === "folder")
+                    .map((currentItem) => currentItem.rawId);
+
+                const blob = await getMixedZipBlob(fileIds, folderIds);
+                downloadBlob(blob, "download.zip");
+                return;
             }
 
-            const url = URL.createObjectURL(blob);
+            if (item.type === "folder") {
+                const blob = await getFolderZipBlob(item.rawId);
+                downloadBlob(blob, `${item.name || "folder"}.zip`);
+                return;
+            }
 
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = downloadName;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-
-            URL.revokeObjectURL(url);
+            const blob = await getFileBlob(item.rawId);
+            downloadBlob(blob, item.name || "download");
         } catch (err) {
             setError(err.message || "Failed to download item");
         }
     }
 
+    function downloadBlob(blob, fileName) {
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+        URL.revokeObjectURL(url);
+    }
     function handleRename(item) {
         setError("");
         setOpenMenuId(null);
