@@ -1,9 +1,11 @@
 package kakha.kudava.filedrivespring.services;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import kakha.kudava.filedrivespring.dto.DownloadZipRequest;
 
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
+import kakha.kudava.filedrivespring.records.ZipCount;
 import kakha.kudava.filedrivespring.records.ZipDownloadResult;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
@@ -12,9 +14,7 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -24,15 +24,19 @@ public class DownloadService {
     private final FileMetaDataRepository fileMetaDataRepository;
     private final FolderRepository folderRepository;
     private final ObjectStorageService objectStorageService;
+    private final LogsService logsService;
+    private final ObjectMapper objectMapper;
 
     public DownloadService(
             FileMetaDataRepository fileMetaDataRepository,
             FolderRepository folderRepository,
-            ObjectStorageService objectStorageService
+            ObjectStorageService objectStorageService, LogsService logsService, ObjectMapper objectMapper
     ) {
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
         this.objectStorageService = objectStorageService;
+        this.logsService = logsService;
+        this.objectMapper = objectMapper;
     }
 
     public ZipDownloadResult downloadAsZip(DownloadZipRequest request) throws Exception {
@@ -46,12 +50,16 @@ public class DownloadService {
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         Set<String> usedZipNames = new HashSet<>();
 
+        int fileCount = 0;
+        int folderCount = 0;
+
         try (ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream)) {
             for (Long fileId : fileIds) {
                 FileMetaData file = fileMetaDataRepository.findById(fileId)
                         .orElseThrow(() -> new RuntimeException("File not found: " + fileId));
 
                 addFileToZip(file, "", zipOutputStream, usedZipNames);
+                fileCount++;
             }
 
             for (Long folderId : folderIds) {
@@ -63,9 +71,24 @@ public class DownloadService {
                         usedZipNames
                 );
 
-                addFolderToZip(folder, folderPath, zipOutputStream, usedZipNames);
+                ZipCount count = addFolderToZip(folder, folderPath, zipOutputStream, usedZipNames);
+
+                fileCount += count.fileCount();
+                folderCount += count.folderCount();
             }
         }
+
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("downloadName", "download.zip");
+        details.put("selectedFileIds", fileIds);
+        details.put("selectedFolderIds", folderIds);
+        details.put("fileCount", fileCount);
+        details.put("folderCount", folderCount);
+        details.put("zipSizeBytes", byteArrayOutputStream.size());
+
+        String detailsJson = objectMapper.writeValueAsString(details);
+
+        logsService.bulkDownloadLog(detailsJson);
 
         return new ZipDownloadResult(
                 "download.zip",
@@ -73,18 +96,22 @@ public class DownloadService {
         );
     }
 
-    private void addFolderToZip(
+    private ZipCount addFolderToZip(
             Folders folder,
             String currentPath,
             ZipOutputStream zipOutputStream,
             Set<String> usedZipNames
     ) throws Exception {
+        int fileCount = 0;
+        int folderCount = 1;
+
         addDirectoryEntry(currentPath, zipOutputStream, usedZipNames);
 
         List<FileMetaData> files = fileMetaDataRepository.findByParentId(folder.getId());
 
         for (FileMetaData file : files) {
             addFileToZip(file, currentPath, zipOutputStream, usedZipNames);
+            fileCount++;
         }
 
         List<Folders> childFolders = folderRepository.findByParentId(folder.getId());
@@ -95,8 +122,18 @@ public class DownloadService {
                     usedZipNames
             );
 
-            addFolderToZip(childFolder, childPath, zipOutputStream, usedZipNames);
+            ZipCount childCount = addFolderToZip(
+                    childFolder,
+                    childPath,
+                    zipOutputStream,
+                    usedZipNames
+            );
+
+            fileCount += childCount.fileCount();
+            folderCount += childCount.folderCount();
         }
+
+        return new ZipCount(fileCount, folderCount);
     }
 
     private void addFileToZip(
@@ -108,7 +145,7 @@ public class DownloadService {
         String safeFileName = sanitizeZipName(file.getFileName());
         String zipPath = uniqueZipName(folderPath + safeFileName, usedZipNames);
 
-        try (InputStream fileInputStream = objectStorageService.download(file.getId())) {
+        try (InputStream fileInputStream = objectStorageService.downloadWithoutLog(file.getId())) {
             ZipEntry fileEntry = new ZipEntry(zipPath);
             zipOutputStream.putNextEntry(fileEntry);
 

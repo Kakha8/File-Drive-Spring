@@ -229,6 +229,22 @@ public class ObjectStorageService {
         return minioClient.getObject(getBuilder.build());
     }
 
+    public InputStream downloadWithoutLog(Long id) throws Exception {
+        FileMetaData fileMetaData = fileMetaDataRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Object not found"));
+
+        String objectKey = fileMetaData.getObjectKey();
+
+        log.info("Downloading object without action log from {}", objectKey);
+
+        return minioClient.getObject(
+                GetObjectArgs.builder()
+                        .bucket(bucket)
+                        .object(objectKey)
+                        .build()
+        );
+    }
+
     public void delete(Long id){
 
         FileMetaData metaData = fileMetaDataRepository.findById(id)
