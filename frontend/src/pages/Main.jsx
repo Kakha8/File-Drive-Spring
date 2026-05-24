@@ -312,6 +312,8 @@ function Main({ onLogout }) {
 
     const [renamingItem, setRenamingItem] = useState(null);
     const renameInputRef = useRef(null);
+    const currentFolderId =
+        path.length > 0 ? path[path.length - 1].id : currentFolder?.id;
 
     useEffect(() => {
         let cancelled = false;
@@ -406,24 +408,24 @@ function Main({ onLogout }) {
     }
 
     async function reloadCurrentFolder() {
-        if (!currentFolder?.id) return;
+        if (!currentFolderId) return;
 
         const folder =
-            path.length <= 1 ? await getRootFolder() : await getFolder(currentFolder.id);
+            path.length <= 1 ? await getRootFolder() : await getFolder(currentFolderId);
 
         setCurrentFolder(folder);
         setSelectedIds([]);
     }
 
     function openUploadPicker() {
-        if (!currentFolder?.id || uploading) return;
+        if (!currentFolderId || uploading) return;
         fileInputRef.current?.click();
     }
 
     async function handleUploadSelected(event) {
         const file = event.target.files?.[0];
 
-        if (!file || !currentFolder?.id) return;
+        if (!file || !currentFolderId) return;
 
         try {
             setUploading(true);
@@ -431,7 +433,7 @@ function Main({ onLogout }) {
             setUploadName(file.name);
             setError("");
 
-            await uploadFile(currentFolder.id, file, (percent) => {
+            await uploadFile(currentFolderId, file, (percent) => {
                 setUploadProgress(percent);
             });
 
@@ -447,7 +449,7 @@ function Main({ onLogout }) {
     }
 
     function startCreateFolder() {
-        if (!currentFolder?.id || creatingFolder) return;
+        if (!currentFolderId || creatingFolder) return;
 
         const draftId = `draft-folder-${Date.now()}`;
         draftHandledRef.current = false;
@@ -487,9 +489,11 @@ function Main({ onLogout }) {
             setLoading(true);
             setError("");
 
-            await createFolder(currentFolder.id, cleanName);
+            await createFolder(currentFolderId, cleanName);
+
             setNewFolderDraft(null);
             setSelectedIds([]);
+
             await reloadCurrentFolder();
         } catch (err) {
             setError(err.message || "Failed to create folder");
