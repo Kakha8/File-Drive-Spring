@@ -1955,3 +1955,227 @@ body,
 .storage-dot-button span {
   background: var(--old-accent);
 }
+
+/* upload panel */
+/* upload panel */
+.upload-panel {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 80;
+  width: 400px;
+  max-height: 420px;
+  border-radius: 18px;
+  background: var(--old-panel, #1c2026);
+  border: 1px solid var(--old-panel-border, rgba(255, 255, 255, 0.06));
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.upload-panel.minimized {
+  max-height: 56px;
+}
+
+.upload-panel-header {
+  height: 56px;
+  padding: 0 12px 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--old-text, #e5e7eb);
+  border-bottom: 1px solid var(--old-panel-border, rgba(255, 255, 255, 0.06));
+}
+
+.upload-panel.minimized .upload-panel-header {
+  border-bottom: 0;
+}
+
+.upload-panel-title {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.upload-panel-title strong {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.upload-panel-title span {
+  color: var(--old-muted, #9aa3af);
+  font-size: 12px;
+}
+
+.upload-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+}
+
+.upload-panel-actions button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--old-muted, #9aa3af);
+  cursor: pointer;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.upload-panel-actions button:hover {
+  background: var(--old-panel-soft, #242a32);
+  color: var(--old-text, #e5e7eb);
+}
+
+.upload-panel-chevron {
+  width: 22px;
+  height: 22px;
+  stroke-width: 2.4;
+  display: block;
+}
+
+.upload-panel-chevron.up {
+  transform: rotate(180deg);
+}
+
+.upload-panel-actions button:last-child {
+  font-size: 30px;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
+.upload-panel-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.upload-panel-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 18px 16px;
+  border-bottom: 1px solid var(--old-panel-border, rgba(255, 255, 255, 0.06));
+}
+
+.upload-panel-item:last-child {
+  border-bottom: 0;
+}
+
+.upload-file-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--old-panel-soft, #242a32);
+  color: var(--old-muted, #9aa3af);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.upload-file-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.upload-file-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.upload-file-line span {
+  display: block;
+  color: var(--old-text, #e5e7eb);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.upload-file-line small {
+  color: var(--old-muted, #9aa3af);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.upload-file-progress {
+  height: 5px;
+  margin-top: 9px;
+  border-radius: 999px;
+  background: var(--old-panel-soft, #242a32);
+  overflow: hidden;
+}
+
+.upload-file-progress div {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--old-accent, #3b82f6);
+  transition: width 0.2s ease;
+}
+
+.upload-file-error {
+  margin: 7px 0 0;
+  color: #fca5a5;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.upload-cancel-confirm {
+  padding: 16px 18px 18px;
+  border-top: 1px solid var(--old-panel-border, rgba(255, 255, 255, 0.06));
+}
+
+.upload-cancel-confirm strong {
+  display: block;
+  color: var(--old-text, #e5e7eb);
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.upload-cancel-confirm p {
+  margin: 0;
+  color: var(--old-muted, #9aa3af);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.upload-cancel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.upload-cancel-actions button {
+  height: 34px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 12px;
+  background: var(--old-panel-soft, #242a32);
+  color: var(--old-text, #e5e7eb);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.upload-cancel-actions button:hover {
+  background: var(--old-panel-hover, #2d3540);
+}
+
+.upload-cancel-actions button.danger {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fecaca;
+}
+
+.upload-cancel-actions button.danger:hover {
+  background: rgba(239, 68, 68, 0.24);
+}

@@ -106,7 +106,7 @@ export async function getMixedZipBlob(fileIds, folderIds) {
 
     return response.blob();
 }
-function uploadFileOnce(parentId, file, token, onProgress) {
+function uploadFileOnce(parentId, file, token, onProgress, signal) {
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
 
@@ -153,6 +153,29 @@ function uploadFileOnce(parentId, file, token, onProgress) {
             });
         };
 
+        xhr.onabort = () => {
+            reject({
+                status: 0,
+                name: "AbortError",
+                message: "Upload canceled",
+            });
+        };
+
+        if (signal) {
+            if (signal.aborted) {
+                xhr.abort();
+                return;
+            }
+
+            signal.addEventListener(
+                "abort",
+                () => {
+                    xhr.abort();
+                },
+                { once: true }
+            );
+        }
+
         const formData = new FormData();
         formData.append("file", file);
         formData.append("parentId", String(parentId));
@@ -161,7 +184,7 @@ function uploadFileOnce(parentId, file, token, onProgress) {
     });
 }
 
-export async function uploadFile(parentId, file, onProgress) {
+export async function uploadFile(parentId, file, onProgress, signal) {
     let token = getAccessToken();
 
     if (!token) {
@@ -170,15 +193,25 @@ export async function uploadFile(parentId, file, onProgress) {
     }
 
     try {
-        return await uploadFileOnce(parentId, file, token, onProgress);
+        return await uploadFileOnce(parentId, file, token, onProgress, signal);
     } catch (err) {
+        if (err?.name === "AbortError") {
+            throw new Error("Upload canceled");
+        }
+
         if (err.status !== 401) {
             throw new Error(err.message || "Failed to upload file");
         }
 
         const result = await refresh();
 
-        return uploadFileOnce(parentId, file, result.accessToken, onProgress);
+        return uploadFileOnce(
+            parentId,
+            file,
+            result.accessToken,
+            onProgress,
+            signal
+        );
     }
 }
 

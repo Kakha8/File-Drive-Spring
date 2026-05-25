@@ -3,7 +3,6 @@ import { logout as apiLogout } from "../api/auth";
 import {
     createFolder,
     getFileBlob,
-    getFilesZipBlob,
     getFolder,
     getFolderZipBlob,
     getMixedZipBlob,
@@ -135,6 +134,11 @@ const Icons = {
             <circle cx="12" cy="5" r="1" />
             <circle cx="12" cy="12" r="1" />
             <circle cx="12" cy="19" r="1" />
+        </Icon>
+    ),
+    ChevronDown: ({ className }) => (
+        <Icon className={className}>
+            <path d="m6 9 6 6 6-6" />
         </Icon>
     ),
     Download: ({ className }) => (
@@ -306,12 +310,17 @@ function Main({ onLogout }) {
 
     const fileInputRef = useRef(null);
     const [uploading, setUploading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState(0);
-    const [uploadName, setUploadName] = useState("");
+    const [uploads, setUploads] = useState([]);
+    const [uploadPanelMinimized, setUploadPanelMinimized] = useState(false);
+    const [uploadPanelClosed, setUploadPanelClosed] = useState(false);
+    const [uploadCancelConfirm, setUploadCancelConfirm] = useState(false);
+    const cancelUploadsRef = useRef(false);
+    const currentUploadAbortRef = useRef(null);
     const [openMenuId, setOpenMenuId] = useState(null);
 
     const [renamingItem, setRenamingItem] = useState(null);
     const renameInputRef = useRef(null);
+
     const currentFolderId =
         path.length > 0 ? path[path.length - 1].id : currentFolder?.id;
 
@@ -423,27 +432,130 @@ function Main({ onLogout }) {
     }
 
     async function handleUploadSelected(event) {
-        const file = event.target.files?.[0];
+        const files = Array.from(event.target.files || []);
 
-        if (!file || !currentFolderId) return;
+        if (files.length === 0 || !currentFolderId) return;
+
+        const uploadItems = files.map((file) => ({
+            id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
+            name: file.name,
+            progress: 0,
+            status: "waiting",
+            error: "",
+        }));
+
+        setUploads(uploadItems);
+        setUploading(true);
+        setUploadPanelClosed(false);
+        setUploadPanelMinimized(false);
+        setUploadCancelConfirm(false);
+        cancelUploadsRef.current = false;
+        setError("");
 
         try {
-            setUploading(true);
-            setUploadProgress(0);
-            setUploadName(file.name);
-            setError("");
+            for (const file of files) {
+                if (cancelUploadsRef.current) break;
 
-            await uploadFile(currentFolderId, file, (percent) => {
-                setUploadProgress(percent);
-            });
+                const uploadId = uploadItems.find(
+                    (item) =>
+                        item.name === file.name &&
+                        item.id.includes(String(file.size)) &&
+                        item.id.includes(String(file.lastModified))
+                )?.id;
 
-            await reloadCurrentFolder();
-        } catch (err) {
-            setError(err.message || "Failed to upload file");
+                if (!uploadId) continue;
+
+                setUploads((currentUploads) =>
+                    currentUploads.map((item) =>
+                        item.id === uploadId
+                            ? {
+                                ...item,
+                                status: "uploading",
+                                progress: 0,
+                                error: "",
+                            }
+                            : item
+                    )
+                );
+
+                const abortController = new AbortController();
+                currentUploadAbortRef.current = abortController;
+
+                try {
+                    await uploadFile(
+                        currentFolderId,
+                        file,
+                        (percent) => {
+                            if (cancelUploadsRef.current) return;
+
+                            setUploads((currentUploads) =>
+                                currentUploads.map((item) =>
+                                    item.id === uploadId
+                                        ? {
+                                            ...item,
+                                            progress: percent,
+                                            status:
+                                                percent >= 100
+                                                    ? "processing"
+                                                    : "uploading",
+                                        }
+                                        : item
+                                )
+                            );
+                        },
+                        abortController.signal
+                    );
+
+                    if (cancelUploadsRef.current || abortController.signal.aborted) {
+                        break;
+                    }
+
+                    setUploads((currentUploads) =>
+                        currentUploads.map((item) =>
+                            item.id === uploadId
+                                ? {
+                                    ...item,
+                                    progress: 100,
+                                    status: "done",
+                                    error: "",
+                                }
+                                : item
+                        )
+                    );
+                } catch (err) {
+                    setUploads((currentUploads) =>
+                        currentUploads.map((item) =>
+                            item.id === uploadId
+                                ? {
+                                    ...item,
+                                    status: "error",
+                                    error:
+                                        err.message ||
+                                        "Failed to upload this file",
+                                }
+                                : item
+                        )
+                    );
+
+                    if (
+                        cancelUploadsRef.current ||
+                        abortController.signal.aborted ||
+                        err.message === "Upload canceled"
+                    ) {
+                        break;
+                    }
+                } finally {
+                    if (currentUploadAbortRef.current === abortController) {
+                        currentUploadAbortRef.current = null;
+                    }
+                }
+            }
+
+            if (!cancelUploadsRef.current) {
+                await reloadCurrentFolder();
+            }
         } finally {
             setUploading(false);
-            setUploadProgress(0);
-            setUploadName("");
             event.target.value = "";
         }
     }
@@ -694,6 +806,7 @@ function Main({ onLogout }) {
 
         URL.revokeObjectURL(url);
     }
+
     function handleRename(item) {
         setError("");
         setOpenMenuId(null);
@@ -755,6 +868,63 @@ function Main({ onLogout }) {
             error: "",
             propertiesOnly: true,
         });
+    }
+
+    function handleCloseUploadPanel(hasActiveUploadsFromPanel = false) {
+        const hasActiveUploads =
+            hasActiveUploadsFromPanel ||
+            uploading ||
+            uploads.some(
+                (item) =>
+                    item.status === "waiting" ||
+                    item.status === "uploading" ||
+                    item.status === "processing"
+            );
+
+        if (!hasActiveUploads) {
+            setUploadPanelClosed(true);
+            setUploadCancelConfirm(false);
+            return;
+        }
+
+        setUploadPanelMinimized(false);
+        setUploadCancelConfirm(true);
+    }
+
+    function confirmCancelUploads() {
+        cancelUploadsRef.current = true;
+
+        const activeController = currentUploadAbortRef.current;
+
+        if (activeController) {
+            activeController.abort();
+        }
+
+        setUploads((currentUploads) =>
+            currentUploads.map((item) => {
+                if (
+                    item.status === "waiting" ||
+                    item.status === "uploading" ||
+                    item.status === "processing"
+                ) {
+                    return {
+                        ...item,
+                        status: "error",
+                        error: "Upload canceled",
+                    };
+                }
+
+                return item;
+            })
+        );
+
+        setUploading(false);
+        setUploadCancelConfirm(false);
+        setUploadPanelClosed(true);
+    }
+
+    function keepUploadPanelOpen() {
+        setUploadCancelConfirm(false);
     }
 
     function handleFileSelect(event, itemId) {
@@ -1023,30 +1193,18 @@ function Main({ onLogout }) {
                             disabled={uploading}
                         >
                             <Icons.Upload className="button-icon" />
-                            {uploading ? `${uploadProgress}%` : "Upload"}
+                            Upload
                         </button>
 
                         <input
                             ref={fileInputRef}
                             type="file"
+                            multiple
                             className="hidden-file-input"
                             onChange={handleUploadSelected}
                         />
                     </div>
                 </div>
-
-                {uploading && (
-                    <div className="upload-progress-wrap">
-                        <div className="upload-progress-info">
-                            <span>Uploading {uploadName}</span>
-                            <span>{uploadProgress}%</span>
-                        </div>
-
-                        <div className="upload-progress-bar">
-                            <div style={{ width: `${uploadProgress}%` }} />
-                        </div>
-                    </div>
-                )}
 
                 <div className="content-layout">
                     <section className="file-table-wrap">
@@ -1119,6 +1277,17 @@ function Main({ onLogout }) {
                     </section>
                 </div>
             </section>
+
+            <UploadPanel
+                uploads={uploads}
+                minimized={uploadPanelMinimized}
+                closed={uploadPanelClosed}
+                cancelConfirm={uploadCancelConfirm}
+                onToggleMinimized={() => setUploadPanelMinimized((value) => !value)}
+                onClose={handleCloseUploadPanel}
+                onConfirmCancel={confirmCancelUploads}
+                onKeepUploading={keepUploadPanelOpen}
+            />
 
             {viewer && <FileViewer viewer={viewer} onClose={closeViewer} />}
         </main>
@@ -1321,6 +1490,141 @@ function FileRow({
                 )}
             </div>
         </button>
+    );
+}
+
+function UploadPanel({
+                         uploads,
+                         minimized,
+                         closed,
+                         cancelConfirm,
+                         onToggleMinimized,
+                         onClose,
+                         onConfirmCancel,
+                         onKeepUploading,
+                     }) {
+    if (!uploads || uploads.length === 0 || closed) return null;
+
+    const activeCount = uploads.filter(
+        (item) =>
+            item.status === "waiting" ||
+            item.status === "uploading" ||
+            item.status === "processing"
+    ).length;
+
+    const doneCount = uploads.filter((item) => item.status === "done").length;
+    const errorCount = uploads.filter((item) => item.status === "error").length;
+
+    let title = "Upload complete";
+
+    if (activeCount > 0) {
+        title = `Uploading ${uploads.length} ${uploads.length === 1 ? "file" : "files"}`;
+    } else if (errorCount > 0 && doneCount > 0) {
+        title = `${doneCount} uploaded, ${errorCount} failed`;
+    } else if (errorCount > 0) {
+        title = "Upload failed";
+    }
+
+    return (
+        <div className={`upload-panel ${minimized ? "minimized" : ""}`}>
+            <div className="upload-panel-header">
+                <div className="upload-panel-title">
+                    <strong>{title}</strong>
+                    <span>
+                        {doneCount}/{uploads.length}
+                    </span>
+                </div>
+
+                <div className="upload-panel-actions">
+                    <button
+                        type="button"
+                        onClick={onToggleMinimized}
+                        title={minimized ? "Expand uploads" : "Minimize uploads"}
+                        aria-label={minimized ? "Expand uploads" : "Minimize uploads"}
+                    >
+                        <Icons.ChevronDown
+                            className={`upload-panel-chevron ${minimized ? "up" : ""}`}
+                        />
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => onClose(activeCount > 0)}
+                        title="Close upload panel"
+                        aria-label="Close upload panel"
+                    >
+                        ×
+                    </button>
+                </div>
+            </div>
+
+            {!minimized && cancelConfirm && (
+                <div className="upload-cancel-confirm">
+                    <strong>Cancel uploads?</strong>
+                    <p>Uploads are still in progress. Cancel the remaining uploads?</p>
+
+                    <div className="upload-cancel-actions">
+                        <button type="button" onClick={onKeepUploading}>
+                            Keep uploading
+                        </button>
+
+                        <button
+                            type="button"
+                            className="danger"
+                            onClick={onConfirmCancel}
+                        >
+                            Cancel uploads
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {!minimized && !cancelConfirm && (
+                <div className="upload-panel-list">
+                    {uploads.map((upload) => (
+                        <div key={upload.id} className="upload-panel-item">
+                            <div className="upload-file-icon">
+                                {upload.status === "done" ? (
+                                    <Icons.Check className="svg-icon" />
+                                ) : (
+                                    <Icons.File className="svg-icon" />
+                                )}
+                            </div>
+
+                            <div className="upload-file-info">
+                                <div className="upload-file-line">
+                                    <span title={upload.name}>{upload.name}</span>
+
+                                    <small>
+                                        {upload.status === "waiting" && "Waiting"}
+                                        {upload.status === "uploading" &&
+                                            `${upload.progress}%`}
+                                        {upload.status === "processing" &&
+                                            "Scanning..."}
+                                        {upload.status === "done" && "Done"}
+                                        {upload.status === "error" && "Failed"}
+                                    </small>
+                                </div>
+
+                                {upload.status === "error" ? (
+                                    <p className="upload-file-error">
+                                        {upload.error}
+                                    </p>
+                                ) : (
+                                    <div className="upload-file-progress">
+                                        <div
+                                            style={{
+                                                width: `${upload.progress}%`,
+                                            }}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
     );
 }
 
