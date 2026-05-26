@@ -10,6 +10,7 @@ import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.exceptions.MalwareDetectedException;
+import kakha.kudava.filedrivespring.exceptions.UploadCanceledException;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.QuarantinedFiles;
@@ -57,13 +58,14 @@ public class ObjectStorageService {
     private final UserRepository userRepository;
     private final QuarantineService quarantineService;
     private final RootFolderService rootFolderService;
+    private final UploadCancellationService uploadCancellationService;
 
 
     public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
                                 FolderRepository folderRepository,
                                 LogsService logsService, ObjectMapper objectMapper, ClamAvScannerService clamAvScannerService,
                                 QuarantinedFilesRepository quarantinedFilesRepository, @Value("${s3.quarantine-bucket}") String quarantineBucket,
-                                UserRepository userRepository, QuarantineService quarantineService, RootFolderService rootFolderService) {
+                                UserRepository userRepository, QuarantineService quarantineService, RootFolderService rootFolderService, UploadCancellationService uploadCancellationService) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
@@ -76,15 +78,21 @@ public class ObjectStorageService {
         this.userRepository = userRepository;
         this.quarantineService = quarantineService;
         this.rootFolderService = rootFolderService;
+        this.uploadCancellationService = uploadCancellationService;
     }
 
-    public FileMetaData upload(MultipartFile file, Long parentId) throws Exception {
+    public FileMetaData upload(MultipartFile file, Long parentId, String uploadId) throws Exception {
+
+        throwIfUploadCanceled(uploadId);
+
         MessageDigest md = MessageDigest.getInstance("SHA-256");
 
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 
         User user = userRepository.findByUsername(auth.getName())
                 .orElseThrow(() -> new RuntimeException("Authenticated user not found: " + auth.getName()));
+
+        throwIfUploadCanceled(uploadId);
 
         Folders folder;
 
@@ -94,6 +102,9 @@ public class ObjectStorageService {
             folder = folderRepository.findByIdAndOwnerAndDeletedFalse(parentId, user)
                     .orElseThrow(() -> new RuntimeException("Folder not found or not owned by user: " + parentId));
         }
+
+        throwIfUploadCanceled(uploadId);
+
         String safeName = file.getOriginalFilename() == null ? "file" : file.getOriginalFilename();
 
         String prefix = folder.getPrefix();
@@ -103,10 +114,16 @@ public class ObjectStorageService {
 
         Path tempFile = Files.createTempFile("upload-", ".scan");
 
+        boolean uploadedToStorage = false;
+
         try {
             file.transferTo(tempFile);
 
+            throwIfUploadCanceled(uploadId);
+
             ClamAvScannerService.ScanResult scanResult = clamAvScannerService.scan(tempFile);
+
+            throwIfUploadCanceled(uploadId);
 
             if (!scanResult.clean()) {
                 String quarantineKey = "quarantine/" + UUID.randomUUID() + "-" + safeName;
@@ -121,7 +138,6 @@ public class ObjectStorageService {
                                     .build()
                     );
                 }
-
 
                 QuarantinedFiles quarantinedFile = new QuarantinedFiles();
                 quarantinedFile.setOriginalFilename(safeName);
@@ -161,6 +177,8 @@ public class ObjectStorageService {
                 throw new MalwareDetectedException("Upload rejected: malware detected");
             }
 
+            throwIfUploadCanceled(uploadId);
+
             try (InputStream in = Files.newInputStream(tempFile);
                  DigestInputStream dis = new DigestInputStream(in, md)) {
 
@@ -171,6 +189,9 @@ public class ObjectStorageService {
                         .contentType(file.getContentType());
 
                 minioClient.putObject(putBuilder.build());
+                uploadedToStorage = true;
+
+                throwIfUploadCanceled(uploadId);
 
                 byte[] hash = md.digest();
                 String checksum = toHex(hash);
@@ -185,16 +206,39 @@ public class ObjectStorageService {
                 entity.setSize(fileSize);
                 entity.setParent(folder);
 
+                throwIfUploadCanceled(uploadId);
+
                 log.info("File uploaded successfully {}", objectKey);
                 logsService.uploadLog(safeName, folder.getId(), "FILE");
 
                 return fileMetaDataRepository.save(entity);
             }
+        } catch (UploadCanceledException ex) {
+            log.warn("Upload canceled: uploadId={}, fileName={}", uploadId, safeName, ex);
+            if (uploadedToStorage) {
+                try {
+                    minioClient.removeObject(
+                            RemoveObjectArgs.builder()
+                                    .bucket(bucket)
+                                    .object(objectKey)
+                                    .build()
+                    );
+
+                    log.info("Deleted canceled upload object from MinIO: {}", objectKey);
+                } catch (Exception cleanupError) {
+                    log.warn(
+                            "Upload was canceled, but failed to delete object from MinIO: {}",
+                            objectKey,
+                            cleanupError
+                    );
+                }
+            }
+
+            throw ex;
         } finally {
             Files.deleteIfExists(tempFile);
         }
     }
-
     private static String toHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder(bytes.length * 2);
         for (byte b : bytes) {
@@ -396,6 +440,12 @@ public class ObjectStorageService {
         return toHex(digest.digest());
     }
 
+    private void throwIfUploadCanceled(String uploadId) {
+        if (uploadCancellationService.isCanceled(uploadId)) {
+            log.info("Upload cancellation detected inside upload pipeline: uploadId={}", uploadId);
+            throw new UploadCanceledException("Upload canceled");
+        }
+    }
 
 
 }

@@ -10,6 +10,7 @@ import {
     renameFile,
     renameFolder,
     uploadFile,
+    cancelUpload,
 } from "../api/drive";
 
 function Icon({ children, className = "" }) {
@@ -437,11 +438,12 @@ function Main({ onLogout }) {
         if (files.length === 0 || !currentFolderId) return;
 
         const uploadItems = files.map((file) => ({
-            id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
+            id: crypto.randomUUID(),
             name: file.name,
             progress: 0,
             status: "waiting",
             error: "",
+            fileKey: `${file.name}-${file.size}-${file.lastModified}`,
         }));
 
         setUploads(uploadItems);
@@ -453,17 +455,14 @@ function Main({ onLogout }) {
         setError("");
 
         try {
-            for (const file of files) {
-                if (cancelUploadsRef.current) break;
+            for (let index = 0; index < files.length; index += 1) {
+                if (cancelUploadsRef.current) {
+                    break;
+                }
 
-                const uploadId = uploadItems.find(
-                    (item) =>
-                        item.name === file.name &&
-                        item.id.includes(String(file.size)) &&
-                        item.id.includes(String(file.lastModified))
-                )?.id;
-
-                if (!uploadId) continue;
+                const file = files[index];
+                const uploadItem = uploadItems[index];
+                const uploadId = uploadItem.id;
 
                 setUploads((currentUploads) =>
                     currentUploads.map((item) =>
@@ -503,7 +502,8 @@ function Main({ onLogout }) {
                                 )
                             );
                         },
-                        abortController.signal
+                        abortController.signal,
+                        uploadId
                     );
 
                     if (cancelUploadsRef.current || abortController.signal.aborted) {
@@ -891,22 +891,21 @@ function Main({ onLogout }) {
         setUploadCancelConfirm(true);
     }
 
-    function confirmCancelUploads() {
+    async function confirmCancelUploads() {
         cancelUploadsRef.current = true;
 
-        const activeController = currentUploadAbortRef.current;
-
-        if (activeController) {
-            activeController.abort();
-        }
-
-        setUploads((currentUploads) =>
-            currentUploads.map((item) => {
-                if (
+        const activeUploadIds = uploads
+            .filter(
+                (item) =>
                     item.status === "waiting" ||
                     item.status === "uploading" ||
                     item.status === "processing"
-                ) {
+            )
+            .map((item) => item.id);
+
+        setUploads((currentUploads) =>
+            currentUploads.map((item) => {
+                if (activeUploadIds.includes(item.id)) {
                     return {
                         ...item,
                         status: "error",
@@ -917,6 +916,14 @@ function Main({ onLogout }) {
                 return item;
             })
         );
+
+        await Promise.allSettled(
+            activeUploadIds.map((uploadId) => cancelUpload(uploadId))
+        );
+
+        currentUploadAbortRef.current?.abort();
+        currentUploadAbortRef.current = null;
+
 
         setUploading(false);
         setUploadCancelConfirm(false);

@@ -106,7 +106,19 @@ export async function getMixedZipBlob(fileIds, folderIds) {
 
     return response.blob();
 }
-function uploadFileOnce(parentId, file, token, onProgress, signal) {
+
+export async function cancelUpload(uploadId) {
+    const response = await apiFetch(`/api/uploads/${encodeURIComponent(uploadId)}`, {
+        method: "DELETE",
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to cancel upload");
+    }
+}
+
+function uploadFileOnce(parentId, file, token, onProgress, signal, uploadId) {
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
 
@@ -179,12 +191,13 @@ function uploadFileOnce(parentId, file, token, onProgress, signal) {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("parentId", String(parentId));
+        formData.append("uploadId", uploadId);
 
         xhr.send(formData);
     });
 }
 
-export async function uploadFile(parentId, file, onProgress, signal) {
+export async function uploadFile(parentId, file, onProgress, signal, uploadId) {
     let token = getAccessToken();
 
     if (!token) {
@@ -193,7 +206,7 @@ export async function uploadFile(parentId, file, onProgress, signal) {
     }
 
     try {
-        return await uploadFileOnce(parentId, file, token, onProgress, signal);
+        return await uploadFileOnce(parentId, file, token, onProgress, signal, uploadId);
     } catch (err) {
         if (err?.name === "AbortError") {
             throw new Error("Upload canceled");
@@ -210,7 +223,8 @@ export async function uploadFile(parentId, file, onProgress, signal) {
             file,
             result.accessToken,
             onProgress,
-            signal
+            signal,
+            uploadId
         );
     }
 }
