@@ -316,7 +316,9 @@ function Main({ onLogout }) {
     const [uploadPanelClosed, setUploadPanelClosed] = useState(false);
     const [uploadCancelConfirm, setUploadCancelConfirm] = useState(false);
     const cancelUploadsRef = useRef(false);
+    const canceledUploadIdsRef = useRef(new Set());
     const currentUploadAbortRef = useRef(null);
+    const currentUploadRef = useRef(null);
     const [openMenuId, setOpenMenuId] = useState(null);
 
     const [renamingItem, setRenamingItem] = useState(null);
@@ -446,23 +448,26 @@ function Main({ onLogout }) {
             fileKey: `${file.name}-${file.size}-${file.lastModified}`,
         }));
 
-        setUploads(uploadItems);
+        setUploads((currentUploads) => [...currentUploads, ...uploadItems]);
         setUploading(true);
         setUploadPanelClosed(false);
         setUploadPanelMinimized(false);
         setUploadCancelConfirm(false);
         cancelUploadsRef.current = false;
+        canceledUploadIdsRef.current.clear();
         setError("");
 
         try {
             for (let index = 0; index < files.length; index += 1) {
-                if (cancelUploadsRef.current) {
-                    break;
-                }
+                if (cancelUploadsRef.current) break;
 
                 const file = files[index];
                 const uploadItem = uploadItems[index];
                 const uploadId = uploadItem.id;
+
+                if (canceledUploadIdsRef.current.has(uploadId)) {
+                    continue;
+                }
 
                 setUploads((currentUploads) =>
                     currentUploads.map((item) =>
@@ -479,13 +484,22 @@ function Main({ onLogout }) {
 
                 const abortController = new AbortController();
                 currentUploadAbortRef.current = abortController;
+                currentUploadRef.current = {
+                    uploadId,
+                    controller: abortController,
+                };
 
                 try {
                     await uploadFile(
                         currentFolderId,
                         file,
                         (percent) => {
-                            if (cancelUploadsRef.current) return;
+                            if (
+                                cancelUploadsRef.current ||
+                                canceledUploadIdsRef.current.has(uploadId)
+                            ) {
+                                return;
+                            }
 
                             setUploads((currentUploads) =>
                                 currentUploads.map((item) =>
@@ -506,8 +520,12 @@ function Main({ onLogout }) {
                         uploadId
                     );
 
-                    if (cancelUploadsRef.current || abortController.signal.aborted) {
-                        break;
+                    if (
+                        cancelUploadsRef.current ||
+                        canceledUploadIdsRef.current.has(uploadId) ||
+                        abortController.signal.aborted
+                    ) {
+                        continue;
                     }
 
                     setUploads((currentUploads) =>
@@ -523,30 +541,34 @@ function Main({ onLogout }) {
                         )
                     );
                 } catch (err) {
+                    const wasCanceled =
+                        cancelUploadsRef.current ||
+                        canceledUploadIdsRef.current.has(uploadId) ||
+                        abortController.signal.aborted ||
+                        err.message === "Upload canceled";
+
                     setUploads((currentUploads) =>
                         currentUploads.map((item) =>
                             item.id === uploadId
                                 ? {
                                     ...item,
-                                    status: "error",
-                                    error:
-                                        err.message ||
-                                        "Failed to upload this file",
+                                    status: wasCanceled ? "canceled" : "error",
+                                    error: wasCanceled
+                                        ? "Cancelled"
+                                        : err.message || "Failed to upload this file",
                                 }
                                 : item
                         )
                     );
 
-                    if (
-                        cancelUploadsRef.current ||
-                        abortController.signal.aborted ||
-                        err.message === "Upload canceled"
-                    ) {
-                        break;
-                    }
+                    if (cancelUploadsRef.current) break;
                 } finally {
                     if (currentUploadAbortRef.current === abortController) {
                         currentUploadAbortRef.current = null;
+                    }
+
+                    if (currentUploadRef.current?.uploadId === uploadId) {
+                        currentUploadRef.current = null;
                     }
                 }
             }
@@ -903,13 +925,17 @@ function Main({ onLogout }) {
             )
             .map((item) => item.id);
 
+        activeUploadIds.forEach((uploadId) => {
+            canceledUploadIdsRef.current.add(uploadId);
+        });
+
         setUploads((currentUploads) =>
             currentUploads.map((item) => {
                 if (activeUploadIds.includes(item.id)) {
                     return {
                         ...item,
-                        status: "error",
-                        error: "Upload canceled",
+                        status: "canceled",
+                        error: "Cancelled",
                     };
                 }
 
@@ -923,11 +949,35 @@ function Main({ onLogout }) {
 
         currentUploadAbortRef.current?.abort();
         currentUploadAbortRef.current = null;
-
+        currentUploadRef.current = null;
 
         setUploading(false);
         setUploadCancelConfirm(false);
         setUploadPanelClosed(true);
+    }
+
+    async function cancelSingleUpload(uploadId) {
+        canceledUploadIdsRef.current.add(uploadId);
+
+        setUploads((currentUploads) =>
+            currentUploads.map((item) =>
+                item.id === uploadId
+                    ? {
+                        ...item,
+                        status: "canceled",
+                        error: "Cancelled",
+                    }
+                    : item
+            )
+        );
+
+        await Promise.allSettled([cancelUpload(uploadId)]);
+
+        if (currentUploadRef.current?.uploadId === uploadId) {
+            currentUploadRef.current.controller.abort();
+            currentUploadRef.current = null;
+            currentUploadAbortRef.current = null;
+        }
     }
 
     function keepUploadPanelOpen() {
@@ -1294,6 +1344,7 @@ function Main({ onLogout }) {
                 onClose={handleCloseUploadPanel}
                 onConfirmCancel={confirmCancelUploads}
                 onKeepUploading={keepUploadPanelOpen}
+                onCancelUpload={cancelSingleUpload}
             />
 
             {viewer && <FileViewer viewer={viewer} onClose={closeViewer} />}
@@ -1509,6 +1560,7 @@ function UploadPanel({
                          onClose,
                          onConfirmCancel,
                          onKeepUploading,
+                         onCancelUpload,
                      }) {
     if (!uploads || uploads.length === 0 || closed) return null;
 
@@ -1519,24 +1571,59 @@ function UploadPanel({
             item.status === "processing"
     ).length;
 
+    const movingUploads = uploads.filter(
+        (item) => item.status === "uploading" || item.status === "processing"
+    );
+
     const doneCount = uploads.filter((item) => item.status === "done").length;
     const errorCount = uploads.filter((item) => item.status === "error").length;
+    const canceledCount = uploads.filter((item) => item.status === "canceled").length;
+    const latestActiveCount = activeCount;
+
+    const totalProgress = movingUploads.length
+        ? Math.round(
+            movingUploads.reduce((sum, item) => {
+                if (item.status === "processing") return sum + 100;
+                return sum + item.progress;
+            }, 0) / movingUploads.length
+        )
+        : 0;
 
     let title = "Upload complete";
 
     if (activeCount > 0) {
-        title = `Uploading ${uploads.length} ${uploads.length === 1 ? "file" : "files"}`;
+        title = `Uploading ${latestActiveCount} ${latestActiveCount === 1 ? "file" : "files"}`;
     } else if (errorCount > 0 && doneCount > 0) {
         title = `${doneCount} uploaded, ${errorCount} failed`;
     } else if (errorCount > 0) {
         title = "Upload failed";
+    } else if (canceledCount > 0) {
+        title = `${canceledCount} ${canceledCount === 1 ? "upload" : "uploads"} cancelled`;
     }
 
     return (
         <div className={`upload-panel ${minimized ? "minimized" : ""}`}>
             <div className="upload-panel-header">
                 <div className="upload-panel-title">
-                    <strong>{title}</strong>
+                    <div className="upload-panel-title-row">
+                        <strong>{title}</strong>
+
+                        {minimized && activeCount > 0 && (
+                            <span className="upload-panel-percent-wrap">
+        <span
+            className="upload-panel-circle-progress"
+            style={{
+                "--progress": `${totalProgress * 3.6}deg`,
+            }}
+            aria-hidden="true"
+        />
+        <span className="upload-panel-percent">
+            {totalProgress}%
+        </span>
+    </span>
+                        )}
+                    </div>
+
                     <span>
                         {doneCount}/{uploads.length}
                     </span>
@@ -1602,18 +1689,35 @@ function UploadPanel({
                                 <div className="upload-file-line">
                                     <span title={upload.name}>{upload.name}</span>
 
-                                    <small>
-                                        {upload.status === "waiting" && "Waiting"}
-                                        {upload.status === "uploading" &&
-                                            `${upload.progress}%`}
-                                        {upload.status === "processing" &&
-                                            "Scanning..."}
-                                        {upload.status === "done" && "Done"}
-                                        {upload.status === "error" && "Failed"}
-                                    </small>
+                                    <div className="upload-file-actions">
+                                        <small>
+                                            {upload.status === "waiting" && "Waiting"}
+                                            {upload.status === "uploading" &&
+                                                `${upload.progress}%`}
+                                            {upload.status === "processing" &&
+                                                "Scanning..."}
+                                            {upload.status === "done" && "Done"}
+                                            {upload.status === "error" && "Failed"}
+                                            {upload.status === "canceled" && "Cancelled"}
+                                        </small>
+
+                                        {(upload.status === "waiting" ||
+                                            upload.status === "uploading" ||
+                                            upload.status === "processing") && (
+                                            <button
+                                                type="button"
+                                                className="upload-item-cancel"
+                                                onClick={() => onCancelUpload(upload.id)}
+                                                title="Cancel this upload"
+                                                aria-label={`Cancel upload ${upload.name}`}
+                                            >
+                                                ×
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
-                                {upload.status === "error" ? (
+                                {upload.status === "error" || upload.status === "canceled" ? (
                                     <p className="upload-file-error">
                                         {upload.error}
                                     </p>
