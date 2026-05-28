@@ -545,7 +545,12 @@ function Main({ onLogout }) {
                         cancelUploadsRef.current ||
                         canceledUploadIdsRef.current.has(uploadId) ||
                         abortController.signal.aborted ||
-                        err.message === "Upload canceled";
+                        err.message === "Upload canceled" ||
+                        err.code === "UPLOAD_CANCELED";
+
+                    const wasMalware =
+                        err.code === "MALWARE_DETECTED" ||
+                        err.status === 422;
 
                     setUploads((currentUploads) =>
                         currentUploads.map((item) =>
@@ -555,7 +560,9 @@ function Main({ onLogout }) {
                                     status: wasCanceled ? "canceled" : "error",
                                     error: wasCanceled
                                         ? "Cancelled"
-                                        : err.message || "Failed to upload this file",
+                                        : wasMalware
+                                            ? "Rejected: malware detected"
+                                            : err.message || "Failed to upload this file",
                                 }
                                 : item
                         )

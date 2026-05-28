@@ -147,12 +147,23 @@ function uploadFileOnce(parentId, file, token, onProgress, signal, uploadId) {
                 } catch {
                     resolve(null);
                 }
+
                 return;
+            }
+
+            let parsedError = null;
+
+            try {
+                parsedError = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+            } catch {
+                parsedError = null;
             }
 
             reject({
                 status: xhr.status,
+                error: parsedError?.error,
                 message:
+                    parsedError?.message ||
                     xhr.responseText ||
                     `Failed to upload file. Server returned ${xhr.status}`,
             });
@@ -161,6 +172,7 @@ function uploadFileOnce(parentId, file, token, onProgress, signal, uploadId) {
         xhr.onerror = () => {
             reject({
                 status: 0,
+                error: "NETWORK_ERROR",
                 message: "Network error while uploading file",
             });
         };
@@ -168,6 +180,7 @@ function uploadFileOnce(parentId, file, token, onProgress, signal, uploadId) {
         xhr.onabort = () => {
             reject({
                 status: 0,
+                error: "UPLOAD_CANCELED",
                 name: "AbortError",
                 message: "Upload canceled",
             });
@@ -206,26 +219,56 @@ export async function uploadFile(parentId, file, onProgress, signal, uploadId) {
     }
 
     try {
-        return await uploadFileOnce(parentId, file, token, onProgress, signal, uploadId);
-    } catch (err) {
-        if (err?.name === "AbortError") {
-            throw new Error("Upload canceled");
-        }
-
-        if (err.status !== 401) {
-            throw new Error(err.message || "Failed to upload file");
-        }
-
-        const result = await refresh();
-
-        return uploadFileOnce(
+        return await uploadFileOnce(
             parentId,
             file,
-            result.accessToken,
+            token,
             onProgress,
             signal,
             uploadId
         );
+    } catch (err) {
+        if (err?.name === "AbortError" || err?.error === "UPLOAD_CANCELED") {
+            const error = new Error("Upload canceled");
+            error.code = "UPLOAD_CANCELED";
+            error.status = err.status;
+            throw error;
+        }
+
+        if (err.status !== 401) {
+            const error = new Error(err.message || "Failed to upload file");
+            error.code = err.error;
+            error.status = err.status;
+            throw error;
+        }
+
+        const result = await refresh();
+
+        try {
+            return await uploadFileOnce(
+                parentId,
+                file,
+                result.accessToken,
+                onProgress,
+                signal,
+                uploadId
+            );
+        } catch (retryErr) {
+            if (
+                retryErr?.name === "AbortError" ||
+                retryErr?.error === "UPLOAD_CANCELED"
+            ) {
+                const error = new Error("Upload canceled");
+                error.code = "UPLOAD_CANCELED";
+                error.status = retryErr.status;
+                throw error;
+            }
+
+            const error = new Error(retryErr.message || "Failed to upload file");
+            error.code = retryErr.error;
+            error.status = retryErr.status;
+            throw error;
+        }
     }
 }
 
