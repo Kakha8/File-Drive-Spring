@@ -122,4 +122,28 @@ public class LogsService {
         log.info(String.format("Logging the scheduled deletion of malware {} from quarantine", name));
         actionLogsRepository.save(actionLogs);
     }
+
+    public void bulkDownloadLog(String detailsJson) {
+        ActionLogs actionLogs = logAction(
+                ActionType.DOWNLOAD.name(),
+                null,
+                EntityType.BULK.name(),
+                detailsJson
+        );
+
+        actionLogsRepository.save(actionLogs);
+        log.info("Logging bulk download: {}", detailsJson);
+    }
+
+    public void folderDownloadLog(String detailsJson, Long folderId) {
+        ActionLogs actionLogs = logAction(
+                ActionType.DOWNLOAD.name(),
+                folderId,
+                EntityType.FOLDER.name(),
+                detailsJson
+        );
+
+        actionLogsRepository.save(actionLogs);
+        log.info("Logging folder download: folderId={}, details={}", folderId, detailsJson);
+    }
 }

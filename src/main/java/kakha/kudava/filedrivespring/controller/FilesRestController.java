@@ -5,6 +5,7 @@ import kakha.kudava.filedrivespring.dto.MoveFileRequest;
 import kakha.kudava.filedrivespring.dto.RenameRequest;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.services.MoveService;
+import kakha.kudava.filedrivespring.services.UploadCancellationService;
 import kakha.kudava.filedrivespring.services.objects.FileService;
 import kakha.kudava.filedrivespring.services.ObjectStorageService;
 import kakha.kudava.filedrivespring.services.RenameService;
@@ -26,20 +27,23 @@ public class FilesRestController {
     private final FileService fileService;
     private final RenameService renameService;
     private final MoveService moveService;
+    private final UploadCancellationService uploadCancellationService;
 
-    public FilesRestController(ObjectStorageService storage, FileService fileService, RenameService renameService, MoveService moveService) {
+    public FilesRestController(ObjectStorageService storage, FileService fileService, RenameService renameService, MoveService moveService, UploadCancellationService uploadCancellationService) {
         this.storage = storage;
         this.fileService = fileService;
         this.renameService = renameService;
         this.moveService = moveService;
+        this.uploadCancellationService = uploadCancellationService;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<FileMetaDataDTO> upload(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "parentId", required = false) Long parentId
+            @RequestParam(value = "parentId", required = false) Long parentId,
+            @RequestParam(value = "uploadId", required = false) String uploadId
     ) throws Exception {
-        FileMetaDataDTO dto = fileService.upload(file, parentId);
+        FileMetaDataDTO dto = fileService.upload(file, parentId, uploadId);
         return ResponseEntity.status(201).body(dto);
     }
 

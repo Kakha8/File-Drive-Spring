@@ -1,5 +1,6 @@
 package kakha.kudava.filedrivespring.services.objects;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.errors.*;
@@ -8,9 +9,12 @@ import kakha.kudava.filedrivespring.dto.*;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.User;
+import kakha.kudava.filedrivespring.records.FolderDownloadResult;
+import kakha.kudava.filedrivespring.records.ZipCount;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.repository.UserRepository;
+import kakha.kudava.filedrivespring.services.LogsService;
 import kakha.kudava.filedrivespring.services.ObjectStorageService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,10 +23,16 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Slf4j
 @Service
@@ -37,15 +47,19 @@ public class FolderService {
     private String bucket;
     private final MinioClient minioClient;
     private final FileMetaDataRepository fileMetaDataRepository;
+    private final ObjectMapper objectMapper;
+    private final LogsService logsService;
     public FolderService(FolderRepository folderRepository, ObjectStorageService objectStorageService, UserRepository userRepository, RootFolderService rootFolderService,
                          MinioClient minioClient,
-                         FileMetaDataRepository fileMetaDataRepository) {
+                         FileMetaDataRepository fileMetaDataRepository, ObjectMapper objectMapper, LogsService logsService) {
         this.folderRepository = folderRepository;
         this.objectStorageService = objectStorageService;
         this.userRepository = userRepository;
         this.rootFolderService = rootFolderService;
         this.minioClient = minioClient;
         this.fileMetaDataRepository = fileMetaDataRepository;
+        this.objectMapper = objectMapper;
+        this.logsService = logsService;
     }
 
     private User currentUser() {
@@ -206,5 +220,104 @@ public class FolderService {
         dto.setFiles(viewFiles(id));
 
         return dto;
+    }
+
+    public FolderDownloadResult downloadFolderAsZip(Long folderId) throws Exception {
+        Folders rootFolder = folderRepository.findById(folderId)
+                .orElseThrow(() -> new RuntimeException("Folder not found"));
+
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+
+        ZipCount count;
+
+        try (ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream)) {
+            String rootPath = sanitizeZipName(rootFolder.getName()) + "/";
+
+            count = addFolderToZip(rootFolder, rootPath, zipOutputStream);
+        }
+
+        String zipName = sanitizeZipName(rootFolder.getName()) + ".zip";
+
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("downloadName", zipName);
+        details.put("folderId", rootFolder.getId());
+        details.put("folderName", rootFolder.getName());
+        details.put("fileCount", count.fileCount());
+        details.put("folderCount", count.folderCount());
+        details.put("zipSizeBytes", byteArrayOutputStream.size());
+
+        String detailsJson = objectMapper.writeValueAsString(details);
+
+        try {
+            logsService.folderDownloadLog(detailsJson, rootFolder.getId());
+        } catch (Exception e) {
+            log.error("Folder zip was created, but logging failed: folderId={}", rootFolder.getId(), e);
+        }
+
+        return new FolderDownloadResult(
+                zipName,
+                new ByteArrayInputStream(byteArrayOutputStream.toByteArray())
+        );
+    }
+
+    private ZipCount addFolderToZip(
+            Folders folder,
+            String currentPath,
+            ZipOutputStream zipOutputStream
+    ) throws Exception {
+        int fileCount = 0;
+        int folderCount = 1;
+
+        ZipEntry folderEntry = new ZipEntry(currentPath);
+        zipOutputStream.putNextEntry(folderEntry);
+        zipOutputStream.closeEntry();
+
+        List<FileMetaData> files = fileMetaDataRepository.findByParentId(folder.getId());
+
+        for (FileMetaData file : files) {
+            String filePath = currentPath + sanitizeZipName(file.getFileName());
+
+            try (InputStream fileInputStream = objectStorageService.downloadWithoutLog(file.getId())) {
+                ZipEntry fileEntry = new ZipEntry(filePath);
+                zipOutputStream.putNextEntry(fileEntry);
+
+                fileInputStream.transferTo(zipOutputStream);
+
+                zipOutputStream.closeEntry();
+            }
+
+            fileCount++;
+        }
+
+        List<Folders> childFolders = folderRepository.findByParentId(folder.getId());
+
+        for (Folders childFolder : childFolders) {
+            String childPath = currentPath + sanitizeZipName(childFolder.getName()) + "/";
+
+            ZipCount childCount = addFolderToZip(childFolder, childPath, zipOutputStream);
+
+            fileCount += childCount.fileCount();
+            folderCount += childCount.folderCount();
+        }
+
+        return new ZipCount(fileCount, folderCount);
+    }
+
+    private String sanitizeZipName(String name) {
+        if (name == null || name.isBlank()) {
+            return "untitled";
+        }
+
+        return name
+                .replace("\\", "_")
+                .replace("/", "_")
+                .replace(":", "_")
+                .replace("*", "_")
+                .replace("?", "_")
+                .replace("\"", "_")
+                .replace("<", "_")
+                .replace(">", "_")
+                .replace("|", "_")
+                .trim();
     }
 }

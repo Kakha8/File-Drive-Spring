@@ -4,8 +4,13 @@ import {
     createFolder,
     getFileBlob,
     getFolder,
+    getFolderZipBlob,
+    getMixedZipBlob,
     getRootFolder,
+    renameFile,
+    renameFolder,
     uploadFile,
+    cancelUpload,
 } from "../api/drive";
 
 function Icon({ children, className = "" }) {
@@ -130,6 +135,11 @@ const Icons = {
             <circle cx="12" cy="5" r="1" />
             <circle cx="12" cy="12" r="1" />
             <circle cx="12" cy="19" r="1" />
+        </Icon>
+    ),
+    ChevronDown: ({ className }) => (
+        <Icon className={className}>
+            <path d="m6 9 6 6 6-6" />
         </Icon>
     ),
     Download: ({ className }) => (
@@ -301,9 +311,21 @@ function Main({ onLogout }) {
 
     const fileInputRef = useRef(null);
     const [uploading, setUploading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState(0);
-    const [uploadName, setUploadName] = useState("");
+    const [uploads, setUploads] = useState([]);
+    const [uploadPanelMinimized, setUploadPanelMinimized] = useState(false);
+    const [uploadPanelClosed, setUploadPanelClosed] = useState(false);
+    const [uploadCancelConfirm, setUploadCancelConfirm] = useState(false);
+    const cancelUploadsRef = useRef(false);
+    const canceledUploadIdsRef = useRef(new Set());
+    const currentUploadAbortRef = useRef(null);
+    const currentUploadRef = useRef(null);
     const [openMenuId, setOpenMenuId] = useState(null);
+
+    const [renamingItem, setRenamingItem] = useState(null);
+    const renameInputRef = useRef(null);
+
+    const currentFolderId =
+        path.length > 0 ? path[path.length - 1].id : currentFolder?.id;
 
     useEffect(() => {
         let cancelled = false;
@@ -361,6 +383,13 @@ function Main({ onLogout }) {
     }, [newFolderDraft]);
 
     useEffect(() => {
+        if (renamingItem && renameInputRef.current) {
+            renameInputRef.current.focus();
+            renameInputRef.current.select();
+        }
+    }, [renamingItem]);
+
+    useEffect(() => {
         function closeMenus() {
             setOpenMenuId(null);
         }
@@ -391,48 +420,177 @@ function Main({ onLogout }) {
     }
 
     async function reloadCurrentFolder() {
-        if (!currentFolder?.id) return;
+        if (!currentFolderId) return;
 
         const folder =
-            path.length <= 1 ? await getRootFolder() : await getFolder(currentFolder.id);
+            path.length <= 1 ? await getRootFolder() : await getFolder(currentFolderId);
 
         setCurrentFolder(folder);
         setSelectedIds([]);
     }
 
     function openUploadPicker() {
-        if (!currentFolder?.id || uploading) return;
+        if (!currentFolderId || uploading) return;
         fileInputRef.current?.click();
     }
 
     async function handleUploadSelected(event) {
-        const file = event.target.files?.[0];
+        const files = Array.from(event.target.files || []);
 
-        if (!file || !currentFolder?.id) return;
+        if (files.length === 0 || !currentFolderId) return;
+
+        const uploadItems = files.map((file) => ({
+            id: crypto.randomUUID(),
+            name: file.name,
+            progress: 0,
+            status: "waiting",
+            error: "",
+            fileKey: `${file.name}-${file.size}-${file.lastModified}`,
+        }));
+
+        setUploads((currentUploads) => [...currentUploads, ...uploadItems]);
+        setUploading(true);
+        setUploadPanelClosed(false);
+        setUploadPanelMinimized(false);
+        setUploadCancelConfirm(false);
+        cancelUploadsRef.current = false;
+        canceledUploadIdsRef.current.clear();
+        setError("");
 
         try {
-            setUploading(true);
-            setUploadProgress(0);
-            setUploadName(file.name);
-            setError("");
+            for (let index = 0; index < files.length; index += 1) {
+                if (cancelUploadsRef.current) break;
 
-            await uploadFile(currentFolder.id, file, (percent) => {
-                setUploadProgress(percent);
-            });
+                const file = files[index];
+                const uploadItem = uploadItems[index];
+                const uploadId = uploadItem.id;
 
-            await reloadCurrentFolder();
-        } catch (err) {
-            setError(err.message || "Failed to upload file");
+                if (canceledUploadIdsRef.current.has(uploadId)) {
+                    continue;
+                }
+
+                setUploads((currentUploads) =>
+                    currentUploads.map((item) =>
+                        item.id === uploadId
+                            ? {
+                                ...item,
+                                status: "uploading",
+                                progress: 0,
+                                error: "",
+                            }
+                            : item
+                    )
+                );
+
+                const abortController = new AbortController();
+                currentUploadAbortRef.current = abortController;
+                currentUploadRef.current = {
+                    uploadId,
+                    controller: abortController,
+                };
+
+                try {
+                    await uploadFile(
+                        currentFolderId,
+                        file,
+                        (percent) => {
+                            if (
+                                cancelUploadsRef.current ||
+                                canceledUploadIdsRef.current.has(uploadId)
+                            ) {
+                                return;
+                            }
+
+                            setUploads((currentUploads) =>
+                                currentUploads.map((item) =>
+                                    item.id === uploadId
+                                        ? {
+                                            ...item,
+                                            progress: percent,
+                                            status:
+                                                percent >= 100
+                                                    ? "processing"
+                                                    : "uploading",
+                                        }
+                                        : item
+                                )
+                            );
+                        },
+                        abortController.signal,
+                        uploadId
+                    );
+
+                    if (
+                        cancelUploadsRef.current ||
+                        canceledUploadIdsRef.current.has(uploadId) ||
+                        abortController.signal.aborted
+                    ) {
+                        continue;
+                    }
+
+                    setUploads((currentUploads) =>
+                        currentUploads.map((item) =>
+                            item.id === uploadId
+                                ? {
+                                    ...item,
+                                    progress: 100,
+                                    status: "done",
+                                    error: "",
+                                }
+                                : item
+                        )
+                    );
+                } catch (err) {
+                    const wasCanceled =
+                        cancelUploadsRef.current ||
+                        canceledUploadIdsRef.current.has(uploadId) ||
+                        abortController.signal.aborted ||
+                        err.message === "Upload canceled" ||
+                        err.code === "UPLOAD_CANCELED";
+
+                    const wasMalware =
+                        err.code === "MALWARE_DETECTED" ||
+                        err.status === 422;
+
+                    setUploads((currentUploads) =>
+                        currentUploads.map((item) =>
+                            item.id === uploadId
+                                ? {
+                                    ...item,
+                                    status: wasCanceled ? "canceled" : "error",
+                                    error: wasCanceled
+                                        ? "Cancelled"
+                                        : wasMalware
+                                            ? "Rejected: malware detected"
+                                            : err.message || "Failed to upload this file",
+                                }
+                                : item
+                        )
+                    );
+
+                    if (cancelUploadsRef.current) break;
+                } finally {
+                    if (currentUploadAbortRef.current === abortController) {
+                        currentUploadAbortRef.current = null;
+                    }
+
+                    if (currentUploadRef.current?.uploadId === uploadId) {
+                        currentUploadRef.current = null;
+                    }
+                }
+            }
+
+            if (!cancelUploadsRef.current) {
+                await reloadCurrentFolder();
+            }
         } finally {
             setUploading(false);
-            setUploadProgress(0);
-            setUploadName("");
             event.target.value = "";
         }
     }
 
     function startCreateFolder() {
-        if (!currentFolder?.id || creatingFolder) return;
+        if (!currentFolderId || creatingFolder) return;
 
         const draftId = `draft-folder-${Date.now()}`;
         draftHandledRef.current = false;
@@ -472,9 +630,11 @@ function Main({ onLogout }) {
             setLoading(true);
             setError("");
 
-            await createFolder(currentFolder.id, cleanName);
+            await createFolder(currentFolderId, cleanName);
+
             setNewFolderDraft(null);
             setSelectedIds([]);
+
             await reloadCurrentFolder();
         } catch (err) {
             setError(err.message || "Failed to create folder");
@@ -525,7 +685,7 @@ function Main({ onLogout }) {
                 error: "",
             });
 
-            const blob = await getFileBlob(item.file.id);
+            const blob = await getFileBlob(item.rawId);
             const url = URL.createObjectURL(blob);
 
             setViewer({
@@ -626,29 +786,95 @@ function Main({ onLogout }) {
     }
 
     async function handleDownload(item) {
-        if (!item?.file?.id) return;
+        try {
+            setError("");
+
+            const selectedItems = allItems.filter((currentItem) =>
+                selectedIds.includes(currentItem.id)
+            );
+
+            const shouldDownloadSelection =
+                selectedItems.length > 1 && selectedIds.includes(item.id);
+
+            if (shouldDownloadSelection) {
+                const fileIds = selectedItems
+                    .filter((currentItem) => currentItem.type !== "folder")
+                    .map((currentItem) => currentItem.rawId);
+
+                const folderIds = selectedItems
+                    .filter((currentItem) => currentItem.type === "folder")
+                    .map((currentItem) => currentItem.rawId);
+
+                const blob = await getMixedZipBlob(fileIds, folderIds);
+                downloadBlob(blob, "download.zip");
+                return;
+            }
+
+            if (item.type === "folder") {
+                const blob = await getFolderZipBlob(item.rawId);
+                downloadBlob(blob, `${item.name || "folder"}.zip`);
+                return;
+            }
+
+            const blob = await getFileBlob(item.rawId);
+            downloadBlob(blob, item.name || "download");
+        } catch (err) {
+            setError(err.message || "Failed to download item");
+        }
+    }
+
+    function downloadBlob(blob, fileName) {
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+        URL.revokeObjectURL(url);
+    }
+
+    function handleRename(item) {
+        setError("");
+        setOpenMenuId(null);
+        setSelectedIds([item.id]);
+        setRenamingItem({
+            id: item.id,
+            rawId: item.rawId,
+            type: item.type,
+            name: item.name,
+        });
+    }
+
+    function cancelRename() {
+        setRenamingItem(null);
+    }
+
+    async function commitRename(item, value) {
+        const cleanName = value.trim();
+
+        if (!cleanName || cleanName === item.name) {
+            setRenamingItem(null);
+            return;
+        }
 
         try {
             setError("");
 
-            const blob = await getFileBlob(item.file.id);
-            const url = URL.createObjectURL(blob);
+            if (item.type === "folder") {
+                await renameFolder(item.rawId, cleanName);
+            } else {
+                await renameFile(item.rawId, cleanName);
+            }
 
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = item.name || "download";
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-
-            URL.revokeObjectURL(url);
+            setRenamingItem(null);
+            await reloadCurrentFolder();
         } catch (err) {
-            setError(err.message || "Failed to download file");
+            setError(err.message || "Failed to rename item");
+            setRenamingItem(null);
         }
-    }
-
-    function handleRename(item) {
-        setError(`Rename coming soon for ${item.name}`);
     }
 
     function handleCopy(item) {
@@ -671,6 +897,98 @@ function Main({ onLogout }) {
             error: "",
             propertiesOnly: true,
         });
+    }
+
+    function handleCloseUploadPanel(hasActiveUploadsFromPanel = false) {
+        const hasActiveUploads =
+            hasActiveUploadsFromPanel ||
+            uploading ||
+            uploads.some(
+                (item) =>
+                    item.status === "waiting" ||
+                    item.status === "uploading" ||
+                    item.status === "processing"
+            );
+
+        if (!hasActiveUploads) {
+            setUploadPanelClosed(true);
+            setUploadCancelConfirm(false);
+            return;
+        }
+
+        setUploadPanelMinimized(false);
+        setUploadCancelConfirm(true);
+    }
+
+    async function confirmCancelUploads() {
+        cancelUploadsRef.current = true;
+
+        const activeUploadIds = uploads
+            .filter(
+                (item) =>
+                    item.status === "waiting" ||
+                    item.status === "uploading" ||
+                    item.status === "processing"
+            )
+            .map((item) => item.id);
+
+        activeUploadIds.forEach((uploadId) => {
+            canceledUploadIdsRef.current.add(uploadId);
+        });
+
+        setUploads((currentUploads) =>
+            currentUploads.map((item) => {
+                if (activeUploadIds.includes(item.id)) {
+                    return {
+                        ...item,
+                        status: "canceled",
+                        error: "Cancelled",
+                    };
+                }
+
+                return item;
+            })
+        );
+
+        await Promise.allSettled(
+            activeUploadIds.map((uploadId) => cancelUpload(uploadId))
+        );
+
+        currentUploadAbortRef.current?.abort();
+        currentUploadAbortRef.current = null;
+        currentUploadRef.current = null;
+
+        setUploading(false);
+        setUploadCancelConfirm(false);
+        setUploadPanelClosed(true);
+    }
+
+    async function cancelSingleUpload(uploadId) {
+        canceledUploadIdsRef.current.add(uploadId);
+
+        setUploads((currentUploads) =>
+            currentUploads.map((item) =>
+                item.id === uploadId
+                    ? {
+                        ...item,
+                        status: "canceled",
+                        error: "Cancelled",
+                    }
+                    : item
+            )
+        );
+
+        await Promise.allSettled([cancelUpload(uploadId)]);
+
+        if (currentUploadRef.current?.uploadId === uploadId) {
+            currentUploadRef.current.controller.abort();
+            currentUploadRef.current = null;
+            currentUploadAbortRef.current = null;
+        }
+    }
+
+    function keepUploadPanelOpen() {
+        setUploadCancelConfirm(false);
     }
 
     function handleFileSelect(event, itemId) {
@@ -939,30 +1257,18 @@ function Main({ onLogout }) {
                             disabled={uploading}
                         >
                             <Icons.Upload className="button-icon" />
-                            {uploading ? `${uploadProgress}%` : "Upload"}
+                            Upload
                         </button>
 
                         <input
                             ref={fileInputRef}
                             type="file"
+                            multiple
                             className="hidden-file-input"
                             onChange={handleUploadSelected}
                         />
                     </div>
                 </div>
-
-                {uploading && (
-                    <div className="upload-progress-wrap">
-                        <div className="upload-progress-info">
-                            <span>Uploading {uploadName}</span>
-                            <span>{uploadProgress}%</span>
-                        </div>
-
-                        <div className="upload-progress-bar">
-                            <div style={{ width: `${uploadProgress}%` }} />
-                        </div>
-                    </div>
-                )}
 
                 <div className="content-layout">
                     <section className="file-table-wrap">
@@ -995,6 +1301,10 @@ function Main({ onLogout }) {
                                         creatingFolder={creatingFolder}
                                         openMenuId={openMenuId}
                                         setOpenMenuId={setOpenMenuId}
+                                        renamingItem={renamingItem}
+                                        renameInputRef={renameInputRef}
+                                        onRenameCommit={commitRename}
+                                        onRenameCancel={cancelRename}
                                         onDraftCommit={commitNewFolderName}
                                         onDraftCancel={cancelCreateFolder}
                                         onDownload={handleDownload}
@@ -1007,7 +1317,7 @@ function Main({ onLogout }) {
                                             handleFileSelect(event, item.id)
                                         }
                                         onOpen={() => {
-                                            if (item.isDraft) return;
+                                            if (item.isDraft || renamingItem?.id === item.id) return;
 
                                             if (item.type === "folder") {
                                                 openFolder(item.folder);
@@ -1032,6 +1342,18 @@ function Main({ onLogout }) {
                 </div>
             </section>
 
+            <UploadPanel
+                uploads={uploads}
+                minimized={uploadPanelMinimized}
+                closed={uploadPanelClosed}
+                cancelConfirm={uploadCancelConfirm}
+                onToggleMinimized={() => setUploadPanelMinimized((value) => !value)}
+                onClose={handleCloseUploadPanel}
+                onConfirmCancel={confirmCancelUploads}
+                onKeepUploading={keepUploadPanelOpen}
+                onCancelUpload={cancelSingleUpload}
+            />
+
             {viewer && <FileViewer viewer={viewer} onClose={closeViewer} />}
         </main>
     );
@@ -1049,6 +1371,10 @@ function FileRow({
                      creatingFolder,
                      openMenuId,
                      setOpenMenuId,
+                     renamingItem,
+                     renameInputRef,
+                     onRenameCommit,
+                     onRenameCancel,
                      onDownload,
                      onRename,
                      onCopy,
@@ -1058,6 +1384,7 @@ function FileRow({
                  }) {
     const FileIcon = getFileIcon(item.type);
     const menuOpen = openMenuId === item.id;
+    const isRenaming = renamingItem?.id === item.id;
 
     function handleMenuButtonClick(event) {
         event.stopPropagation();
@@ -1072,8 +1399,14 @@ function FileRow({
 
     return (
         <button
-            onClick={onSelect}
-            onDoubleClick={onOpen}
+            onClick={(event) => {
+                if (isRenaming) return;
+                onSelect(event);
+            }}
+            onDoubleClick={() => {
+                if (isRenaming) return;
+                onOpen();
+            }}
             className={`file-row ${selected ? "selected" : ""}`}
             type="button"
         >
@@ -1105,6 +1438,26 @@ function FileRow({
                                 if (event.key === "Escape") {
                                     event.preventDefault();
                                     onDraftCancel();
+                                }
+                            }}
+                        />
+                    ) : isRenaming ? (
+                        <input
+                            ref={renameInputRef}
+                            className="new-folder-name-input"
+                            defaultValue={item.name}
+                            onClick={(event) => event.stopPropagation()}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                            onBlur={(event) => onRenameCommit(item, event.target.value)}
+                            onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    onRenameCommit(item, event.currentTarget.value);
+                                }
+
+                                if (event.key === "Escape") {
+                                    event.preventDefault();
+                                    onRenameCancel();
                                 }
                             }}
                         />
@@ -1148,15 +1501,13 @@ function FileRow({
 
                         {menuOpen && (
                             <div className="row-action-menu">
-                                {item.type !== "folder" && (
-                                    <button
-                                        type="button"
-                                        onClick={(event) => runAction(event, onDownload)}
-                                    >
-                                        <Icons.Download className="menu-action-icon" />
-                                        Download
-                                    </button>
-                                )}
+                                <button
+                                    type="button"
+                                    onClick={(event) => runAction(event, onDownload)}
+                                >
+                                    <Icons.Download className="menu-action-icon" />
+                                    Download
+                                </button>
 
                                 <button
                                     type="button"
@@ -1207,6 +1558,194 @@ function FileRow({
     );
 }
 
+function UploadPanel({
+                         uploads,
+                         minimized,
+                         closed,
+                         cancelConfirm,
+                         onToggleMinimized,
+                         onClose,
+                         onConfirmCancel,
+                         onKeepUploading,
+                         onCancelUpload,
+                     }) {
+    if (!uploads || uploads.length === 0 || closed) return null;
+
+    const activeCount = uploads.filter(
+        (item) =>
+            item.status === "waiting" ||
+            item.status === "uploading" ||
+            item.status === "processing"
+    ).length;
+
+    const movingUploads = uploads.filter(
+        (item) => item.status === "uploading" || item.status === "processing"
+    );
+
+    const doneCount = uploads.filter((item) => item.status === "done").length;
+    const errorCount = uploads.filter((item) => item.status === "error").length;
+    const canceledCount = uploads.filter((item) => item.status === "canceled").length;
+    const latestActiveCount = activeCount;
+
+    const totalProgress = movingUploads.length
+        ? Math.round(
+            movingUploads.reduce((sum, item) => {
+                if (item.status === "processing") return sum + 100;
+                return sum + item.progress;
+            }, 0) / movingUploads.length
+        )
+        : 0;
+
+    let title = "Upload complete";
+
+    if (activeCount > 0) {
+        title = `Uploading ${latestActiveCount} ${latestActiveCount === 1 ? "file" : "files"}`;
+    } else if (errorCount > 0 && doneCount > 0) {
+        title = `${doneCount} uploaded, ${errorCount} failed`;
+    } else if (errorCount > 0) {
+        title = "Upload failed";
+    } else if (canceledCount > 0) {
+        title = `${canceledCount} ${canceledCount === 1 ? "upload" : "uploads"} cancelled`;
+    }
+
+    return (
+        <div className={`upload-panel ${minimized ? "minimized" : ""}`}>
+            <div className="upload-panel-header">
+                <div className="upload-panel-title">
+                    <div className="upload-panel-title-row">
+                        <strong>{title}</strong>
+
+                        {minimized && activeCount > 0 && (
+                            <span className="upload-panel-percent-wrap">
+        <span
+            className="upload-panel-circle-progress"
+            style={{
+                "--progress": `${totalProgress * 3.6}deg`,
+            }}
+            aria-hidden="true"
+        />
+        <span className="upload-panel-percent">
+            {totalProgress}%
+        </span>
+    </span>
+                        )}
+                    </div>
+
+                    <span>
+                        {doneCount}/{uploads.length}
+                    </span>
+                </div>
+
+                <div className="upload-panel-actions">
+                    <button
+                        type="button"
+                        onClick={onToggleMinimized}
+                        title={minimized ? "Expand uploads" : "Minimize uploads"}
+                        aria-label={minimized ? "Expand uploads" : "Minimize uploads"}
+                    >
+                        <Icons.ChevronDown
+                            className={`upload-panel-chevron ${minimized ? "up" : ""}`}
+                        />
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => onClose(activeCount > 0)}
+                        title="Close upload panel"
+                        aria-label="Close upload panel"
+                    >
+                        ×
+                    </button>
+                </div>
+            </div>
+
+            {!minimized && cancelConfirm && (
+                <div className="upload-cancel-confirm">
+                    <strong>Cancel uploads?</strong>
+                    <p>Uploads are still in progress. Cancel the remaining uploads?</p>
+
+                    <div className="upload-cancel-actions">
+                        <button type="button" onClick={onKeepUploading}>
+                            Keep uploading
+                        </button>
+
+                        <button
+                            type="button"
+                            className="danger"
+                            onClick={onConfirmCancel}
+                        >
+                            Cancel uploads
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {!minimized && !cancelConfirm && (
+                <div className="upload-panel-list">
+                    {uploads.map((upload) => (
+                        <div key={upload.id} className="upload-panel-item">
+                            <div className="upload-file-icon">
+                                {upload.status === "done" ? (
+                                    <Icons.Check className="svg-icon" />
+                                ) : (
+                                    <Icons.File className="svg-icon" />
+                                )}
+                            </div>
+
+                            <div className="upload-file-info">
+                                <div className="upload-file-line">
+                                    <span title={upload.name}>{upload.name}</span>
+
+                                    <div className="upload-file-actions">
+                                        <small>
+                                            {upload.status === "waiting" && "Waiting"}
+                                            {upload.status === "uploading" &&
+                                                `${upload.progress}%`}
+                                            {upload.status === "processing" &&
+                                                "Scanning..."}
+                                            {upload.status === "done" && "Done"}
+                                            {upload.status === "error" && "Failed"}
+                                            {upload.status === "canceled" && "Cancelled"}
+                                        </small>
+
+                                        {(upload.status === "waiting" ||
+                                            upload.status === "uploading" ||
+                                            upload.status === "processing") && (
+                                            <button
+                                                type="button"
+                                                className="upload-item-cancel"
+                                                onClick={() => onCancelUpload(upload.id)}
+                                                title="Cancel this upload"
+                                                aria-label={`Cancel upload ${upload.name}`}
+                                            >
+                                                ×
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {upload.status === "error" || upload.status === "canceled" ? (
+                                    <p className="upload-file-error">
+                                        {upload.error}
+                                    </p>
+                                ) : (
+                                    <div className="upload-file-progress">
+                                        <div
+                                            style={{
+                                                width: `${upload.progress}%`,
+                                            }}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function FileViewer({ viewer, onClose }) {
     const { item, url, loading, error } = viewer;
     const type = item.type || "";
@@ -1238,11 +1777,21 @@ function FileViewer({ viewer, onClose }) {
 
                     <div className="file-viewer-body">
                         <div className="viewer-message">
-                            <p><strong>Name:</strong> {item.name}</p>
-                            <p><strong>Type:</strong> {getTypeLabel(item.type)}</p>
-                            <p><strong>Owner:</strong> {item.owner}</p>
-                            <p><strong>Size:</strong> {item.size}</p>
-                            <p><strong>Last edited:</strong> {item.lastEdited}</p>
+                            <p>
+                                <strong>Name:</strong> {item.name}
+                            </p>
+                            <p>
+                                <strong>Type:</strong> {getTypeLabel(item.type)}
+                            </p>
+                            <p>
+                                <strong>Owner:</strong> {item.owner}
+                            </p>
+                            <p>
+                                <strong>Size:</strong> {item.size}
+                            </p>
+                            <p>
+                                <strong>Last edited:</strong> {item.lastEdited}
+                            </p>
                         </div>
                     </div>
                 </section>
