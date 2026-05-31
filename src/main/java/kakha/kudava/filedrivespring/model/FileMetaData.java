@@ -37,6 +37,9 @@ public class FileMetaData {
     @Column(nullable = false)
     private boolean deleted;
 
+    @Column
+    private String originalObjectKey;
+
     @ManyToOne(fetch = FetchType.EAGER)
     private Folders parent;
 

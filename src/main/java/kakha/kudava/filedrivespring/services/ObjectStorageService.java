@@ -25,9 +25,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -59,13 +61,16 @@ public class ObjectStorageService {
     private final QuarantineService quarantineService;
     private final RootFolderService rootFolderService;
     private final UploadCancellationService uploadCancellationService;
+    private final String trashBucket;
 
 
     public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
                                 FolderRepository folderRepository,
                                 LogsService logsService, ObjectMapper objectMapper, ClamAvScannerService clamAvScannerService,
                                 QuarantinedFilesRepository quarantinedFilesRepository, @Value("${s3.quarantine-bucket}") String quarantineBucket,
-                                UserRepository userRepository, QuarantineService quarantineService, RootFolderService rootFolderService, UploadCancellationService uploadCancellationService) {
+                                UserRepository userRepository, QuarantineService quarantineService,
+                                RootFolderService rootFolderService, UploadCancellationService uploadCancellationService,
+                                @Value("${s3.trash-bucket}") String trashBucket) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
@@ -79,6 +84,7 @@ public class ObjectStorageService {
         this.quarantineService = quarantineService;
         this.rootFolderService = rootFolderService;
         this.uploadCancellationService = uploadCancellationService;
+        this.trashBucket = trashBucket;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId, String uploadId) throws Exception {
@@ -289,25 +295,59 @@ public class ObjectStorageService {
         );
     }
 
-    public void delete(Long id){
+    public void delete(Long id) {
 
         FileMetaData metaData = fileMetaDataRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Object not found"));
-        String objectKey = metaData.getObjectKey();
 
-        metaData.setDeleted(true);
-        fileMetaDataRepository.save(metaData);
+        if (metaData.isDeleted()) {
+            throw new RuntimeException("Object is already in trash");
+        }
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        User user = userRepository.findByUsername(authentication.getName()).
+                orElseThrow(() -> new RuntimeException("User not found"));
+        String originalObjectKey = metaData.getObjectKey();
+
+        String trashObjectKey = "users/" + user.getId() + "/" + UUID.randomUUID() + "-" + metaData.getFileName();
+
         try {
+            minioClient.copyObject(
+                    CopyObjectArgs.builder()
+                            .bucket(trashBucket)
+                            .object(trashObjectKey)
+                            .source(
+                                    CopySource.builder()
+                                            .bucket(bucket)
+                                            .object(originalObjectKey)
+                                            .build()
+                            )
+                            .build()
+            );
+
             minioClient.removeObject(
                     RemoveObjectArgs.builder()
                             .bucket(bucket)
-                            .object(objectKey)
+                            .object(originalObjectKey)
                             .build()
             );
-            log.info("Object deleted successfully {}", objectKey);
-            logsService.deleteLog(objectKey, id, "FILE");
+
+            metaData.setDeleted(true);
+            metaData.setOriginalObjectKey(originalObjectKey);
+            metaData.setObjectKey(trashObjectKey);
+
+            fileMetaDataRepository.save(metaData);
+
+            log.info(
+                    "Object moved to trash successfully. originalKey={}, trashKey={}",
+                    originalObjectKey,
+                    trashObjectKey
+            );
+
+            logsService.deleteLog(originalObjectKey, id, "FILE");
+
         } catch (Exception e) {
-            throw new RuntimeException("Failed to delete object: " + objectKey, e);
+            throw new RuntimeException("Failed to move object to trash: " + originalObjectKey, e);
         }
     }
 
