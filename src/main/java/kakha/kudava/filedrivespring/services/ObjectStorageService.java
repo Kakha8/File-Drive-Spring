@@ -309,7 +309,8 @@ public class ObjectStorageService {
                 orElseThrow(() -> new RuntimeException("User not found"));
         String originalObjectKey = metaData.getObjectKey();
 
-        String trashObjectKey = "users/" + user.getId() + "/" + UUID.randomUUID() + "-" + metaData.getFileName();
+        String trashObjectKey = "users/" + user.getId() + "/files/" + metaData.getId() + "/"
+                + UUID.randomUUID() + "-" + metaData.getFileName();
 
         try {
             minioClient.copyObject(
@@ -358,9 +359,26 @@ public class ObjectStorageService {
         }
 
         String p = prefix.trim().replace("\\", "/");
+
         if (p.isEmpty()) {
             throw new IllegalArgumentException("prefix is empty");
         }
+
+        if (!p.endsWith("/")) {
+            p += "/";
+        }
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        User user = userRepository.findByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Folders folderToDelete = folderRepository.findByPrefixAndOwnerAndDeletedFalse(p, user)
+                .orElseThrow(() -> new RuntimeException("Folder not found or not owned by user"));
+
+        Long folderId = folderToDelete.getId();
+
+        String trashBasePrefix = "users/" + user.getId() + "/folders/" + folderId + "/";
 
         try {
             Iterable<Result<Item>> results = minioClient.listObjects(
@@ -371,78 +389,72 @@ public class ObjectStorageService {
                             .build()
             );
 
-            final int BATCH_SIZE = 1000;
+            for (Result<Item> result : results) {
+                Item item = result.get();
+                String originalObjectKey = item.objectName();
 
-            List<DeleteObject> batch = new ArrayList<>(BATCH_SIZE);
+                String relativeKey = originalObjectKey.substring(p.length());
+                String trashObjectKey = trashBasePrefix + relativeKey;
 
-            List<String> fileObjectNames = new ArrayList<>(BATCH_SIZE);
-            List<Long> fileIds = new ArrayList<>(BATCH_SIZE);
+                minioClient.copyObject(
+                        CopyObjectArgs.builder()
+                                .bucket(trashBucket)
+                                .object(trashObjectKey)
+                                .source(
+                                        CopySource.builder()
+                                                .bucket(bucket)
+                                                .object(originalObjectKey)
+                                                .build()
+                                )
+                                .build()
+                );
 
-            List<String> folderObjectNames = new ArrayList<>(BATCH_SIZE);
-            List<Long> folderIds = new ArrayList<>(BATCH_SIZE);
+                minioClient.removeObject(
+                        RemoveObjectArgs.builder()
+                                .bucket(bucket)
+                                .object(originalObjectKey)
+                                .build()
+                );
 
-            for (Result<Item> r : results) {
-                Item item = r.get();
-                String objectName = item.objectName();
+                fileMetaDataRepository.findByObjectKey(originalObjectKey)
+                        .ifPresent(file -> {
+                            file.setDeleted(true);
+                            file.setOriginalObjectKey(originalObjectKey);
+                            file.setObjectKey(trashObjectKey);
+                            fileMetaDataRepository.save(file);
 
-                log.debug("Deleting object from bucket: {}", objectName);
+                            logsService.deleteLog(originalObjectKey, file.getId(), "FILE");
+                        });
 
-                batch.add(new DeleteObject(objectName));
-
-                Optional<FileMetaData> file = fileMetaDataRepository.findByObjectKey(objectName);
-                Long fileId = file.map(FileMetaData::getId).orElse(null);
-                Optional<Folders> folder = folderRepository.findByPrefix(objectName);
-                Long folderId = folder.map(Folders::getId).orElse(null);
-
-                if (fileId != null) {
-                    fileObjectNames.add(objectName);
-                    fileIds.add(fileId);
-                } else if (folderId != null) {
-                    folderObjectNames.add(objectName);
-                    folderIds.add(folderId);
-                } else {
-                    log.warn("No DB metadata found for object '{}', skipping action log", objectName);
-                }
-
-                if (batch.size() >= BATCH_SIZE) {
-                    deleteBatch(batch);
-
-                    for (int i = 0; i < fileObjectNames.size(); i++) {
-                        logsService.deleteLog(fileObjectNames.get(i), fileIds.get(i), "FILE");
-                    }
-
-                    for (int i = 0; i < folderObjectNames.size(); i++) {
-                        logsService.deleteLog(folderObjectNames.get(i), folderIds.get(i), "FOLDER");
-                    }
-
-                    batch.clear();
-                    fileObjectNames.clear();
-                    fileIds.clear();
-                    folderObjectNames.clear();
-                    folderIds.clear();
-                }
+                log.info(
+                        "Moved folder object to trash. originalKey={}, trashKey={}",
+                        originalObjectKey,
+                        trashObjectKey
+                );
             }
 
-            if (!batch.isEmpty()) {
-                deleteBatch(batch);
+            List<Folders> foldersInSubtree =
+                    folderRepository.findByOwnerAndPrefixStartingWith(user, p);
 
-                for (int i = 0; i < fileObjectNames.size(); i++) {
-                    logsService.deleteLog(fileObjectNames.get(i), fileIds.get(i), "FILE");
-                }
-
-                for (int i = 0; i < folderObjectNames.size(); i++) {
-                    logsService.deleteLog(folderObjectNames.get(i), folderIds.get(i), "FOLDER");
-                }
-
-                batch.clear();
-                fileObjectNames.clear();
-                fileIds.clear();
-                folderObjectNames.clear();
-                folderIds.clear();
+            for (Folders folder : foldersInSubtree) {
+                folder.setDeleted(true);
             }
+
+            folderRepository.saveAll(foldersInSubtree);
+
+            for (Folders folder : foldersInSubtree) {
+                logsService.deleteLog(folder.getPrefix(), folder.getId(), "FOLDER");
+            }
+
+            log.info(
+                    "Folder subtree moved to trash successfully. folderId={}, originalPrefix={}, trashPrefix={}",
+                    folderId,
+                    p,
+                    trashBasePrefix
+            );
 
         } catch (Exception e) {
-            throw new RuntimeException("Failed to delete objects by prefix: " + p, e);
+            throw new RuntimeException("Failed to move folder to trash: " + p, e);
         }
     }
 
