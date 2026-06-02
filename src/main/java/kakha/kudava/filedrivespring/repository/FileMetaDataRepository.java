@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.repository;
 
 import kakha.kudava.filedrivespring.model.FileMetaData;
+import kakha.kudava.filedrivespring.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -35,4 +36,7 @@ public interface FileMetaDataRepository extends JpaRepository<FileMetaData, Long
     List<FileMetaData> findAllByParentId(Long parentId);
 
     List<FileMetaData> findByParentId(Long id);
+
+
+    List<FileMetaData> findByParent_OwnerAndDeletedTrue(User user);
 }
