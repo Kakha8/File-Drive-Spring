@@ -1,0 +1,84 @@
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(4, 10, 20, 0.65);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.trash-modal {
+    width: 460px;
+    max-width: calc(100vw - 32px);
+    background: #111827;
+    color: #f3f4f6;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+}
+
+.trash-modal-header {
+    padding: 20px 24px 8px;
+}
+
+.trash-modal-header h2 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+}
+
+.trash-modal-body {
+    padding: 0 24px 20px;
+    font-size: 15px;
+    line-height: 1.5;
+    color: #d1d5db;
+}
+
+.file-name {
+    color: #ffffff;
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.modal-subtext {
+    margin-top: 10px;
+    font-size: 13px;
+    color: #9ca3af;
+}
+
+.trash-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px 24px;
+}
+
+.btn {
+    border: none;
+    border-radius: 12px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn-secondary {
+    background: #1f2937;
+    color: #f3f4f6;
+}
+
+.btn-secondary:hover {
+    background: #374151;
+}
+
+.btn-danger {
+    background: #2563eb;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #1d4ed8;
+}

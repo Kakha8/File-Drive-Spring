@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { logout as apiLogout } from "../api/auth";
+import ConfirmTrashModal from "../components/ConfirmTrashModal";
 import {
     createFolder,
     getFileBlob,
@@ -11,6 +12,8 @@ import {
     renameFolder,
     uploadFile,
     cancelUpload,
+    deleteFile,
+    deleteFolder,
 } from "../api/drive";
 
 function Icon({ children, className = "" }) {
@@ -323,6 +326,9 @@ function Main({ onLogout }) {
 
     const [renamingItem, setRenamingItem] = useState(null);
     const renameInputRef = useRef(null);
+
+    const [trashModalOpen, setTrashModalOpen] = useState(false);
+    const [fileToTrash, setFileToTrash] = useState(null);
 
     const currentFolderId =
         path.length > 0 ? path[path.length - 1].id : currentFolder?.id;
@@ -886,9 +892,43 @@ function Main({ onLogout }) {
     }
 
     function handleDelete(item) {
-        setError(`Delete coming soon for ${item.name}`);
+        setError("");
+        setOpenMenuId(null);
+        setFileToTrash(item);
+        setTrashModalOpen(true);
     }
 
+    function cancelMoveToTrash() {
+        setTrashModalOpen(false);
+        setFileToTrash(null);
+    }
+
+    async function confirmMoveToTrash() {
+        if (!fileToTrash) return;
+
+        try {
+            setError("");
+            setLoading(true);
+
+            if (fileToTrash.type === "folder") {
+                await deleteFolder(fileToTrash.rawId);
+            } else {
+                await deleteFile(fileToTrash.rawId);
+            }
+
+            setSelectedIds((currentSelected) =>
+                currentSelected.filter((id) => id !== fileToTrash.id)
+            );
+
+            await reloadCurrentFolder();
+        } catch (err) {
+            setError(err.message || `Failed to move ${fileToTrash.name} to trash`);
+        } finally {
+            setLoading(false);
+            setTrashModalOpen(false);
+            setFileToTrash(null);
+        }
+    }
     function handleProperties(item) {
         setViewer({
             item,
@@ -1342,6 +1382,13 @@ function Main({ onLogout }) {
                 </div>
             </section>
 
+            <ConfirmTrashModal
+                open={trashModalOpen}
+                fileName={fileToTrash?.name || ""}
+                onConfirm={confirmMoveToTrash}
+                onCancel={cancelMoveToTrash}
+            />
+
             <UploadPanel
                 uploads={uploads}
                 minimized={uploadPanelMinimized}
@@ -1539,7 +1586,7 @@ function FileRow({
                                     className="danger-menu-action"
                                 >
                                     <Icons.Trash className="menu-action-icon" />
-                                    Delete
+                                    Move to trash
                                 </button>
 
                                 <button

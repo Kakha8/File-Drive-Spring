@@ -301,3 +301,25 @@ export async function renameFolder(folderId, newName) {
         throw new Error(message || "Failed to rename folder");
     }
 }
+
+export async function deleteFile(fileId) {
+    const response = await apiFetch(`/api/files/${fileId}`, {
+        method: "DELETE",
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to delete file");
+    }
+}
+
+export async function deleteFolder(folderId) {
+    const response = await apiFetch(`/api/folders/${folderId}`, {
+        method: "DELETE",
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to delete folder");
+    }
+}

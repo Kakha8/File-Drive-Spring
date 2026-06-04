@@ -37,6 +37,6 @@ public interface FileMetaDataRepository extends JpaRepository<FileMetaData, Long
 
     List<FileMetaData> findByParentId(Long id);
 
-
+    List<FileMetaData> findByParent_IdAndDeletedFalse(Long parentId);
     List<FileMetaData> findByParent_OwnerAndDeletedTrue(User user);
 }
