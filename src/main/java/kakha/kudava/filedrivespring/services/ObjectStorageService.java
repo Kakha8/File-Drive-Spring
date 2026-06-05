@@ -458,6 +458,26 @@ public class ObjectStorageService {
         }
     }
 
+    @Transactional
+    public void deleteMultipleFiles(List<Long> fileIds) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            throw new IllegalArgumentException("No file IDs provided");
+        }
+
+        List<Long> uniqueIds = fileIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (uniqueIds.isEmpty()) {
+            throw new IllegalArgumentException("No valid file IDs provided");
+        }
+
+        for (Long fileId : uniqueIds) {
+            delete(fileId);
+        }
+    }
+
     private void deleteBatch(List<DeleteObject> objects) throws Exception {
         Iterable<Result<DeleteError>> errors = minioClient.removeObjects(
                 RemoveObjectsArgs.builder()

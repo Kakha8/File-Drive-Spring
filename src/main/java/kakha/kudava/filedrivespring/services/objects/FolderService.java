@@ -31,6 +31,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -321,5 +322,27 @@ public class FolderService {
                 .replace(">", "_")
                 .replace("|", "_")
                 .trim();
+    }
+
+    @Transactional
+    public void deleteMultiple(List<Long> folderIds) throws InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InstantiationException, IllegalAccessException {
+
+            if (folderIds == null || folderIds.isEmpty()) {
+                throw new IllegalArgumentException("No file IDs provided");
+            }
+
+            List<Long> uniqueIds = folderIds.stream()
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+
+            if (uniqueIds.isEmpty()) {
+                throw new IllegalArgumentException("No valid file IDs provided");
+            }
+
+            for (Long folderId : uniqueIds) {
+                delete(folderId);
+            }
+
     }
 }

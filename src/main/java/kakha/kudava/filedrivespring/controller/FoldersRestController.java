@@ -9,6 +9,7 @@ import kakha.kudava.filedrivespring.records.FolderDownloadResult;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.services.MoveService;
+import kakha.kudava.filedrivespring.services.ObjectStorageService;
 import kakha.kudava.filedrivespring.services.objects.FolderService;
 import kakha.kudava.filedrivespring.services.RenameService;
 import org.springframework.core.io.InputStreamResource;
@@ -36,13 +37,15 @@ public class FoldersRestController {
     private final FileMetaDataRepository fileMetaDataRepository;
     private final RenameService renameService;
     private final MoveService moveService;
+    private final ObjectStorageService objectStorageService;
 
-    public FoldersRestController(FolderService folderService, FolderRepository folderRepository, FileMetaDataRepository fileMetaDataRepository, RenameService renameService, MoveService moveService) {
+    public FoldersRestController(FolderService folderService, FolderRepository folderRepository, FileMetaDataRepository fileMetaDataRepository, RenameService renameService, MoveService moveService, ObjectStorageService objectStorageService) {
         this.folderService = folderService;
         this.folderRepository = folderRepository;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.renameService = renameService;
         this.moveService = moveService;
+        this.objectStorageService = objectStorageService;
     }
 
     @GetMapping
@@ -94,6 +97,12 @@ public class FoldersRestController {
             IOException, NoSuchAlgorithmException,
             InvalidKeyException, InstantiationException, IllegalAccessException {
         folderService.delete(id);
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+    }
+
+    @DeleteMapping("/delete/multiple")
+    public ResponseEntity<Void> deleteMultiple(@RequestBody DeleteFoldersReqDTO reqDTO) throws Exception {
+        folderService.deleteMultiple(reqDTO.getFolderIds());
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 

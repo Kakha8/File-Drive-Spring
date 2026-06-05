@@ -1,5 +1,6 @@
 package kakha.kudava.filedrivespring.controller;
 
+import kakha.kudava.filedrivespring.dto.DeleteFilesReqDTO;
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.MoveFileRequest;
 import kakha.kudava.filedrivespring.dto.RenameRequest;
@@ -18,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.net.URLConnection;
+import java.util.List;
 
 @RestController
 @RequestMapping("api/files")
@@ -28,13 +30,15 @@ public class FilesRestController {
     private final RenameService renameService;
     private final MoveService moveService;
     private final UploadCancellationService uploadCancellationService;
+    private final ObjectStorageService objectStorageService;
 
-    public FilesRestController(ObjectStorageService storage, FileService fileService, RenameService renameService, MoveService moveService, UploadCancellationService uploadCancellationService) {
+    public FilesRestController(ObjectStorageService storage, FileService fileService, RenameService renameService, MoveService moveService, UploadCancellationService uploadCancellationService, ObjectStorageService objectStorageService) {
         this.storage = storage;
         this.fileService = fileService;
         this.renameService = renameService;
         this.moveService = moveService;
         this.uploadCancellationService = uploadCancellationService;
+        this.objectStorageService = objectStorageService;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -70,6 +74,12 @@ public class FilesRestController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable("id") Long id) throws Exception {
         storage.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/delete/multiple")
+    public ResponseEntity<Void> deleteMultiple(@RequestBody DeleteFilesReqDTO reqDTO) throws Exception {
+        objectStorageService.deleteMultipleFiles(reqDTO.getFileIds());
         return ResponseEntity.noContent().build();
     }
 
