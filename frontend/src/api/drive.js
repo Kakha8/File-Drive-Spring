@@ -323,3 +323,21 @@ export async function deleteFolder(folderId) {
         throw new Error(message || "Failed to delete folder");
     }
 }
+
+export async function moveToTrash(fileIds = [], folderIds = []) {
+    const response = await apiFetch("/api/trashcan/move", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            fileIds,
+            folderIds,
+        }),
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to move selected items to trash");
+    }
+}

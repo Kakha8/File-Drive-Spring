@@ -12,8 +12,7 @@ import {
     renameFolder,
     uploadFile,
     cancelUpload,
-    deleteFile,
-    deleteFolder,
+    moveToTrash,
 } from "../api/drive";
 
 function Icon({ children, className = "" }) {
@@ -327,8 +326,7 @@ function Main({ onLogout }) {
     const [renamingItem, setRenamingItem] = useState(null);
     const renameInputRef = useRef(null);
 
-    const [trashModalOpen, setTrashModalOpen] = useState(false);
-    const [fileToTrash, setFileToTrash] = useState(null);
+    const [trashRequest, setTrashRequest] = useState(null);
 
     const currentFolderId =
         path.length > 0 ? path[path.length - 1].id : currentFolder?.id;
@@ -892,41 +890,61 @@ function Main({ onLogout }) {
     }
 
     function handleDelete(item) {
-        setError("");
+        const selectedItems = allItems.filter((currentItem) =>
+            selectedIds.includes(currentItem.id)
+        );
+
+        const shouldTrashSelection =
+            selectedItems.length > 1 && selectedIds.includes(item.id);
+
+        const itemsToTrash = shouldTrashSelection ? selectedItems : [item];
+
         setOpenMenuId(null);
-        setFileToTrash(item);
-        setTrashModalOpen(true);
+        setError("");
+
+        setTrashRequest({
+            items: itemsToTrash,
+            label:
+                itemsToTrash.length === 1
+                    ? itemsToTrash[0].name
+                    : `${itemsToTrash.length} selected items`,
+        });
     }
 
     function cancelMoveToTrash() {
-        setTrashModalOpen(false);
-        setFileToTrash(null);
+        setTrashRequest(null);
     }
 
     async function confirmMoveToTrash() {
-        if (!fileToTrash) return;
+        if (!trashRequest?.items?.length) {
+            setTrashRequest(null);
+            return;
+        }
+
+        const fileIds = trashRequest.items
+            .filter((item) => item.type !== "folder")
+            .map((item) => item.rawId)
+            .filter(Boolean);
+
+        const folderIds = trashRequest.items
+            .filter((item) => item.type === "folder")
+            .map((item) => item.rawId)
+            .filter(Boolean);
 
         try {
             setError("");
             setLoading(true);
 
-            if (fileToTrash.type === "folder") {
-                await deleteFolder(fileToTrash.rawId);
-            } else {
-                await deleteFile(fileToTrash.rawId);
-            }
+            await moveToTrash(fileIds, folderIds);
 
-            setSelectedIds((currentSelected) =>
-                currentSelected.filter((id) => id !== fileToTrash.id)
-            );
-
+            setTrashRequest(null);
+            setSelectedIds([]);
             await reloadCurrentFolder();
         } catch (err) {
-            setError(err.message || `Failed to move ${fileToTrash.name} to trash`);
+            setError(err.message || "Failed to move item(s) to trash");
+            setTrashRequest(null);
         } finally {
             setLoading(false);
-            setTrashModalOpen(false);
-            setFileToTrash(null);
         }
     }
     function handleProperties(item) {
@@ -1383,8 +1401,8 @@ function Main({ onLogout }) {
             </section>
 
             <ConfirmTrashModal
-                open={trashModalOpen}
-                fileName={fileToTrash?.name || ""}
+                open={Boolean(trashRequest)}
+                fileName={trashRequest?.label || ""}
                 onConfirm={confirmMoveToTrash}
                 onCancel={cancelMoveToTrash}
             />

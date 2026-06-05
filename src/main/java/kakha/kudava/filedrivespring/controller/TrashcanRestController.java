@@ -1,11 +1,11 @@
 package kakha.kudava.filedrivespring.controller;
 
 import jakarta.servlet.http.HttpServletResponse;
+import kakha.kudava.filedrivespring.dto.MoveToTrashReqDTO;
 import kakha.kudava.filedrivespring.dto.ViewTrashcanDTO;
 import kakha.kudava.filedrivespring.services.TrashcanService;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/trashcan")
@@ -21,6 +21,12 @@ public class TrashcanRestController {
     public ViewTrashcanDTO trashcan() {
         ViewTrashcanDTO dto = trashcanService.viewTrashcan();
         return dto;
+    }
+
+    @PostMapping("/move")
+    public ResponseEntity<Void> moveToTrash(@RequestBody MoveToTrashReqDTO req) throws Exception {
+        trashcanService.moveToTrash(req);
+        return ResponseEntity.noContent().build();
     }
 
 }
