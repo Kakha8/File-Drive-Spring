@@ -3,6 +3,7 @@ import { refresh } from "./api/auth";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login";
 import Main from "./pages/Main";
+import Trashcan from "./pages/Trashcan";
 import "./App.css";
 
 function App() {
@@ -30,43 +31,50 @@ function App() {
 
   return (
       <BrowserRouter>
-        <Routes>
-          <Route
-              path="/login"
-              element={
-                loggedIn ? (
-                    <Navigate to="/main" replace />
-                ) : (
-                    <Login onLogin={() => setLoggedIn(true)} />
-                )
-              }
-          />
+          <Routes>
+              <Route
+                  path="/login"
+                  element={
+                      loggedIn ? (
+                          <Navigate to="/main" replace />
+                      ) : (
+                          <Login onLogin={() => setLoggedIn(true)} />
+                      )
+                  }
+              />
 
-          <Route
-              path="/main"
-              element={
-                loggedIn ? (
-                    <Main onLogout={() => setLoggedIn(false)} />
-                ) : (
-                    <Navigate to="/login" replace />
-                )
-              }
-          />
+              <Route
+                  path="/main"
+                  element={
+                      loggedIn ? (
+                          <Main onLogout={() => setLoggedIn(false)} />
+                      ) : (
+                          <Navigate to="/login" replace />
+                      )
+                  }
+              />
 
-          <Route
-              path="/"
-              element={
-                <Navigate to={loggedIn ? "/main" : "/login"} replace />
-              }
-          />
+              <Route
+                  path="/trashcan"
+                  element={
+                      loggedIn ? (
+                          <Trashcan />
+                      ) : (
+                          <Navigate to="/login" replace />
+                      )
+                  }
+              />
 
-          <Route
-              path="*"
-              element={
-                <Navigate to={loggedIn ? "/main" : "/login"} replace />
-              }
-          />
-        </Routes>
+              <Route
+                  path="/"
+                  element={<Navigate to={loggedIn ? "/main" : "/login"} replace />}
+              />
+
+              <Route
+                  path="*"
+                  element={<Navigate to={loggedIn ? "/main" : "/login"} replace />}
+              />
+          </Routes>
       </BrowserRouter>
   );
 }

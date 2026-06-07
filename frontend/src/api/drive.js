@@ -341,3 +341,14 @@ export async function moveToTrash(fileIds = [], folderIds = []) {
         throw new Error(message || "Failed to move selected items to trash");
     }
 }
+
+export async function getTrashcan() {
+    const response = await apiFetch("/api/trashcan");
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to load trashcan");
+    }
+
+    return response.json();
+}

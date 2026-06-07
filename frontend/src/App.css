@@ -2337,5 +2337,46 @@ body,
 .upload-panel-item:has(.upload-file-error) .upload-item-cancel {
   opacity: 1;
 }
+/* =========================
+   TRASHCAN PAGE
+   ========================= */
 
-                           /*disabled={uploading}*/
+.trash-error-banner {
+  margin: -4px 34px 18px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.26);
+  color: #fecaca;
+  font-size: 13px;
+}
+
+.trash-file-row {
+  cursor: default;
+}
+
+.trash-file-row:has(.file-icon) {
+  text-decoration: none;
+}
+
+.trash-file-row:hover {
+  background: rgba(28, 32, 38, 0.72);
+}
+
+.trash-file-row .name-cell {
+  cursor: pointer;
+}
+
+.trash-path {
+  display: block;
+  max-width: 100%;
+  color: var(--old-muted, #9aa3af);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trash-file-row .size-cell {
+  color: var(--old-muted, #9aa3af);
+}
