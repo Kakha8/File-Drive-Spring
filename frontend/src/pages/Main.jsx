@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { logout as apiLogout } from "../api/auth";
-import ConfirmTrashModal from "../components/ConfirmTrashModal";
+import DriveSidebar from "../components/DriveSidebar";
 import {
     createFolder,
     getFileBlob,
@@ -12,7 +12,6 @@ import {
     renameFolder,
     uploadFile,
     cancelUpload,
-    moveToTrash,
 } from "../api/drive";
 
 function Icon({ children, className = "" }) {
@@ -291,8 +290,7 @@ function normalizeFolderItems(folderData) {
     return [...folders, ...files];
 }
 
-function Main({ onLogout }) {
-    const [sidebarOpen, setSidebarOpen] = useState(false);
+function Main({ onLogout, sidebarOpen, onToggleSidebar }) {
     const [nav, setNav] = useState("my");
     const [query, setQuery] = useState("");
     const [currentFolder, setCurrentFolder] = useState(null);
@@ -325,8 +323,6 @@ function Main({ onLogout }) {
 
     const [renamingItem, setRenamingItem] = useState(null);
     const renameInputRef = useRef(null);
-
-    const [trashRequest, setTrashRequest] = useState(null);
 
     const currentFolderId =
         path.length > 0 ? path[path.length - 1].id : currentFolder?.id;
@@ -890,63 +886,9 @@ function Main({ onLogout }) {
     }
 
     function handleDelete(item) {
-        const selectedItems = allItems.filter((currentItem) =>
-            selectedIds.includes(currentItem.id)
-        );
-
-        const shouldTrashSelection =
-            selectedItems.length > 1 && selectedIds.includes(item.id);
-
-        const itemsToTrash = shouldTrashSelection ? selectedItems : [item];
-
-        setOpenMenuId(null);
-        setError("");
-
-        setTrashRequest({
-            items: itemsToTrash,
-            label:
-                itemsToTrash.length === 1
-                    ? itemsToTrash[0].name
-                    : `${itemsToTrash.length} selected items`,
-        });
+        setError(`Delete coming soon for ${item.name}`);
     }
 
-    function cancelMoveToTrash() {
-        setTrashRequest(null);
-    }
-
-    async function confirmMoveToTrash() {
-        if (!trashRequest?.items?.length) {
-            setTrashRequest(null);
-            return;
-        }
-
-        const fileIds = trashRequest.items
-            .filter((item) => item.type !== "folder")
-            .map((item) => item.rawId)
-            .filter(Boolean);
-
-        const folderIds = trashRequest.items
-            .filter((item) => item.type === "folder")
-            .map((item) => item.rawId)
-            .filter(Boolean);
-
-        try {
-            setError("");
-            setLoading(true);
-
-            await moveToTrash(fileIds, folderIds);
-
-            setTrashRequest(null);
-            setSelectedIds([]);
-            await reloadCurrentFolder();
-        } catch (err) {
-            setError(err.message || "Failed to move item(s) to trash");
-            setTrashRequest(null);
-        } finally {
-            setLoading(false);
-        }
-    }
     function handleProperties(item) {
         setViewer({
             item,
@@ -1101,105 +1043,14 @@ function Main({ onLogout }) {
 
     return (
         <main className="drive-page">
-            <aside className={`drive-sidebar ${sidebarOpen ? "open" : "closed"}`}>
-                <div className="sidebar-top">
-                    <button
-                        className="menu-button"
-                        onClick={() => setSidebarOpen((open) => !open)}
-                        aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-                        title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-                        type="button"
-                    >
-                        <Icons.Menu className="svg-icon" />
-                    </button>
-
-                    {sidebarOpen && (
-                        <>
-                            <div className="workspace-mark">W</div>
-                            <div className="workspace-text">
-                                <strong>Workspace</strong>
-                                <span>{path[0]?.name || "My Drive"}</span>
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                <div className="sidebar-scroll">
-                    <nav className="sidebar-nav">
-                        {navItems.map((item) => {
-                            const NavIcon = item.icon;
-
-                            return (
-                                <button
-                                    key={item.key}
-                                    onClick={() => {
-                                        setNav(item.key);
-                                        setConfirmLogout(false);
-                                    }}
-                                    title={!sidebarOpen ? item.label : undefined}
-                                    className={`nav-item ${nav === item.key ? "active" : ""}`}
-                                    type="button"
-                                >
-                                    <span className="nav-icon">
-                                        <NavIcon className="svg-icon" />
-                                    </span>
-                                    {sidebarOpen && <span>{item.label}</span>}
-                                </button>
-                            );
-                        })}
-                    </nav>
-
-                    {sidebarOpen && (
-                        <div className="label-section">
-                            <p>Location</p>
-
-                            {path.map((part, index) => (
-                                <button
-                                    key={`${part.id}-${index}`}
-                                    type="button"
-                                    onClick={() => goToPathIndex(index)}
-                                >
-                                    <span className="dot shared-dot" />
-                                    {part.name}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                <div className="sidebar-footer">
-                    <button
-                        className={`logout-action ${confirmLogout ? "confirming" : ""}`}
-                        onClick={handleLogout}
-                        title={confirmLogout ? "Confirm log out" : "Log out"}
-                        disabled={isLoggingOut}
-                        type="button"
-                    >
-                        <Icons.Logout className="svg-icon" />
-
-                        {sidebarOpen && (
-                            <span>
-                                {isLoggingOut
-                                    ? "Logging out..."
-                                    : confirmLogout
-                                        ? "Confirm log out"
-                                        : "Log out"}
-                            </span>
-                        )}
-                    </button>
-
-                    {confirmLogout && sidebarOpen && (
-                        <button
-                            onClick={handleLogout}
-                            disabled={isLoggingOut}
-                            className="logout-confirm"
-                            type="button"
-                        >
-                            {isLoggingOut ? "Logging out..." : "Yes, log me out"}
-                        </button>
-                    )}
-                </div>
-            </aside>
+            <DriveSidebar
+                active="my"
+                sidebarOpen={sidebarOpen}
+                onToggleSidebar={onToggleSidebar}
+                username={path[0]?.name || "admin"}
+                locationLabel={path[path.length - 1]?.name || path[0]?.name || "admin"}
+                onLogoutComplete={onLogout}
+            />
 
             <section className="drive-main">
                 <header className="drive-header">
@@ -1400,13 +1251,6 @@ function Main({ onLogout }) {
                 </div>
             </section>
 
-            <ConfirmTrashModal
-                open={Boolean(trashRequest)}
-                fileName={trashRequest?.label || ""}
-                onConfirm={confirmMoveToTrash}
-                onCancel={cancelMoveToTrash}
-            />
-
             <UploadPanel
                 uploads={uploads}
                 minimized={uploadPanelMinimized}
@@ -1604,7 +1448,7 @@ function FileRow({
                                     className="danger-menu-action"
                                 >
                                     <Icons.Trash className="menu-action-icon" />
-                                    Move to trash
+                                    Delete
                                 </button>
 
                                 <button

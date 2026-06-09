@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { getTrashcan } from "../api/drive";
-import { logout as apiLogout } from "../api/auth";
+import DriveSidebar from "../components/DriveSidebar";
 import "../App.css";
 
 function Icon({ children, className = "" }) {
@@ -22,20 +21,6 @@ function Icon({ children, className = "" }) {
 }
 
 const Icons = {
-    Menu: ({ className }) => (
-        <Icon className={className}>
-            <path d="M4 7h16" />
-            <path d="M4 12h16" />
-            <path d="M4 17h16" />
-        </Icon>
-    ),
-    Logout: ({ className }) => (
-        <Icon className={className}>
-            <path d="M10 17l5-5-5-5" />
-            <path d="M15 12H3" />
-            <path d="M14 4h4a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-4" />
-        </Icon>
-    ),
     File: ({ className }) => (
         <Icon className={className}>
             <path d="M6 3h8l4 4v14H6z" />
@@ -51,38 +36,6 @@ const Icons = {
         <Icon className={className}>
             <rect x="3" y="5" width="18" height="14" rx="3" />
             <path d="m8 14 2.5-3 3.5 4 2-2 3 4" />
-        </Icon>
-    ),
-    Shared: ({ className }) => (
-        <Icon className={className}>
-            <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-            <circle cx="9.5" cy="7" r="4" />
-            <path d="M22 21v-2a4 4 0 0 0-3-3.8" />
-        </Icon>
-    ),
-    Clock: ({ className }) => (
-        <Icon className={className}>
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 7v5l3 2" />
-        </Icon>
-    ),
-    Star: ({ className }) => (
-        <Icon className={className}>
-            <path d="M12 3.5 14.7 9l6 .9-4.35 4.25 1.05 6L12 17.3l-5.4 2.85 1.05-6L3.3 9.9l6-.9z" />
-        </Icon>
-    ),
-    Archive: ({ className }) => (
-        <Icon className={className}>
-            <path d="M4 7h16v13H4z" />
-            <path d="M3 3h18v4H3z" />
-            <path d="M10 11h4" />
-        </Icon>
-    ),
-    Trash: ({ className }) => (
-        <Icon className={className}>
-            <path d="M3 6h18" />
-            <path d="M8 6V4h8v2" />
-            <path d="M6 6l1 15h10l1-15" />
         </Icon>
     ),
     Search: ({ className }) => (
@@ -111,16 +64,51 @@ const Icons = {
             <path d="m12 5 7 7-7 7" />
         </Icon>
     ),
+    More: ({ className }) => (
+        <svg
+            className={className}
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+        >
+            <circle cx="12" cy="5" r="1.8" />
+            <circle cx="12" cy="12" r="1.8" />
+            <circle cx="12" cy="19" r="1.8" />
+        </svg>
+    ),
+    Info: ({ className }) => (
+        <Icon className={className}>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 10v6" />
+            <path d="M12 7h.01" />
+        </Icon>
+    ),
+    Restore: ({ className }) => (
+        <svg
+            className={className}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+        >
+            <path d="M7.5 9H3.5V5" />
+            <path d="M3.8 9A8.2 8.2 0 1 1 6.2 17.2" />
+            <path d="M12 7.5V12L15.5 14" />
+        </svg>
+    ),
+    DeleteForever: ({ className }) => (
+        <Icon className={className}>
+            <path d="M3 6h18" />
+            <path d="M8 6V4h8v2" />
+            <path d="M6 6l1 15h10l1-15" />
+            <path d="m10 11 4 4" />
+            <path d="m14 11-4 4" />
+        </Icon>
+    ),
 };
-
-const navItems = [
-    { key: "my", label: "My files", icon: Icons.File },
-    { key: "shared", label: "Shared", icon: Icons.Shared },
-    { key: "recent", label: "Recent", icon: Icons.Clock },
-    { key: "favorites", label: "Favorites", icon: Icons.Star },
-    { key: "archived", label: "Archived", icon: Icons.Archive },
-    { key: "trash", label: "Trash", icon: Icons.Trash },
-];
 
 function normalizePrefix(prefix) {
     if (!prefix) return "";
@@ -153,6 +141,40 @@ function folderParentPrefix(folder) {
     return withoutTrailingSlash.slice(0, lastSlash + 1);
 }
 
+function stripUuidPrefix(name) {
+    if (!name) return name;
+
+    return name.replace(
+        /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}-/,
+        ""
+    );
+}
+
+function cleanOriginalPath(path, itemName = "") {
+    if (!path) return "—";
+
+    let cleaned = path.replaceAll("\\", "/");
+
+    cleaned = cleaned.replace(/^users\/[^/]+\//, "");
+
+    cleaned = cleaned
+        .split("/")
+        .map((part) => stripUuidPrefix(part))
+        .join("/");
+
+    const cleanItemName = stripUuidPrefix(itemName);
+
+    if (cleanItemName && cleaned.endsWith(`/${cleanItemName}`)) {
+        cleaned = cleaned.slice(0, -cleanItemName.length);
+    }
+
+    if (!cleaned) {
+        return "/";
+    }
+
+    return cleaned;
+}
+
 function formatBytes(bytes) {
     if (!bytes && bytes !== 0) return "—";
     if (bytes === 0) return "0 B";
@@ -171,28 +193,27 @@ function formatBytes(bytes) {
 
 function getTypeLabel(type) {
     if (type === "folder") return "Folder";
-    if (type === "application/pdf") return "PDF document";
+    if (type === "application/pdf") return "application/pdf";
+    if (type && type.startsWith("image/")) return type;
+    if (type && type.startsWith("video/")) return type;
+    if (type && type.startsWith("audio/")) return type;
+    if (type === "application/zip") return "application/zip";
+    return type || "File";
+}
+
+function getTagLabel(type) {
+    if (type === "folder") return "Folder";
+    if (type === "application/pdf") return "PDF";
     if (type && type.startsWith("image/")) return "Image";
     if (type && type.startsWith("video/")) return "Video";
     if (type && type.startsWith("audio/")) return "Audio";
-    if (type === "application/zip") return "Archive";
-
-    return type || "File";
+    return "File";
 }
 
 function getFileIcon(type) {
     if (type === "folder") return Icons.Folder;
     if (type && type.startsWith("image/")) return Icons.Image;
     return Icons.File;
-}
-
-function getFileTag(item) {
-    if (item.type === "folder") return "Folder";
-    if (item.type === "application/pdf") return "PDF";
-    if (item.type && item.type.startsWith("image/")) return "Image";
-    if (item.type && item.type.startsWith("video/")) return "Video";
-    if (item.type && item.type.startsWith("audio/")) return "Audio";
-    return "File";
 }
 
 function tagClass(tag) {
@@ -208,7 +229,7 @@ function originalNameFromKey(key) {
     if (!key) return "Unknown file";
 
     const parts = key.split("/").filter(Boolean);
-    return parts[parts.length - 1] || key;
+    return stripUuidPrefix(parts[parts.length - 1] || key);
 }
 
 function getRootPrefixFromTrash(trash) {
@@ -242,13 +263,7 @@ function getRootPrefixFromTrash(trash) {
     return "";
 }
 
-export default function Trashcan() {
-    const navigate = useNavigate();
-
-    const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [logoutConfirm, setLogoutConfirm] = useState(false);
-    const [loggingOut, setLoggingOut] = useState(false);
-
+export default function Trashcan({ sidebarOpen, onToggleSidebar }) {
     const [trash, setTrash] = useState({
         files: [],
         folders: [],
@@ -257,6 +272,9 @@ export default function Trashcan() {
     const [currentPrefix, setCurrentPrefix] = useState("");
     const [trashBackStack, setTrashBackStack] = useState([]);
     const [trashForwardStack, setTrashForwardStack] = useState([]);
+
+    const [selectedIds, setSelectedIds] = useState([]);
+    const [openMenuId, setOpenMenuId] = useState(null);
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -273,6 +291,9 @@ export default function Trashcan() {
                 files: data.files || [],
                 folders: data.folders || [],
             });
+
+            setSelectedIds([]);
+            setOpenMenuId(null);
         } catch (err) {
             setError(err.message || "Failed to load trashcan");
         } finally {
@@ -309,10 +330,11 @@ export default function Trashcan() {
                 rawId: folder.id,
                 name: folder.name,
                 type: "folder",
+                displayType: "Folder",
                 prefix: normalizePrefix(folder.prefix),
                 size: null,
                 owner: "You",
-                originalPath: folder.prefix,
+                originalPath: cleanOriginalPath(folder.prefix, folder.name),
             }));
     }, [trash.folders, currentNormalizedPrefix]);
 
@@ -321,17 +343,26 @@ export default function Trashcan() {
 
         return trash.files
             .filter((file) => fileOriginalParentPrefix(file) === prefix)
-            .map((file) => ({
-                id: `file-${file.id}`,
-                rawId: file.id,
-                name: file.fileName || originalNameFromKey(file.originalObjectKey),
-                type: file.objectType || "file",
-                size: file.size,
-                owner: "You",
-                objectKey: file.objectKey,
-                originalObjectKey: file.originalObjectKey,
-                originalPath: file.originalObjectKey,
-            }));
+            .map((file) => {
+                const displayName =
+                    file.fileName || originalNameFromKey(file.originalObjectKey);
+
+                return {
+                    id: `file-${file.id}`,
+                    rawId: file.id,
+                    name: displayName,
+                    type: file.objectType || "file",
+                    displayType: getTypeLabel(file.objectType || "file"),
+                    size: file.size,
+                    owner: "You",
+                    objectKey: file.objectKey,
+                    originalObjectKey: file.originalObjectKey,
+                    originalPath: cleanOriginalPath(
+                        file.originalObjectKey,
+                        displayName
+                    ),
+                };
+            });
     }, [trash.files, currentNormalizedPrefix]);
 
     const visibleItems = useMemo(() => {
@@ -347,10 +378,14 @@ export default function Trashcan() {
             return (
                 item.name?.toLowerCase().includes(q) ||
                 item.originalPath?.toLowerCase().includes(q) ||
-                getTypeLabel(item.type).toLowerCase().includes(q)
+                item.displayType?.toLowerCase().includes(q)
             );
         });
     }, [visibleFolders, visibleFiles, query]);
+
+    const selectedItems = useMemo(() => {
+        return visibleItems.filter((item) => selectedIds.includes(item.id));
+    }, [visibleItems, selectedIds]);
 
     const totalDeletedCount = trash.files.length + trash.folders.length;
 
@@ -404,6 +439,8 @@ export default function Trashcan() {
 
         setTrashBackStack((stack) => [...stack, normalizedCurrent]);
         setTrashForwardStack([]);
+        setSelectedIds([]);
+        setOpenMenuId(null);
         setCurrentPrefix(normalizedNext);
     }
 
@@ -413,6 +450,8 @@ export default function Trashcan() {
         }
 
         setQuery("");
+        setSelectedIds([]);
+        setOpenMenuId(null);
         navigateTrashPrefix(item.prefix);
     }
 
@@ -430,6 +469,8 @@ export default function Trashcan() {
                 ...forwardStack,
             ]);
 
+            setSelectedIds([]);
+            setOpenMenuId(null);
             setCurrentPrefix(previousPrefix);
 
             return nextBackStack;
@@ -450,129 +491,110 @@ export default function Trashcan() {
                 normalizePrefix(currentPrefix || rootPrefix),
             ]);
 
+            setSelectedIds([]);
+            setOpenMenuId(null);
             setCurrentPrefix(nextPrefix);
 
             return nextForwardStack;
         });
     }
 
-    function handleNavClick(key) {
-        if (key === "my") {
-            navigate("/main");
-            return;
+    function isSelected(item) {
+        return selectedIds.includes(item.id);
+    }
+
+    function getActionItems(item) {
+        const currentSelectedItems = visibleItems.filter((currentItem) =>
+            selectedIds.includes(currentItem.id)
+        );
+
+        if (currentSelectedItems.length > 1 && selectedIds.includes(item.id)) {
+            return currentSelectedItems;
         }
 
-        if (key === "trash") {
-            navigate("/trashcan");
+        return [item];
+    }
+
+    function toggleSelected(item) {
+        setOpenMenuId(null);
+
+        setSelectedIds((currentSelected) => {
+            if (currentSelected.includes(item.id)) {
+                return currentSelected.filter((id) => id !== item.id);
+            }
+
+            return [...currentSelected, item.id];
+        });
+    }
+
+    function handleRowDoubleClick(item) {
+        if (item.type === "folder") {
+            setSelectedIds([]);
+            setOpenMenuId(null);
+            openFolder(item);
         }
     }
 
-    async function handleLogout() {
-        if (!logoutConfirm) {
-            setLogoutConfirm(true);
+    function handleRestore(item) {
+        const actionItems = getActionItems(item);
+
+        setOpenMenuId(null);
+        setError(
+            actionItems.length === 1
+                ? `Restore coming soon for ${actionItems[0].name}`
+                : `Restore coming soon for ${actionItems.length} selected items`
+        );
+    }
+
+    function handleDeletePermanently(item) {
+        const actionItems = getActionItems(item);
+
+        setOpenMenuId(null);
+
+        const confirmed = window.confirm(
+            actionItems.length === 1
+                ? `Permanently delete "${actionItems[0].name}"? This cannot be undone.`
+                : `Permanently delete ${actionItems.length} selected items? This cannot be undone.`
+        );
+
+        if (!confirmed) {
             return;
         }
 
-        try {
-            setLoggingOut(true);
-            await apiLogout();
-            navigate("/login", { replace: true });
-        } catch (err) {
-            setError(err.message || "Failed to log out");
-        } finally {
-            setLoggingOut(false);
+        setError(
+            actionItems.length === 1
+                ? `Permanent delete coming soon for ${actionItems[0].name}`
+                : `Permanent delete coming soon for ${actionItems.length} selected items`
+        );
+    }
+
+    function handleProperties(item) {
+        const actionItems = getActionItems(item);
+
+        setOpenMenuId(null);
+
+        if (actionItems.length > 1) {
+            return;
         }
+
+        const target = actionItems[0];
+
+        setError(
+            `Properties: ${target.name} · ${target.displayType} · ${
+                target.originalPath || "No original path"
+            }`
+        );
     }
 
     return (
         <div className="drive-page">
-            <aside className={`drive-sidebar ${sidebarOpen ? "open" : "closed"}`}>
-                <div className="sidebar-top">
-                    <button
-                        type="button"
-                        className="menu-button"
-                        onClick={() => setSidebarOpen((value) => !value)}
-                        aria-label="Toggle sidebar"
-                    >
-                        <Icons.Menu className="svg-icon" />
-                    </button>
-
-                    {sidebarOpen && (
-                        <>
-                            <div className="workspace-mark">FS</div>
-                            <div className="workspace-text">
-                                <strong>File-Drive-Spring</strong>
-                                <span>Workspace</span>
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                <div className="sidebar-scroll">
-                    <nav className="sidebar-nav">
-                        {navItems.map((item) => {
-                            const NavIcon = item.icon;
-
-                            return (
-                                <button
-                                    key={item.key}
-                                    type="button"
-                                    className={`nav-item ${item.key === "trash" ? "active" : ""}`}
-                                    onClick={() => handleNavClick(item.key)}
-                                    title={item.label}
-                                >
-                                    <span className="nav-icon">
-                                        <NavIcon className="svg-icon" />
-                                    </span>
-
-                                    {sidebarOpen && <span>{item.label}</span>}
-                                </button>
-                            );
-                        })}
-                    </nav>
-
-                    {sidebarOpen && (
-                        <div className="label-section">
-                            <p>TRASHCAN</p>
-                            <button type="button" onClick={loadTrashcan}>
-                                <span className="dot final-dot" />
-                                <span>{totalDeletedCount} deleted items</span>
-                            </button>
-                        </div>
-                    )}
-                </div>
-
-                <div className="sidebar-footer">
-                    <button
-                        type="button"
-                        className={`logout-action ${logoutConfirm ? "confirming" : ""}`}
-                        onClick={handleLogout}
-                        disabled={loggingOut}
-                        title={logoutConfirm ? "Click again to log out" : "Log out"}
-                    >
-                        <Icons.Logout className="svg-icon" />
-
-                        {sidebarOpen && (
-                            <span>
-                                {loggingOut
-                                    ? "Logging out..."
-                                    : logoutConfirm
-                                        ? "Confirm logout"
-                                        : "Log out"}
-                            </span>
-                        )}
-                    </button>
-
-                    {sidebarOpen && (
-                        <div className="storage-box">
-                            <div className="storage-bar">
-                                <div />
-                            </div>
-                            <p>Trash uses your storage until emptied.</p>
-                        </div>
-                    )}
-                </div>
-            </aside>
+            <DriveSidebar
+                active="trash"
+                sidebarOpen={sidebarOpen}
+                onToggleSidebar={onToggleSidebar}
+                username="admin"
+                deletedCount={totalDeletedCount}
+            />
 
             <main className="drive-main">
                 <header className="drive-header">
@@ -616,7 +638,9 @@ export default function Trashcan() {
                                     <button
                                         type="button"
                                         className={crumb.current ? "current" : ""}
-                                        onClick={() => navigateTrashPrefix(crumb.prefix)}
+                                        onClick={() =>
+                                            navigateTrashPrefix(crumb.prefix)
+                                        }
                                     >
                                         {crumb.label}
                                     </button>
@@ -640,14 +664,21 @@ export default function Trashcan() {
                         <Icons.Search className="search-icon" />
                         <input
                             value={query}
-                            onChange={(event) => setQuery(event.target.value)}
+                            onChange={(event) => {
+                                setQuery(event.target.value);
+                                setOpenMenuId(null);
+                            }}
                             placeholder="Search trash"
                         />
                         <kbd>/</kbd>
                     </div>
 
                     <div className="toolbar-actions">
-                        <button type="button" onClick={loadTrashcan} disabled={loading}>
+                        <button
+                            type="button"
+                            onClick={loadTrashcan}
+                            disabled={loading}
+                        >
                             <Icons.Refresh className="button-icon" />
                             Refresh
                         </button>
@@ -655,8 +686,13 @@ export default function Trashcan() {
                         <button
                             type="button"
                             className="primary-action"
-                            disabled
+                            disabled={selectedItems.length === 0}
                             title="Restore will be added later"
+                            onClick={() => {
+                                if (selectedItems.length > 0) {
+                                    handleRestore(selectedItems[0]);
+                                }
+                            }}
                         >
                             Restore
                         </button>
@@ -688,17 +724,30 @@ export default function Trashcan() {
                             ) : (
                                 visibleItems.map((item) => {
                                     const ItemIcon = getFileIcon(item.type);
-                                    const tag = getFileTag(item);
+                                    const tag = getTagLabel(item.type);
+                                    const selected = isSelected(item);
+                                    const actionItems = getActionItems(item);
+                                    const showProperties = actionItems.length === 1;
 
                                     return (
-                                        <button
+                                        <div
                                             key={item.id}
-                                            type="button"
-                                            className="file-row trash-file-row"
-                                            onDoubleClick={() => openFolder(item)}
-                                            onClick={() => {
-                                                if (item.type === "folder") {
-                                                    openFolder(item);
+                                            role="button"
+                                            tabIndex={0}
+                                            className={`file-row trash-file-row ${
+                                                selected ? "selected" : ""
+                                            }`}
+                                            onClick={() => toggleSelected(item)}
+                                            onDoubleClick={() =>
+                                                handleRowDoubleClick(item)
+                                            }
+                                            onKeyDown={(event) => {
+                                                if (
+                                                    event.key === "Enter" ||
+                                                    event.key === " "
+                                                ) {
+                                                    event.preventDefault();
+                                                    toggleSelected(item);
                                                 }
                                             }}
                                         >
@@ -709,11 +758,7 @@ export default function Trashcan() {
 
                                                 <span>
                                                     <strong>{item.name}</strong>
-                                                    <small>
-                                                        {item.type === "folder"
-                                                            ? "Open deleted folder"
-                                                            : "Deleted file"}
-                                                    </small>
+                                                    <small>{item.displayType}</small>
                                                 </span>
                                             </div>
 
@@ -741,8 +786,73 @@ export default function Trashcan() {
                                                     : formatBytes(item.size)}
                                             </div>
 
-                                            <div className="row-actions" />
-                                        </button>
+                                            <div className="row-actions">
+                                                <button
+                                                    type="button"
+                                                    className="row-more-button"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+
+                                                        if (!selected) {
+                                                            setSelectedIds([item.id]);
+                                                        }
+
+                                                        setOpenMenuId((currentId) =>
+                                                            currentId === item.id
+                                                                ? null
+                                                                : item.id
+                                                        );
+                                                    }}
+                                                    aria-label={`Actions for ${item.name}`}
+                                                >
+                                                    <Icons.More className="row-more-icon" />
+                                                </button>
+
+                                                {openMenuId === item.id && (
+                                                    <div
+                                                        className="row-action-menu"
+                                                        onClick={(event) =>
+                                                            event.stopPropagation()
+                                                        }
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                handleRestore(item)
+                                                            }
+                                                        >
+                                                            <Icons.Restore className="menu-action-icon" />
+                                                            Restore
+                                                        </button>
+
+                                                        <button
+                                                            type="button"
+                                                            className="danger-menu-action"
+                                                            onClick={() =>
+                                                                handleDeletePermanently(
+                                                                    item
+                                                                )
+                                                            }
+                                                        >
+                                                            <Icons.DeleteForever className="menu-action-icon" />
+                                                            Delete permanently
+                                                        </button>
+
+                                                        {showProperties && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    handleProperties(item)
+                                                                }
+                                                            >
+                                                                <Icons.Info className="menu-action-icon" />
+                                                                Properties
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                     );
                                 })
                             )}
@@ -751,7 +861,9 @@ export default function Trashcan() {
                         <p className="item-count">
                             {loading
                                 ? "Loading..."
-                                : `${visibleItems.length} shown · ${totalDeletedCount} total deleted`}
+                                : selectedItems.length > 0
+                                    ? `${selectedItems.length} selected · ${visibleItems.length} shown · ${totalDeletedCount} total deleted`
+                                    : `${visibleItems.length} shown · ${totalDeletedCount} total deleted`}
                         </p>
                     </div>
                 </section>

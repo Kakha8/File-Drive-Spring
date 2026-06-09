@@ -2380,3 +2380,72 @@ body,
 .trash-file-row .size-cell {
   color: var(--old-muted, #9aa3af);
 }
+
+/*
+    Trash action icons
+ */
+
+.trash-error-banner {
+  margin: -4px 34px 18px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.26);
+  color: #fecaca;
+  font-size: 13px;
+}
+
+.trash-file-row {
+  position: relative;
+  cursor: pointer;
+}
+
+.trash-file-row .row-actions {
+  position: relative;
+}
+
+.trash-file-row .row-action-menu {
+  top: calc(100% + 6px);
+  right: 0;
+}
+
+.trash-path {
+  display: block;
+  max-width: 100%;
+  color: var(--old-muted, #9aa3af);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-action-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+.row-more-icon {
+  width: 20px;
+  height: 20px;
+  color: currentColor;
+}
+
+/* Fix sidebar hamburger alignment when sidebar is open */
+.drive-sidebar.open .sidebar-top {
+  height: 76px;
+  padding: 16px 14px 8px;
+  align-items: flex-start;
+}
+
+.drive-sidebar.open .menu-button {
+  width: 56px;
+  min-width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
