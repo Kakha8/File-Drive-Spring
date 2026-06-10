@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { getTrashcan } from "../api/drive";
+import { clearTrash, deletePermanently, getTrashcan } from "../api/drive";
 import DriveSidebar from "../components/DriveSidebar";
+import ConfirmPermanentDeleteModal from "../components/ConfirmPermanentDeleteModal";
+import ConfirmClearTrashModal from "../components/ConfirmClearTrashModal";
 import "../App.css";
 
 function Icon({ children, className = "" }) {
@@ -276,6 +278,12 @@ export default function Trashcan({ sidebarOpen, onToggleSidebar }) {
     const [selectedIds, setSelectedIds] = useState([]);
     const [openMenuId, setOpenMenuId] = useState(null);
 
+    const [permanentDeleteItems, setPermanentDeleteItems] = useState([]);
+    const [permanentDeleteLoading, setPermanentDeleteLoading] = useState(false);
+
+    const [clearTrashOpen, setClearTrashOpen] = useState(false);
+    const [clearTrashLoading, setClearTrashLoading] = useState(false);
+
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [query, setQuery] = useState("");
@@ -550,22 +558,83 @@ export default function Trashcan({ sidebarOpen, onToggleSidebar }) {
         const actionItems = getActionItems(item);
 
         setOpenMenuId(null);
+        setPermanentDeleteItems(actionItems);
+    }
 
-        const confirmed = window.confirm(
-            actionItems.length === 1
-                ? `Permanently delete "${actionItems[0].name}"? This cannot be undone.`
-                : `Permanently delete ${actionItems.length} selected items? This cannot be undone.`
-        );
-
-        if (!confirmed) {
+    async function confirmPermanentDelete() {
+        if (permanentDeleteItems.length === 0) {
             return;
         }
 
-        setError(
-            actionItems.length === 1
-                ? `Permanent delete coming soon for ${actionItems[0].name}`
-                : `Permanent delete coming soon for ${actionItems.length} selected items`
-        );
+        const fileIds = permanentDeleteItems
+            .filter((item) => item.type !== "folder")
+            .map((item) => item.rawId);
+
+        const folderIds = permanentDeleteItems
+            .filter((item) => item.type === "folder")
+            .map((item) => item.rawId);
+
+        try {
+            setError("");
+            setPermanentDeleteLoading(true);
+
+            await deletePermanently(fileIds, folderIds);
+
+            setPermanentDeleteItems([]);
+            setSelectedIds([]);
+            setOpenMenuId(null);
+
+            await loadTrashcan();
+        } catch (err) {
+            setError(err.message || "Failed to permanently delete selected items");
+        } finally {
+            setPermanentDeleteLoading(false);
+        }
+    }
+
+    function cancelPermanentDelete() {
+        if (permanentDeleteLoading) {
+            return;
+        }
+
+        setPermanentDeleteItems([]);
+    }
+
+    function openClearTrashModal() {
+        setOpenMenuId(null);
+        setError("");
+        setClearTrashOpen(true);
+    }
+
+    function cancelClearTrash() {
+        if (clearTrashLoading) {
+            return;
+        }
+
+        setClearTrashOpen(false);
+    }
+
+    async function confirmClearTrash() {
+        try {
+            setError("");
+            setClearTrashLoading(true);
+
+            await clearTrash();
+
+            setClearTrashOpen(false);
+            setPermanentDeleteItems([]);
+            setSelectedIds([]);
+            setOpenMenuId(null);
+            setCurrentPrefix("");
+            setTrashBackStack([]);
+            setTrashForwardStack([]);
+
+            await loadTrashcan();
+        } catch (err) {
+            setError(err.message || "Failed to clear trash");
+        } finally {
+            setClearTrashLoading(false);
+        }
     }
 
     function handleProperties(item) {
@@ -648,15 +717,6 @@ export default function Trashcan({ sidebarOpen, onToggleSidebar }) {
                             ))}
                         </div>
                     </div>
-
-                    <button
-                        type="button"
-                        className="invite-button"
-                        onClick={loadTrashcan}
-                        disabled={loading}
-                    >
-                        Refresh
-                    </button>
                 </header>
 
                 <section className="toolbar">
@@ -695,6 +755,16 @@ export default function Trashcan({ sidebarOpen, onToggleSidebar }) {
                             }}
                         >
                             Restore
+                        </button>
+
+                        <button
+                            type="button"
+                            className="danger-action"
+                            disabled={totalDeletedCount === 0 || loading}
+                            onClick={openClearTrashModal}
+                        >
+                            <Icons.DeleteForever className="button-icon" />
+                            Clear trash
                         </button>
                     </div>
                 </section>
@@ -868,6 +938,22 @@ export default function Trashcan({ sidebarOpen, onToggleSidebar }) {
                     </div>
                 </section>
             </main>
+
+            <ConfirmPermanentDeleteModal
+                open={permanentDeleteItems.length > 0}
+                count={permanentDeleteItems.length}
+                loading={permanentDeleteLoading}
+                onConfirm={confirmPermanentDelete}
+                onCancel={cancelPermanentDelete}
+            />
+
+            <ConfirmClearTrashModal
+                open={clearTrashOpen}
+                count={totalDeletedCount}
+                loading={clearTrashLoading}
+                onConfirm={confirmClearTrash}
+                onCancel={cancelClearTrash}
+            />
         </div>
     );
 }

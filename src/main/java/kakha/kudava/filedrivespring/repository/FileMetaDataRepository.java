@@ -45,4 +45,16 @@ public interface FileMetaDataRepository extends JpaRepository<FileMetaData, Long
             User owner,
             String originalObjectKey
     );
+
+    List<FileMetaData> findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalse(User owner);
+
+    Optional<FileMetaData> findByIdAndDeletedTrueAndPermanentlyDeletedFalseAndParent_Owner(
+            Long id,
+            User owner
+    );
+
+    List<FileMetaData> findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
+            User owner,
+            String originalObjectKey
+    );
 }

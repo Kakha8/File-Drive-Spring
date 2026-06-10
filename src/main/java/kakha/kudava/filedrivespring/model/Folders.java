@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
@@ -22,7 +24,12 @@ public class Folders {
     private String prefix;
 
     @Column(nullable = false)
-    private boolean deleted;
+    private boolean deleted = false;
+
+    @Column(nullable = false)
+    private boolean permanentlyDeleted = false;
+
+    private Instant permanentlyDeletedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")

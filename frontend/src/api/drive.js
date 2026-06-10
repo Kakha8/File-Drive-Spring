@@ -352,3 +352,32 @@ export async function getTrashcan() {
 
     return response.json();
 }
+
+export async function deletePermanently(fileIds = [], folderIds = []) {
+    const response = await apiFetch("/api/trashcan/permanent", {
+        method: "DELETE",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            fileIds,
+            folderIds,
+        }),
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to permanently delete selected items");
+    }
+}
+
+export async function clearTrash() {
+    const response = await apiFetch("/api/trashcan/clear", {
+        method: "DELETE",
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to clear trash");
+    }
+}

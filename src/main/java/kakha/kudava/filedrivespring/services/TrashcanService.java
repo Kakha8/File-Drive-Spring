@@ -13,6 +13,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.*;
 
 @Service
@@ -47,7 +48,7 @@ public class TrashcanService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         List<TrashFileDTO> deletedFiles =
-                fileMetaDataRepository.findByParent_OwnerAndDeletedTrue(user)
+                fileMetaDataRepository.findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalse(user)
                         .stream()
                         .map(file -> new TrashFileDTO(
                                 file.getId(),
@@ -61,7 +62,7 @@ public class TrashcanService {
                         .toList();
 
         List<TrashFolderDTO> deletedFolders =
-                folderRepository.findByOwnerAndDeletedTrue(user)
+                folderRepository.findByOwnerAndDeletedTrueAndPermanentlyDeletedFalse(user)
                         .stream()
                         .map(folder -> new TrashFolderDTO(
                                 folder.getId(),
@@ -126,7 +127,7 @@ public class TrashcanService {
 
         for (Long fileId : fileIds) {
             FileMetaData file = fileMetaDataRepository
-                    .findByIdAndDeletedTrueAndParent_Owner(fileId, user)
+                    .findByIdAndDeletedTrueAndPermanentlyDeletedFalseAndParent_Owner(fileId, user)
                     .orElseThrow(() -> new RuntimeException("Trashed file not found or access denied: " + fileId));
 
             if (file.getObjectKey() == null || file.getObjectKey().isBlank()) {
@@ -136,11 +137,16 @@ public class TrashcanService {
             filesToDelete.add(file);
         }
 
+        Instant now = Instant.now();
+
         for (FileMetaData file : filesToDelete) {
             objectStorageService.deleteTrashObject(file.getObjectKey());
+
+            file.setPermanentlyDeleted(true);
+            file.setPermanentlyDeletedAt(now);
         }
 
-        fileMetaDataRepository.deleteAll(filesToDelete);
+        fileMetaDataRepository.saveAll(filesToDelete);
     }
 
     private void deleteFoldersPermanently(List<Long> folderIds, User user) {
@@ -154,38 +160,51 @@ public class TrashcanService {
 
         for (Long folderId : folderIds) {
             Folders folder = folderRepository
-                    .findByIdAndDeletedTrueAndOwner(folderId, user)
+                    .findByIdAndDeletedTrueAndPermanentlyDeletedFalseAndOwner(folderId, user)
                     .orElseThrow(() -> new RuntimeException("Trashed folder not found or access denied: " + folderId));
 
             String originalPrefix = normalizePrefix(folder.getPrefix());
             String trashPrefix = "users/" + user.getId() + "/folders/" + folder.getId() + "/";
 
             List<FileMetaData> filesInFolder = fileMetaDataRepository
-                    .findByParent_OwnerAndDeletedTrueAndOriginalObjectKeyStartingWith(user, originalPrefix);
+                    .findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
+                            user,
+                            originalPrefix
+                    );
 
             List<Folders> foldersInSubtree = folderRepository
-                    .findByOwnerAndDeletedTrueAndPrefixStartingWith(user, originalPrefix);
+                    .findByOwnerAndDeletedTrueAndPermanentlyDeletedFalseAndPrefixStartingWith(
+                            user,
+                            originalPrefix
+                    );
 
             allFilesToDelete.addAll(filesInFolder);
             allFoldersToDelete.addAll(foldersInSubtree);
             trashPrefixesToDelete.add(trashPrefix);
         }
 
+        Instant now = Instant.now();
+
         for (String trashPrefix : trashPrefixesToDelete) {
             objectStorageService.deleteTrashPrefix(trashPrefix);
         }
 
+        for (FileMetaData file : allFilesToDelete) {
+            file.setPermanentlyDeleted(true);
+            file.setPermanentlyDeletedAt(now);
+        }
+
+        for (Folders folder : allFoldersToDelete) {
+            folder.setPermanentlyDeleted(true);
+            folder.setPermanentlyDeletedAt(now);
+        }
+
         if (!allFilesToDelete.isEmpty()) {
-            fileMetaDataRepository.deleteAll(allFilesToDelete);
+            fileMetaDataRepository.saveAll(allFilesToDelete);
         }
 
         if (!allFoldersToDelete.isEmpty()) {
-            allFoldersToDelete.sort(
-                    Comparator.comparingInt((Folders folder) -> normalizePrefix(folder.getPrefix()).length())
-                            .reversed()
-            );
-
-            folderRepository.deleteAll(allFoldersToDelete);
+            folderRepository.saveAll(allFoldersToDelete);
         }
     }
 
@@ -228,5 +247,43 @@ public class TrashcanService {
 
         return userRepository.findByUsername(authentication.getName())
                 .orElseThrow(() -> new RuntimeException("Authenticated user not found"));
+    }
+
+    @Transactional
+    public void clearTrash() {
+        User user = currentUser();
+
+        List<FileMetaData> filesToClear = fileMetaDataRepository
+                .findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalse(user);
+
+        List<Folders> foldersToClear = folderRepository
+                .findByOwnerAndDeletedTrueAndPermanentlyDeletedFalse(user);
+
+        if (filesToClear.isEmpty() && foldersToClear.isEmpty()) {
+            return;
+        }
+
+        Instant now = Instant.now();
+
+        for (FileMetaData file : filesToClear) {
+            if (file.getObjectKey() != null && !file.getObjectKey().isBlank()) {
+                objectStorageService.deleteTrashObject(file.getObjectKey());
+            }
+
+            file.setPermanentlyDeleted(true);
+            file.setPermanentlyDeletedAt(now);
+        }
+
+        for (Folders folder : foldersToClear) {
+            String trashPrefix = "users/" + user.getId() + "/folders/" + folder.getId() + "/";
+
+            objectStorageService.deleteTrashPrefix(trashPrefix);
+
+            folder.setPermanentlyDeleted(true);
+            folder.setPermanentlyDeletedAt(now);
+        }
+
+        fileMetaDataRepository.saveAll(filesToClear);
+        folderRepository.saveAll(foldersToClear);
     }
 }

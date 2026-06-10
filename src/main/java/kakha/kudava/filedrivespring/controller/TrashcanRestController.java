@@ -35,4 +35,10 @@ public class TrashcanRestController {
         trashcanService.deletePermanently(request);
         return ResponseEntity.noContent().build();
     }
+
+    @DeleteMapping("/clear")
+    public ResponseEntity<Void> clearTrash() {
+        trashcanService.clearTrash();
+        return ResponseEntity.noContent().build();
+    }
 }

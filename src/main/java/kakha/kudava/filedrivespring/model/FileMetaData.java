@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -36,6 +37,11 @@ public class FileMetaData {
 
     @Column(nullable = false)
     private boolean deleted;
+
+    @Column(nullable = false)
+    private boolean permanentlyDeleted;
+
+    private Instant permanentlyDeletedAt;
 
     @Column
     private String originalObjectKey;
