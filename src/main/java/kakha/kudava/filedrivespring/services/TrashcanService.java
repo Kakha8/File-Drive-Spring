@@ -1,9 +1,6 @@
 package kakha.kudava.filedrivespring.services;
 
-import kakha.kudava.filedrivespring.dto.MoveToTrashReqDTO;
-import kakha.kudava.filedrivespring.dto.TrashFileDTO;
-import kakha.kudava.filedrivespring.dto.TrashFolderDTO;
-import kakha.kudava.filedrivespring.dto.ViewTrashcanDTO;
+import kakha.kudava.filedrivespring.dto.*;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.User;
@@ -16,8 +13,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 @Service
 public class TrashcanService {
@@ -108,5 +104,129 @@ public class TrashcanService {
         if (!folderIds.isEmpty()) {
             folderService.deleteMultiple(folderIds);
         }
+    }
+
+    @Transactional
+    public void deletePermanently(TrashcanActionRequest request) {
+        User user = currentUser();
+
+        List<Long> fileIds = safeIds(request.getFileIds());
+        List<Long> folderIds = safeIds(request.getFolderIds());
+
+        deleteFilesPermanently(fileIds, user);
+        deleteFoldersPermanently(folderIds, user);
+    }
+
+    private void deleteFilesPermanently(List<Long> fileIds, User user) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            return;
+        }
+
+        List<FileMetaData> filesToDelete = new ArrayList<>();
+
+        for (Long fileId : fileIds) {
+            FileMetaData file = fileMetaDataRepository
+                    .findByIdAndDeletedTrueAndParent_Owner(fileId, user)
+                    .orElseThrow(() -> new RuntimeException("Trashed file not found or access denied: " + fileId));
+
+            if (file.getObjectKey() == null || file.getObjectKey().isBlank()) {
+                throw new RuntimeException("Trashed file has no trash object key: " + fileId);
+            }
+
+            filesToDelete.add(file);
+        }
+
+        for (FileMetaData file : filesToDelete) {
+            objectStorageService.deleteTrashObject(file.getObjectKey());
+        }
+
+        fileMetaDataRepository.deleteAll(filesToDelete);
+    }
+
+    private void deleteFoldersPermanently(List<Long> folderIds, User user) {
+        if (folderIds == null || folderIds.isEmpty()) {
+            return;
+        }
+
+        List<FileMetaData> allFilesToDelete = new ArrayList<>();
+        List<Folders> allFoldersToDelete = new ArrayList<>();
+        List<String> trashPrefixesToDelete = new ArrayList<>();
+
+        for (Long folderId : folderIds) {
+            Folders folder = folderRepository
+                    .findByIdAndDeletedTrueAndOwner(folderId, user)
+                    .orElseThrow(() -> new RuntimeException("Trashed folder not found or access denied: " + folderId));
+
+            String originalPrefix = normalizePrefix(folder.getPrefix());
+            String trashPrefix = "users/" + user.getId() + "/folders/" + folder.getId() + "/";
+
+            List<FileMetaData> filesInFolder = fileMetaDataRepository
+                    .findByParent_OwnerAndDeletedTrueAndOriginalObjectKeyStartingWith(user, originalPrefix);
+
+            List<Folders> foldersInSubtree = folderRepository
+                    .findByOwnerAndDeletedTrueAndPrefixStartingWith(user, originalPrefix);
+
+            allFilesToDelete.addAll(filesInFolder);
+            allFoldersToDelete.addAll(foldersInSubtree);
+            trashPrefixesToDelete.add(trashPrefix);
+        }
+
+        for (String trashPrefix : trashPrefixesToDelete) {
+            objectStorageService.deleteTrashPrefix(trashPrefix);
+        }
+
+        if (!allFilesToDelete.isEmpty()) {
+            fileMetaDataRepository.deleteAll(allFilesToDelete);
+        }
+
+        if (!allFoldersToDelete.isEmpty()) {
+            allFoldersToDelete.sort(
+                    Comparator.comparingInt((Folders folder) -> normalizePrefix(folder.getPrefix()).length())
+                            .reversed()
+            );
+
+            folderRepository.deleteAll(allFoldersToDelete);
+        }
+    }
+
+    private List<Long> safeIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+
+        Set<Long> uniqueIds = new LinkedHashSet<>();
+
+        for (Long id : ids) {
+            if (id != null) {
+                uniqueIds.add(id);
+            }
+        }
+
+        return new ArrayList<>(uniqueIds);
+    }
+
+    private String normalizePrefix(String prefix) {
+        if (prefix == null || prefix.isBlank()) {
+            return "";
+        }
+
+        String normalized = prefix.trim().replace("\\", "/");
+
+        if (!normalized.endsWith("/")) {
+            normalized += "/";
+        }
+
+        return normalized;
+    }
+
+    private User currentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || authentication.getName() == null) {
+            throw new RuntimeException("Not authenticated");
+        }
+
+        return userRepository.findByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("Authenticated user not found"));
     }
 }

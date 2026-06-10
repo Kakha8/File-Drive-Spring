@@ -2,6 +2,7 @@ package kakha.kudava.filedrivespring.controller;
 
 import jakarta.servlet.http.HttpServletResponse;
 import kakha.kudava.filedrivespring.dto.MoveToTrashReqDTO;
+import kakha.kudava.filedrivespring.dto.TrashcanActionRequest;
 import kakha.kudava.filedrivespring.dto.ViewTrashcanDTO;
 import kakha.kudava.filedrivespring.services.TrashcanService;
 import org.springframework.http.ResponseEntity;
@@ -29,4 +30,9 @@ public class TrashcanRestController {
         return ResponseEntity.noContent().build();
     }
 
+    @DeleteMapping("/permanent")
+    public ResponseEntity<Void> deletePermanently(@RequestBody TrashcanActionRequest request) {
+        trashcanService.deletePermanently(request);
+        return ResponseEntity.noContent().build();
+    }
 }

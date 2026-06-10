@@ -519,5 +519,42 @@ public class ObjectStorageService {
         }
     }
 
+    public void deleteTrashObject(String objectKey) {
+        try {
+            minioClient.removeObject(
+                    RemoveObjectArgs.builder()
+                            .bucket(trashBucket)
+                            .object(objectKey)
+                            .build()
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to permanently delete trash object: " + objectKey, e);
+        }
+    }
+
+    public void deleteTrashPrefix(String prefix) {
+        try {
+            Iterable<Result<Item>> results = minioClient.listObjects(
+                    ListObjectsArgs.builder()
+                            .bucket(trashBucket)
+                            .prefix(prefix)
+                            .recursive(true)
+                            .build()
+            );
+
+            for (Result<Item> result : results) {
+                Item item = result.get();
+
+                minioClient.removeObject(
+                        RemoveObjectArgs.builder()
+                                .bucket(trashBucket)
+                                .object(item.objectName())
+                                .build()
+                );
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to permanently delete trash prefix: " + prefix, e);
+        }
+    }
 
 }
