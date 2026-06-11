@@ -38,6 +38,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -334,6 +335,7 @@ public class ObjectStorageService {
             );
 
             metaData.setDeleted(true);
+            metaData.setDeletedAt(Instant.now());
             metaData.setOriginalObjectKey(originalObjectKey);
             metaData.setObjectKey(trashObjectKey);
 
@@ -419,6 +421,7 @@ public class ObjectStorageService {
                 fileMetaDataRepository.findByObjectKey(originalObjectKey)
                         .ifPresent(file -> {
                             file.setDeleted(true);
+                            file.setDeletedAt(Instant.now());
                             file.setOriginalObjectKey(originalObjectKey);
                             file.setObjectKey(trashObjectKey);
                             fileMetaDataRepository.save(file);
@@ -438,6 +441,7 @@ public class ObjectStorageService {
 
             for (Folders folder : foldersInSubtree) {
                 folder.setDeleted(true);
+                folder.setDeletedAt(Instant.now());
             }
 
             folderRepository.saveAll(foldersInSubtree);

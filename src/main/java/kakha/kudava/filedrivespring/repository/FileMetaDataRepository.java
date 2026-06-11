@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -59,5 +60,9 @@ public interface FileMetaDataRepository extends JpaRepository<FileMetaData, Long
     List<FileMetaData> findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
             User owner,
             String originalObjectKey
+    );
+
+    List<FileMetaData> findByDeletedTrueAndPermanentlyDeletedFalseAndDeletedAtBefore(
+            Instant cutoff
     );
 }

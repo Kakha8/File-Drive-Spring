@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -75,5 +76,9 @@ public interface FolderRepository extends JpaRepository<Folders, Long> {
     List<Folders> findByOwnerAndDeletedTrueAndPermanentlyDeletedFalseAndPrefixStartingWith(
             User owner,
             String prefix
+    );
+
+    List<Folders> findByDeletedTrueAndPermanentlyDeletedFalseAndDeletedAtBefore(
+            Instant cutoff
     );
 }

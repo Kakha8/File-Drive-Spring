@@ -13,6 +13,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
@@ -297,6 +298,7 @@ public class TrashcanService {
             file.setObjectKey(restoredObjectKey);
             file.setOriginalObjectKey(null);
             file.setDeleted(false);
+            file.setDeletedAt(null);
             file.setPermanentlyDeleted(false);
             file.setPermanentlyDeletedAt(null);
 
@@ -414,6 +416,7 @@ public class TrashcanService {
             subtreeFolder.setParent(newParent);
             subtreeFolder.setPrefix(newPrefix);
             subtreeFolder.setDeleted(false);
+            subtreeFolder.setDeletedAt(null);
             subtreeFolder.setPermanentlyDeleted(false);
             subtreeFolder.setPermanentlyDeletedAt(null);
         }
@@ -452,6 +455,7 @@ public class TrashcanService {
             file.setObjectKey(restoredObjectKey);
             file.setOriginalObjectKey(null);
             file.setDeleted(false);
+            file.setDeletedAt(null);
             file.setPermanentlyDeleted(false);
             file.setPermanentlyDeletedAt(null);
 
@@ -593,5 +597,102 @@ public class TrashcanService {
 
         return userRepository.findByUsername(authentication.getName())
                 .orElseThrow(() -> new RuntimeException("Authenticated user not found"));
+    }
+
+    @Transactional
+    public void permanentlyDeleteTrashOlderThan(Duration maxAge) {
+        if (maxAge == null || maxAge.isNegative() || maxAge.isZero()) {
+            throw new IllegalArgumentException("maxAge must be positive");
+        }
+
+        Instant cutoff = Instant.now().minus(maxAge);
+
+        List<FileMetaData> oldFiles = fileMetaDataRepository
+                .findByDeletedTrueAndPermanentlyDeletedFalseAndDeletedAtBefore(cutoff);
+
+        List<Folders> oldFolders = folderRepository
+                .findByDeletedTrueAndPermanentlyDeletedFalseAndDeletedAtBefore(cutoff);
+
+        if (oldFiles.isEmpty() && oldFolders.isEmpty()) {
+            return;
+        }
+
+        Instant now = Instant.now();
+
+        /*
+         * If a folder is old enough for cleanup, all trashed files inside that folder
+         * should be deleted through the folder cleanup path. This prevents duplicate
+         * object delete attempts.
+         */
+        Set<Long> fileIdsHandledByFolders = new HashSet<>();
+
+        List<Folders> topLevelOldFolders = getTopLevelFolders(oldFolders);
+
+        for (Folders folder : topLevelOldFolders) {
+            User owner = folder.getOwner();
+
+            if (owner == null) {
+                continue;
+            }
+
+            String originalPrefix = normalizePrefix(folder.getPrefix());
+
+            if (originalPrefix.isBlank()) {
+                continue;
+            }
+
+            String trashPrefix = "users/" + owner.getId() + "/folders/" + folder.getId() + "/";
+
+            List<FileMetaData> filesInFolder = fileMetaDataRepository
+                    .findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
+                            owner,
+                            originalPrefix
+                    );
+
+            List<Folders> foldersInSubtree = folderRepository
+                    .findByOwnerAndDeletedTrueAndPermanentlyDeletedFalseAndPrefixStartingWith(
+                            owner,
+                            originalPrefix
+                    );
+
+            objectStorageService.deleteTrashPrefix(trashPrefix);
+
+            for (FileMetaData file : filesInFolder) {
+                file.setPermanentlyDeleted(true);
+                file.setPermanentlyDeletedAt(now);
+                fileIdsHandledByFolders.add(file.getId());
+            }
+
+            for (Folders subtreeFolder : foldersInSubtree) {
+                subtreeFolder.setPermanentlyDeleted(true);
+                subtreeFolder.setPermanentlyDeletedAt(now);
+            }
+
+            if (!filesInFolder.isEmpty()) {
+                fileMetaDataRepository.saveAll(filesInFolder);
+            }
+
+            if (!foldersInSubtree.isEmpty()) {
+                folderRepository.saveAll(foldersInSubtree);
+            }
+        }
+
+        List<FileMetaData> standaloneFilesToDelete = oldFiles.stream()
+                .filter(file -> file.getId() != null)
+                .filter(file -> !fileIdsHandledByFolders.contains(file.getId()))
+                .toList();
+
+        for (FileMetaData file : standaloneFilesToDelete) {
+            if (file.getObjectKey() != null && !file.getObjectKey().isBlank()) {
+                objectStorageService.deleteTrashObject(file.getObjectKey());
+            }
+
+            file.setPermanentlyDeleted(true);
+            file.setPermanentlyDeletedAt(now);
+        }
+
+        if (!standaloneFilesToDelete.isEmpty()) {
+            fileMetaDataRepository.saveAll(standaloneFilesToDelete);
+        }
     }
 }

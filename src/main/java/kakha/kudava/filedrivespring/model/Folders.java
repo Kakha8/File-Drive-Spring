@@ -26,6 +26,9 @@ public class Folders {
     @Column(nullable = false)
     private boolean deleted = false;
 
+    @Column
+    private Instant deletedAt;
+
     @Column(nullable = false)
     private boolean permanentlyDeleted = false;
 

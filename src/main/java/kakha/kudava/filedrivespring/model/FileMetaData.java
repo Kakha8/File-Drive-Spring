@@ -38,6 +38,9 @@ public class FileMetaData {
     @Column(nullable = false)
     private boolean deleted;
 
+    @Column
+    private Instant deletedAt;
+
     @Column(nullable = false)
     private boolean permanentlyDeleted;
 
