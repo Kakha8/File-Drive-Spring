@@ -330,6 +330,7 @@ function Main({ onLogout }) {
     const renameInputRef = useRef(null);
 
     const [trashRequest, setTrashRequest] = useState(null);
+    const [trashMoving, setTrashMoving] = useState(false);
 
     const currentFolderId =
         path.length > 0 ? path[path.length - 1].id : currentFolder?.id;
@@ -914,6 +915,10 @@ function Main({ onLogout }) {
     }
 
     function cancelMoveToTrash() {
+        if (trashMoving) {
+            return;
+        }
+
         setTrashRequest(null);
     }
 
@@ -923,19 +928,23 @@ function Main({ onLogout }) {
             return;
         }
 
-        const fileIds = trashRequest.items
+        const itemsToTrash = trashRequest.items;
+
+        const fileIds = itemsToTrash
             .filter((item) => item.type !== "folder")
             .map((item) => item.rawId)
             .filter(Boolean);
 
-        const folderIds = trashRequest.items
+        const folderIds = itemsToTrash
             .filter((item) => item.type === "folder")
             .map((item) => item.rawId)
             .filter(Boolean);
 
         try {
             setError("");
-            setLoading(true);
+            setTrashMoving(true);
+
+            await new Promise((resolve) => requestAnimationFrame(resolve));
 
             await moveToTrash(fileIds, folderIds);
 
@@ -945,9 +954,8 @@ function Main({ onLogout }) {
             await reloadCurrentFolder();
         } catch (err) {
             setError(err.message || "Failed to move item(s) to trash");
-            setTrashRequest(null);
         } finally {
-            setLoading(false);
+            setTrashMoving(false);
         }
     }
     function handleProperties(item) {
@@ -1412,6 +1420,8 @@ function Main({ onLogout }) {
             <ConfirmTrashModal
                 open={Boolean(trashRequest)}
                 fileName={trashRequest?.label || ""}
+                count={trashRequest?.items?.length || 0}
+                loading={trashMoving}
                 onConfirm={confirmMoveToTrash}
                 onCancel={cancelMoveToTrash}
             />

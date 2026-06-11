@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { clearTrash, deletePermanently, getTrashcan } from "../api/drive";
+import {
+    clearTrash,
+    deletePermanently,
+    getTrashcan,
+    restoreFromTrash,
+} from "../api/drive";
 import DriveSidebar from "../components/DriveSidebar";
 import ConfirmPermanentDeleteModal from "../components/ConfirmPermanentDeleteModal";
 import ConfirmClearTrashModal from "../components/ConfirmClearTrashModal";
+import ConfirmRestoreModal from "../components/ConfirmRestoreModal";
 import "../App.css";
 
 function Icon({ children, className = "" }) {
@@ -281,6 +287,9 @@ export default function Trashcan({ sidebarOpen, onToggleSidebar }) {
     const [permanentDeleteItems, setPermanentDeleteItems] = useState([]);
     const [permanentDeleteLoading, setPermanentDeleteLoading] = useState(false);
 
+    const [restoreItems, setRestoreItems] = useState([]);
+    const [restoreLoading, setRestoreLoading] = useState(false);
+
     const [clearTrashOpen, setClearTrashOpen] = useState(false);
     const [clearTrashLoading, setClearTrashLoading] = useState(false);
 
@@ -547,11 +556,51 @@ export default function Trashcan({ sidebarOpen, onToggleSidebar }) {
         const actionItems = getActionItems(item);
 
         setOpenMenuId(null);
-        setError(
-            actionItems.length === 1
-                ? `Restore coming soon for ${actionItems[0].name}`
-                : `Restore coming soon for ${actionItems.length} selected items`
-        );
+        setError("");
+        setRestoreItems(actionItems);
+    }
+
+    function cancelRestore() {
+        if (restoreLoading) {
+            return;
+        }
+
+        setRestoreItems([]);
+    }
+
+    async function confirmRestore() {
+        if (restoreItems.length === 0) {
+            return;
+        }
+
+        const fileIds = restoreItems
+            .filter((item) => item.type !== "folder")
+            .map((item) => item.rawId)
+            .filter(Boolean);
+
+        const folderIds = restoreItems
+            .filter((item) => item.type === "folder")
+            .map((item) => item.rawId)
+            .filter(Boolean);
+
+        try {
+            setError("");
+            setRestoreLoading(true);
+
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+
+            await restoreFromTrash(fileIds, folderIds);
+
+            setSelectedIds([]);
+            setOpenMenuId(null);
+            setRestoreItems([]);
+
+            await loadTrashcan();
+        } catch (err) {
+            setError(err.message || "Failed to restore selected items");
+        } finally {
+            setRestoreLoading(false);
+        }
     }
 
     function handleDeletePermanently(item) {
@@ -746,15 +795,14 @@ export default function Trashcan({ sidebarOpen, onToggleSidebar }) {
                         <button
                             type="button"
                             className="primary-action"
-                            disabled={selectedItems.length === 0}
-                            title="Restore will be added later"
+                            disabled={selectedItems.length === 0 || restoreLoading}
                             onClick={() => {
                                 if (selectedItems.length > 0) {
                                     handleRestore(selectedItems[0]);
                                 }
                             }}
                         >
-                            Restore
+                            {restoreLoading ? "Restoring..." : "Restore"}
                         </button>
 
                         <button
@@ -938,6 +986,14 @@ export default function Trashcan({ sidebarOpen, onToggleSidebar }) {
                     </div>
                 </section>
             </main>
+
+            <ConfirmRestoreModal
+                open={restoreItems.length > 0}
+                count={restoreItems.length}
+                loading={restoreLoading}
+                onConfirm={confirmRestore}
+                onCancel={cancelRestore}
+            />
 
             <ConfirmPermanentDeleteModal
                 open={permanentDeleteItems.length > 0}

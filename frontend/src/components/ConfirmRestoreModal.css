@@ -1,0 +1,119 @@
+.restore-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(2, 6, 23, 0.72);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.restore-modal {
+    width: min(460px, 100%);
+    border-radius: 22px;
+    background: #111827;
+    border: 1px solid rgba(96, 165, 250, 0.32);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+    padding: 26px;
+    color: #f9fafb;
+}
+
+.restore-modal-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 999px;
+    background: rgba(59, 130, 246, 0.16);
+    border: 1px solid rgba(96, 165, 250, 0.42);
+    color: #bfdbfe;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+    font-size: 24px;
+    font-weight: 900;
+}
+
+.restore-modal h2 {
+    margin: 0 0 10px;
+    font-size: 22px;
+    line-height: 1.2;
+}
+
+.restore-modal p {
+    margin: 0 0 14px;
+    color: #cbd5e1;
+    line-height: 1.5;
+    font-size: 14px;
+}
+
+.restore-modal-muted {
+    color: #94a3b8;
+}
+
+.restore-moving-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(59, 130, 246, 0.14);
+    border: 1px solid rgba(96, 165, 250, 0.32);
+    color: #bfdbfe;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.restore-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(191, 219, 254, 0.35);
+    border-top-color: #bfdbfe;
+    border-radius: 999px;
+    animation: restore-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes restore-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.restore-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 22px;
+}
+
+.restore-modal-actions button {
+    height: 42px;
+    border-radius: 12px;
+    padding: 0 16px;
+    border: 0;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.restore-modal-actions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.restore-cancel {
+    background: rgba(148, 163, 184, 0.13);
+    color: #e5e7eb;
+}
+
+.restore-confirm {
+    background: #2563eb;
+    color: white;
+}
+
+.restore-confirm:not(:disabled):hover {
+    background: #1d4ed8;
+}

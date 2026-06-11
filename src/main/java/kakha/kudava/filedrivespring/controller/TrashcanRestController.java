@@ -41,4 +41,10 @@ public class TrashcanRestController {
         trashcanService.clearTrash();
         return ResponseEntity.noContent().build();
     }
+
+    @PostMapping("/restore")
+    public ResponseEntity<Void> restore(@RequestBody TrashcanActionRequest request) {
+        trashcanService.restore(request);
+        return ResponseEntity.noContent().build();
+    }
 }

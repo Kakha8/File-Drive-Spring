@@ -557,4 +557,38 @@ public class ObjectStorageService {
         }
     }
 
+    public void restoreTrashObject(String trashObjectKey, String restoredObjectKey) {
+        try {
+            if (trashObjectKey == null || trashObjectKey.isBlank()) {
+                throw new IllegalArgumentException("Trash object key is required");
+            }
+
+            if (restoredObjectKey == null || restoredObjectKey.isBlank()) {
+                throw new IllegalArgumentException("Restored object key is required");
+            }
+
+            minioClient.copyObject(
+                    CopyObjectArgs.builder()
+                            .bucket(bucket)
+                            .object(restoredObjectKey)
+                            .source(
+                                    CopySource.builder()
+                                            .bucket(trashBucket)
+                                            .object(trashObjectKey)
+                                            .build()
+                            )
+                            .build()
+            );
+
+            minioClient.removeObject(
+                    RemoveObjectArgs.builder()
+                            .bucket(trashBucket)
+                            .object(trashObjectKey)
+                            .build()
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to restore trash object: " + trashObjectKey, e);
+        }
+    }
+
 }
