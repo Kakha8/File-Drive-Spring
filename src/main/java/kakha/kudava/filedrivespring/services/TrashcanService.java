@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.services;
 
 import kakha.kudava.filedrivespring.dto.*;
+import kakha.kudava.filedrivespring.enums.EntityType;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.User;
@@ -25,19 +26,21 @@ public class TrashcanService {
     private final UserRepository userRepository;
     private final ObjectStorageService objectStorageService;
     private final FolderService folderService;
+    private final LogsService logsService;
 
     public TrashcanService(
             FileMetaDataRepository fileMetaDataRepository,
             FolderRepository folderRepository,
             UserRepository userRepository,
             ObjectStorageService objectStorageService,
-            FolderService folderService
+            FolderService folderService, LogsService logsService
     ) {
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
         this.userRepository = userRepository;
         this.objectStorageService = objectStorageService;
         this.folderService = folderService;
+        this.logsService = logsService;
     }
 
     public ViewTrashcanDTO viewTrashcan() {
@@ -133,10 +136,36 @@ public class TrashcanService {
         Instant now = Instant.now();
 
         for (FileMetaData file : filesToDelete) {
-            objectStorageService.deleteTrashObject(file.getObjectKey());
+            String trashObjectKey = file.getObjectKey();
+
+            objectStorageService.deleteTrashObject(trashObjectKey);
 
             file.setPermanentlyDeleted(true);
             file.setPermanentlyDeletedAt(now);
+
+            String detailsJson = """
+                {
+                  "name": "%s",
+                  "trashObjectKey": "%s",
+                  "originalObjectKey": "%s",
+                  "deletedAt": "%s",
+                  "permanentlyDeletedAt": "%s",
+                  "source": "manual_permanent_delete"
+                }
+                """.formatted(
+                    file.getFileName(),
+                    trashObjectKey,
+                    file.getOriginalObjectKey(),
+                    file.getDeletedAt(),
+                    now
+            );
+
+            logsService.permanentDeleteLog(
+                    file.getFileName(),
+                    file.getId(),
+                    EntityType.FILE.name(),
+                    detailsJson
+            );
         }
 
         fileMetaDataRepository.saveAll(filesToDelete);
@@ -147,17 +176,32 @@ public class TrashcanService {
             return;
         }
 
-        List<FileMetaData> allFilesToDelete = new ArrayList<>();
-        List<Folders> allFoldersToDelete = new ArrayList<>();
-        List<String> trashPrefixesToDelete = new ArrayList<>();
+        List<Folders> selectedFolders = new ArrayList<>();
 
         for (Long folderId : folderIds) {
             Folders folder = folderRepository
                     .findByIdAndDeletedTrueAndPermanentlyDeletedFalseAndOwner(folderId, user)
                     .orElseThrow(() -> new RuntimeException("Trashed folder not found or access denied: " + folderId));
 
+            selectedFolders.add(folder);
+        }
+
+        List<Folders> topLevelFolders = getTopLevelFolders(selectedFolders);
+
+        List<FileMetaData> allFilesToDelete = new ArrayList<>();
+        List<Folders> allFoldersToDelete = new ArrayList<>();
+        List<String> trashPrefixesToDelete = new ArrayList<>();
+
+        Set<Long> seenFileIds = new HashSet<>();
+        Set<Long> seenFolderIds = new HashSet<>();
+
+        Map<Long, String> rootTrashPrefixByFolderId = new HashMap<>();
+
+        for (Folders folder : topLevelFolders) {
             String originalPrefix = normalizePrefix(folder.getPrefix());
             String trashPrefix = "users/" + user.getId() + "/folders/" + folder.getId() + "/";
+
+            trashPrefixesToDelete.add(trashPrefix);
 
             List<FileMetaData> filesInFolder = fileMetaDataRepository
                     .findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
@@ -171,9 +215,18 @@ public class TrashcanService {
                             originalPrefix
                     );
 
-            allFilesToDelete.addAll(filesInFolder);
-            allFoldersToDelete.addAll(foldersInSubtree);
-            trashPrefixesToDelete.add(trashPrefix);
+            for (FileMetaData file : filesInFolder) {
+                if (file.getId() != null && seenFileIds.add(file.getId())) {
+                    allFilesToDelete.add(file);
+                }
+            }
+
+            for (Folders subtreeFolder : foldersInSubtree) {
+                if (subtreeFolder.getId() != null && seenFolderIds.add(subtreeFolder.getId())) {
+                    allFoldersToDelete.add(subtreeFolder);
+                    rootTrashPrefixByFolderId.put(subtreeFolder.getId(), trashPrefix);
+                }
+            }
         }
 
         Instant now = Instant.now();
@@ -185,11 +238,61 @@ public class TrashcanService {
         for (FileMetaData file : allFilesToDelete) {
             file.setPermanentlyDeleted(true);
             file.setPermanentlyDeletedAt(now);
+
+            String detailsJson = """
+                {
+                  "name": "%s",
+                  "trashObjectKey": "%s",
+                  "originalObjectKey": "%s",
+                  "deletedAt": "%s",
+                  "permanentlyDeletedAt": "%s",
+                  "source": "manual_permanent_delete"
+                }
+                """.formatted(
+                    file.getFileName(),
+                    file.getObjectKey(),
+                    file.getOriginalObjectKey(),
+                    file.getDeletedAt(),
+                    now
+            );
+
+            logsService.permanentDeleteLog(
+                    file.getFileName(),
+                    file.getId(),
+                    EntityType.FILE.name(),
+                    detailsJson
+            );
         }
 
         for (Folders folder : allFoldersToDelete) {
             folder.setPermanentlyDeleted(true);
             folder.setPermanentlyDeletedAt(now);
+
+            String rootTrashPrefix = rootTrashPrefixByFolderId.get(folder.getId());
+
+            String detailsJson = """
+                {
+                  "name": "%s",
+                  "prefix": "%s",
+                  "rootTrashPrefix": "%s",
+                  "deletedAt": "%s",
+                  "permanentlyDeletedAt": "%s",
+                  "source": "manual_permanent_delete"
+                }
+                """.formatted(
+                    folder.getName(),
+                    folder.getPrefix(),
+                    rootTrashPrefix,
+                    folder.getDeletedAt(),
+                    now
+            );
+
+            logsService.permanentDeleteLog(
+                    folder.getName(),
+                    folder.getId(),
+                    EntityType.FOLDER.name(),
+                    detailsJson
+            );
         }
 
         if (!allFilesToDelete.isEmpty()) {
@@ -217,13 +320,53 @@ public class TrashcanService {
 
         Instant now = Instant.now();
 
+        String clearDetailsJson = """
+            {
+              "fileCount": %d,
+              "folderCount": %d,
+              "clearedAt": "%s"
+            }
+            """.formatted(
+                filesToClear.size(),
+                foldersToClear.size(),
+                now
+        );
+
+        logsService.clearTrashLog(clearDetailsJson);
+
         for (FileMetaData file : filesToClear) {
-            if (file.getObjectKey() != null && !file.getObjectKey().isBlank()) {
-                objectStorageService.deleteTrashObject(file.getObjectKey());
+            String trashObjectKey = file.getObjectKey();
+
+            if (trashObjectKey != null && !trashObjectKey.isBlank()) {
+                objectStorageService.deleteTrashObject(trashObjectKey);
             }
 
             file.setPermanentlyDeleted(true);
             file.setPermanentlyDeletedAt(now);
+
+            String detailsJson = """
+                {
+                  "name": "%s",
+                  "trashObjectKey": "%s",
+                  "originalObjectKey": "%s",
+                  "deletedAt": "%s",
+                  "permanentlyDeletedAt": "%s",
+                  "source": "clear_trash"
+                }
+                """.formatted(
+                    file.getFileName(),
+                    trashObjectKey,
+                    file.getOriginalObjectKey(),
+                    file.getDeletedAt(),
+                    now
+            );
+
+            logsService.permanentDeleteLog(
+                    file.getFileName(),
+                    file.getId(),
+                    EntityType.FILE.name(),
+                    detailsJson
+            );
         }
 
         for (Folders folder : foldersToClear) {
@@ -233,12 +376,35 @@ public class TrashcanService {
 
             folder.setPermanentlyDeleted(true);
             folder.setPermanentlyDeletedAt(now);
+
+            String detailsJson = """
+                {
+                  "name": "%s",
+                  "prefix": "%s",
+                  "trashPrefix": "%s",
+                  "deletedAt": "%s",
+                  "permanentlyDeletedAt": "%s",
+                  "source": "clear_trash"
+                }
+                """.formatted(
+                    folder.getName(),
+                    folder.getPrefix(),
+                    trashPrefix,
+                    folder.getDeletedAt(),
+                    now
+            );
+
+            logsService.permanentDeleteLog(
+                    folder.getName(),
+                    folder.getId(),
+                    EntityType.FOLDER.name(),
+                    detailsJson
+            );
         }
 
         fileMetaDataRepository.saveAll(filesToClear);
         folderRepository.saveAll(foldersToClear);
     }
-
     @Transactional
     public void restore(TrashcanActionRequest request) {
         if (request == null) {
@@ -279,6 +445,7 @@ public class TrashcanService {
                 throw new RuntimeException("Trashed file has no trash object key: " + fileId);
             }
 
+            String trashObjectKey = file.getObjectKey();
             String originalObjectKey = file.getOriginalObjectKey();
 
             if (originalObjectKey == null || originalObjectKey.isBlank()) {
@@ -292,7 +459,30 @@ public class TrashcanService {
                 throw new RuntimeException("A file already exists at restore destination: " + restoredObjectKey);
             }
 
-            objectStorageService.restoreTrashObject(file.getObjectKey(), restoredObjectKey);
+            objectStorageService.restoreTrashObject(trashObjectKey, restoredObjectKey);
+
+            String detailsJson = """
+                {
+                  "name": "%s",
+                  "trashObjectKey": "%s",
+                  "restoredObjectKey": "%s",
+                  "originalObjectKey": "%s",
+                  "restoredParentId": %d
+                }
+                """.formatted(
+                    file.getFileName(),
+                    trashObjectKey,
+                    restoredObjectKey,
+                    originalObjectKey,
+                    restoreParent.getId()
+            );
+
+            logsService.restoreFromTrashLog(
+                    file.getFileName(),
+                    file.getId(),
+                    EntityType.FILE.name(),
+                    detailsJson
+            );
 
             file.setParent(restoreParent);
             file.setObjectKey(restoredObjectKey);
@@ -413,6 +603,27 @@ public class TrashcanService {
                 newParent = restoreParent;
             }
 
+            String folderDetailsJson = """
+                {
+                  "name": "%s",
+                  "oldPrefix": "%s",
+                  "newPrefix": "%s",
+                  "restoredParentId": %d
+                }
+                """.formatted(
+                    subtreeFolder.getName(),
+                    oldPrefix,
+                    newPrefix,
+                    newParent.getId()
+            );
+
+            logsService.restoreFromTrashLog(
+                    subtreeFolder.getName(),
+                    subtreeFolder.getId(),
+                    EntityType.FOLDER.name(),
+                    folderDetailsJson
+            );
+
             subtreeFolder.setParent(newParent);
             subtreeFolder.setPrefix(newPrefix);
             subtreeFolder.setDeleted(false);
@@ -434,6 +645,7 @@ public class TrashcanService {
         List<FileMetaData> filesToSave = new ArrayList<>();
 
         for (FileMetaData file : filesInSubtree) {
+            String trashObjectKey = file.getObjectKey();
             String originalObjectKey = file.getOriginalObjectKey();
 
             String relativeObjectKey = relativePath(oldRootPrefix, originalObjectKey);
@@ -449,7 +661,30 @@ public class TrashcanService {
                 restoredParent = restoreParent;
             }
 
-            objectStorageService.restoreTrashObject(file.getObjectKey(), restoredObjectKey);
+            objectStorageService.restoreTrashObject(trashObjectKey, restoredObjectKey);
+
+            String fileDetailsJson = """
+                {
+                  "name": "%s",
+                  "trashObjectKey": "%s",
+                  "restoredObjectKey": "%s",
+                  "originalObjectKey": "%s",
+                  "restoredParentId": %d
+                }
+                """.formatted(
+                    file.getFileName(),
+                    trashObjectKey,
+                    restoredObjectKey,
+                    originalObjectKey,
+                    restoredParent.getId()
+            );
+
+            logsService.restoreFromTrashLog(
+                    file.getFileName(),
+                    file.getId(),
+                    EntityType.FILE.name(),
+                    fileDetailsJson
+            );
 
             file.setParent(restoredParent);
             file.setObjectKey(restoredObjectKey);
@@ -619,11 +854,6 @@ public class TrashcanService {
 
         Instant now = Instant.now();
 
-        /*
-         * If a folder is old enough for cleanup, all trashed files inside that folder
-         * should be deleted through the folder cleanup path. This prevents duplicate
-         * object delete attempts.
-         */
         Set<Long> fileIdsHandledByFolders = new HashSet<>();
 
         List<Folders> topLevelOldFolders = getTopLevelFolders(oldFolders);
@@ -661,11 +891,63 @@ public class TrashcanService {
                 file.setPermanentlyDeleted(true);
                 file.setPermanentlyDeletedAt(now);
                 fileIdsHandledByFolders.add(file.getId());
+
+                String detailsJson = """
+                    {
+                      "reason": "older_than_max_age",
+                      "deletedAt": "%s",
+                      "permanentlyDeletedAt": "%s",
+                      "maxAgeSeconds": %d,
+                      "fileName": "%s",
+                      "trashObjectKey": "%s",
+                      "originalObjectKey": "%s"
+                    }
+                    """.formatted(
+                        file.getDeletedAt(),
+                        now,
+                        maxAge.toSeconds(),
+                        file.getFileName(),
+                        file.getObjectKey(),
+                        file.getOriginalObjectKey()
+                );
+
+                logsService.trashAutoDeleteLog(
+                        owner,
+                        file.getId(),
+                        EntityType.FILE.name(),
+                        detailsJson
+                );
             }
 
             for (Folders subtreeFolder : foldersInSubtree) {
                 subtreeFolder.setPermanentlyDeleted(true);
                 subtreeFolder.setPermanentlyDeletedAt(now);
+
+                String detailsJson = """
+                    {
+                      "reason": "older_than_max_age",
+                      "deletedAt": "%s",
+                      "permanentlyDeletedAt": "%s",
+                      "maxAgeSeconds": %d,
+                      "folderName": "%s",
+                      "originalPrefix": "%s",
+                      "trashPrefix": "%s"
+                    }
+                    """.formatted(
+                        subtreeFolder.getDeletedAt(),
+                        now,
+                        maxAge.toSeconds(),
+                        subtreeFolder.getName(),
+                        subtreeFolder.getPrefix(),
+                        "users/" + owner.getId() + "/folders/" + subtreeFolder.getId() + "/"
+                );
+
+                logsService.trashAutoDeleteLog(
+                        owner,
+                        subtreeFolder.getId(),
+                        EntityType.FOLDER.name(),
+                        detailsJson
+                );
             }
 
             if (!filesInFolder.isEmpty()) {
@@ -689,6 +971,34 @@ public class TrashcanService {
 
             file.setPermanentlyDeleted(true);
             file.setPermanentlyDeletedAt(now);
+
+            User owner = file.getParent() == null ? null : file.getParent().getOwner();
+
+            String detailsJson = """
+                {
+                  "reason": "older_than_max_age",
+                  "deletedAt": "%s",
+                  "permanentlyDeletedAt": "%s",
+                  "maxAgeSeconds": %d,
+                  "fileName": "%s",
+                  "trashObjectKey": "%s",
+                  "originalObjectKey": "%s"
+                }
+                """.formatted(
+                    file.getDeletedAt(),
+                    now,
+                    maxAge.toSeconds(),
+                    file.getFileName(),
+                    file.getObjectKey(),
+                    file.getOriginalObjectKey()
+            );
+
+            logsService.trashAutoDeleteLog(
+                    owner,
+                    file.getId(),
+                    EntityType.FILE.name(),
+                    detailsJson
+            );
         }
 
         if (!standaloneFilesToDelete.isEmpty()) {

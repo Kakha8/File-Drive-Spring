@@ -146,4 +146,72 @@ public class LogsService {
         actionLogsRepository.save(actionLogs);
         log.info("Logging folder download: folderId={}, details={}", folderId, detailsJson);
     }
+
+    public void moveToTrashLog(String name, Long entityId, String entityType, String detailsJson) {
+        ActionLogs actionLogs = logAction(
+                ActionType.MOVE_TO_TRASH.name(),
+                entityId,
+                entityType,
+                detailsJson
+        );
+
+        actionLogsRepository.save(actionLogs);
+        log.info("Logging move to trash: name={}, entityId={}, entityType={}", name, entityId, entityType);
+    }
+
+    public void restoreFromTrashLog(String name, Long entityId, String entityType, String detailsJson) {
+        ActionLogs actionLogs = logAction(
+                ActionType.RESTORE_FROM_TRASH.name(),
+                entityId,
+                entityType,
+                detailsJson
+        );
+
+        actionLogsRepository.save(actionLogs);
+        log.info("Logging restore from trash: name={}, entityId={}, entityType={}", name, entityId, entityType);
+    }
+
+    public void permanentDeleteLog(String name, Long entityId, String entityType, String detailsJson) {
+        ActionLogs actionLogs = logAction(
+                ActionType.PERMANENT_DELETE.name(),
+                entityId,
+                entityType,
+                detailsJson
+        );
+
+        actionLogsRepository.save(actionLogs);
+        log.info("Logging permanent delete: name={}, entityId={}, entityType={}", name, entityId, entityType);
+    }
+
+    public void clearTrashLog(String detailsJson) {
+        ActionLogs actionLogs = logAction(
+                ActionType.CLEAR_TRASH.name(),
+                null,
+                EntityType.BULK.name(),
+                detailsJson
+        );
+
+        actionLogsRepository.save(actionLogs);
+        log.info("Logging clear trash: {}", detailsJson);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void trashAutoDeleteLog(User owner, Long entityId, String entityType, String detailsJson) {
+        ActionLogs actionLogs = new ActionLogs();
+
+        actionLogs.setAction(ActionType.TRASH_AUTO_DELETE);
+        actionLogs.setEntityId(entityId);
+        actionLogs.setEntityType(EntityType.valueOf(entityType));
+        actionLogs.setUser(owner);
+        actionLogs.setDetails(detailsJson);
+
+        actionLogsRepository.save(actionLogs);
+
+        log.info(
+                "Logging automatic trash deletion: entityId={}, entityType={}, details={}",
+                entityId,
+                entityType,
+                detailsJson
+        );
+    }
 }

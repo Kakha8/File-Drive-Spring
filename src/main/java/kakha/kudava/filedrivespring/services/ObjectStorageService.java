@@ -9,6 +9,7 @@ import io.minio.messages.Item;
 import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.UserDTO;
+import kakha.kudava.filedrivespring.enums.EntityType;
 import kakha.kudava.filedrivespring.exceptions.MalwareDetectedException;
 import kakha.kudava.filedrivespring.exceptions.UploadCanceledException;
 import kakha.kudava.filedrivespring.model.FileMetaData;
@@ -306,8 +307,10 @@ public class ObjectStorageService {
         }
 
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        User user = userRepository.findByUsername(authentication.getName()).
-                orElseThrow(() -> new RuntimeException("User not found"));
+
+        User user = userRepository.findByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
         String originalObjectKey = metaData.getObjectKey();
 
         String trashObjectKey = "users/" + user.getId() + "/files/" + metaData.getId() + "/"
@@ -334,20 +337,41 @@ public class ObjectStorageService {
                             .build()
             );
 
+            Instant deletedAt = Instant.now();
+
             metaData.setDeleted(true);
-            metaData.setDeletedAt(Instant.now());
+            metaData.setDeletedAt(deletedAt);
             metaData.setOriginalObjectKey(originalObjectKey);
             metaData.setObjectKey(trashObjectKey);
 
             fileMetaDataRepository.save(metaData);
+
+            String detailsJson = """
+                {
+                  "name": "%s",
+                  "originalObjectKey": "%s",
+                  "trashObjectKey": "%s",
+                  "deletedAt": "%s"
+                }
+                """.formatted(
+                    metaData.getFileName(),
+                    originalObjectKey,
+                    trashObjectKey,
+                    deletedAt
+            );
+
+            logsService.moveToTrashLog(
+                    metaData.getFileName(),
+                    metaData.getId(),
+                    EntityType.FILE.name(),
+                    detailsJson
+            );
 
             log.info(
                     "Object moved to trash successfully. originalKey={}, trashKey={}",
                     originalObjectKey,
                     trashObjectKey
             );
-
-            logsService.deleteLog(originalObjectKey, id, "FILE");
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to move object to trash: " + originalObjectKey, e);
@@ -381,6 +405,8 @@ public class ObjectStorageService {
         Long folderId = folderToDelete.getId();
 
         String trashBasePrefix = "users/" + user.getId() + "/folders/" + folderId + "/";
+
+        Instant deletedAt = Instant.now();
 
         try {
             Iterable<Result<Item>> results = minioClient.listObjects(
@@ -421,12 +447,33 @@ public class ObjectStorageService {
                 fileMetaDataRepository.findByObjectKey(originalObjectKey)
                         .ifPresent(file -> {
                             file.setDeleted(true);
-                            file.setDeletedAt(Instant.now());
+                            file.setDeletedAt(deletedAt);
                             file.setOriginalObjectKey(originalObjectKey);
                             file.setObjectKey(trashObjectKey);
                             fileMetaDataRepository.save(file);
 
-                            logsService.deleteLog(originalObjectKey, file.getId(), "FILE");
+                            String detailsJson = """
+                                {
+                                  "name": "%s",
+                                  "originalObjectKey": "%s",
+                                  "trashObjectKey": "%s",
+                                  "deletedAt": "%s",
+                                  "folderId": %d
+                                }
+                                """.formatted(
+                                    file.getFileName(),
+                                    originalObjectKey,
+                                    trashObjectKey,
+                                    deletedAt,
+                                    folderId
+                            );
+
+                            logsService.moveToTrashLog(
+                                    file.getFileName(),
+                                    file.getId(),
+                                    EntityType.FILE.name(),
+                                    detailsJson
+                            );
                         });
 
                 log.info(
@@ -441,14 +488,31 @@ public class ObjectStorageService {
 
             for (Folders folder : foldersInSubtree) {
                 folder.setDeleted(true);
-                folder.setDeletedAt(Instant.now());
+                folder.setDeletedAt(deletedAt);
+
+                String folderDetailsJson = """
+                    {
+                      "name": "%s",
+                      "prefix": "%s",
+                      "trashPrefix": "%s",
+                      "deletedAt": "%s"
+                    }
+                    """.formatted(
+                        folder.getName(),
+                        folder.getPrefix(),
+                        "users/" + user.getId() + "/folders/" + folder.getId() + "/",
+                        deletedAt
+                );
+
+                logsService.moveToTrashLog(
+                        folder.getName(),
+                        folder.getId(),
+                        EntityType.FOLDER.name(),
+                        folderDetailsJson
+                );
             }
 
             folderRepository.saveAll(foldersInSubtree);
-
-            for (Folders folder : foldersInSubtree) {
-                logsService.deleteLog(folder.getPrefix(), folder.getId(), "FOLDER");
-            }
 
             log.info(
                     "Folder subtree moved to trash successfully. folderId={}, originalPrefix={}, trashPrefix={}",
