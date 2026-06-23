@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { logout as apiLogout } from "../api/auth";
+import ConfirmTrashModal from "../components/ConfirmTrashModal";
 import {
     createFolder,
     getFileBlob,
@@ -11,6 +13,7 @@ import {
     renameFolder,
     uploadFile,
     cancelUpload,
+    moveToTrash,
 } from "../api/drive";
 
 function Icon({ children, className = "" }) {
@@ -290,6 +293,8 @@ function normalizeFolderItems(folderData) {
 }
 
 function Main({ onLogout }) {
+    const navigate = useNavigate();
+
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [nav, setNav] = useState("my");
     const [query, setQuery] = useState("");
@@ -323,6 +328,9 @@ function Main({ onLogout }) {
 
     const [renamingItem, setRenamingItem] = useState(null);
     const renameInputRef = useRef(null);
+
+    const [trashRequest, setTrashRequest] = useState(null);
+    const [trashMoving, setTrashMoving] = useState(false);
 
     const currentFolderId =
         path.length > 0 ? path[path.length - 1].id : currentFolder?.id;
@@ -886,9 +894,70 @@ function Main({ onLogout }) {
     }
 
     function handleDelete(item) {
-        setError(`Delete coming soon for ${item.name}`);
+        const selectedItems = allItems.filter((currentItem) =>
+            selectedIds.includes(currentItem.id)
+        );
+
+        const shouldTrashSelection =
+            selectedItems.length > 1 && selectedIds.includes(item.id);
+
+        const itemsToTrash = shouldTrashSelection ? selectedItems : [item];
+
+        setError("");
+        setOpenMenuId(null);
+        setTrashRequest({
+            items: itemsToTrash,
+            label:
+                itemsToTrash.length === 1
+                    ? itemsToTrash[0].name
+                    : `${itemsToTrash.length} selected items`,
+        });
     }
 
+    function cancelMoveToTrash() {
+        if (trashMoving) {
+            return;
+        }
+
+        setTrashRequest(null);
+    }
+
+    async function confirmMoveToTrash() {
+        if (!trashRequest?.items?.length) {
+            setTrashRequest(null);
+            return;
+        }
+
+        const itemsToTrash = trashRequest.items;
+
+        const fileIds = itemsToTrash
+            .filter((item) => item.type !== "folder")
+            .map((item) => item.rawId)
+            .filter(Boolean);
+
+        const folderIds = itemsToTrash
+            .filter((item) => item.type === "folder")
+            .map((item) => item.rawId)
+            .filter(Boolean);
+
+        try {
+            setError("");
+            setTrashMoving(true);
+
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+
+            await moveToTrash(fileIds, folderIds);
+
+            setSelectedIds([]);
+            setTrashRequest(null);
+
+            await reloadCurrentFolder();
+        } catch (err) {
+            setError(err.message || "Failed to move item(s) to trash");
+        } finally {
+            setTrashMoving(false);
+        }
+    }
     function handleProperties(item) {
         setViewer({
             item,
@@ -1075,8 +1144,14 @@ function Main({ onLogout }) {
                                 <button
                                     key={item.key}
                                     onClick={() => {
-                                        setNav(item.key);
                                         setConfirmLogout(false);
+
+                                        if (item.key === "trash") {
+                                            navigate("/trashcan");
+                                            return;
+                                        }
+
+                                        setNav(item.key);
                                     }}
                                     title={!sidebarOpen ? item.label : undefined}
                                     className={`nav-item ${nav === item.key ? "active" : ""}`}
@@ -1342,6 +1417,15 @@ function Main({ onLogout }) {
                 </div>
             </section>
 
+            <ConfirmTrashModal
+                open={Boolean(trashRequest)}
+                fileName={trashRequest?.label || ""}
+                count={trashRequest?.items?.length || 0}
+                loading={trashMoving}
+                onConfirm={confirmMoveToTrash}
+                onCancel={cancelMoveToTrash}
+            />
+
             <UploadPanel
                 uploads={uploads}
                 minimized={uploadPanelMinimized}
@@ -1539,7 +1623,7 @@ function FileRow({
                                     className="danger-menu-action"
                                 >
                                     <Icons.Trash className="menu-action-icon" />
-                                    Delete
+                                    Move to trash
                                 </button>
 
                                 <button

@@ -9,6 +9,7 @@ import io.minio.messages.Item;
 import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.dto.UserDTO;
+import kakha.kudava.filedrivespring.enums.EntityType;
 import kakha.kudava.filedrivespring.exceptions.MalwareDetectedException;
 import kakha.kudava.filedrivespring.exceptions.UploadCanceledException;
 import kakha.kudava.filedrivespring.model.FileMetaData;
@@ -25,9 +26,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -36,6 +39,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -59,13 +63,16 @@ public class ObjectStorageService {
     private final QuarantineService quarantineService;
     private final RootFolderService rootFolderService;
     private final UploadCancellationService uploadCancellationService;
+    private final String trashBucket;
 
 
     public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
                                 FolderRepository folderRepository,
                                 LogsService logsService, ObjectMapper objectMapper, ClamAvScannerService clamAvScannerService,
                                 QuarantinedFilesRepository quarantinedFilesRepository, @Value("${s3.quarantine-bucket}") String quarantineBucket,
-                                UserRepository userRepository, QuarantineService quarantineService, RootFolderService rootFolderService, UploadCancellationService uploadCancellationService) {
+                                UserRepository userRepository, QuarantineService quarantineService,
+                                RootFolderService rootFolderService, UploadCancellationService uploadCancellationService,
+                                @Value("${s3.trash-bucket}") String trashBucket) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
@@ -79,6 +86,7 @@ public class ObjectStorageService {
         this.quarantineService = quarantineService;
         this.rootFolderService = rootFolderService;
         this.uploadCancellationService = uploadCancellationService;
+        this.trashBucket = trashBucket;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId, String uploadId) throws Exception {
@@ -289,25 +297,84 @@ public class ObjectStorageService {
         );
     }
 
-    public void delete(Long id){
+    public void delete(Long id) {
 
         FileMetaData metaData = fileMetaDataRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Object not found"));
-        String objectKey = metaData.getObjectKey();
 
-        metaData.setDeleted(true);
-        fileMetaDataRepository.save(metaData);
+        if (metaData.isDeleted()) {
+            throw new RuntimeException("Object is already in trash");
+        }
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        User user = userRepository.findByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        String originalObjectKey = metaData.getObjectKey();
+
+        String trashObjectKey = "users/" + user.getId() + "/files/" + metaData.getId() + "/"
+                + UUID.randomUUID() + "-" + metaData.getFileName();
+
         try {
+            minioClient.copyObject(
+                    CopyObjectArgs.builder()
+                            .bucket(trashBucket)
+                            .object(trashObjectKey)
+                            .source(
+                                    CopySource.builder()
+                                            .bucket(bucket)
+                                            .object(originalObjectKey)
+                                            .build()
+                            )
+                            .build()
+            );
+
             minioClient.removeObject(
                     RemoveObjectArgs.builder()
                             .bucket(bucket)
-                            .object(objectKey)
+                            .object(originalObjectKey)
                             .build()
             );
-            log.info("Object deleted successfully {}", objectKey);
-            logsService.deleteLog(objectKey, id, "FILE");
+
+            Instant deletedAt = Instant.now();
+
+            metaData.setDeleted(true);
+            metaData.setDeletedAt(deletedAt);
+            metaData.setOriginalObjectKey(originalObjectKey);
+            metaData.setObjectKey(trashObjectKey);
+
+            fileMetaDataRepository.save(metaData);
+
+            String detailsJson = """
+                {
+                  "name": "%s",
+                  "originalObjectKey": "%s",
+                  "trashObjectKey": "%s",
+                  "deletedAt": "%s"
+                }
+                """.formatted(
+                    metaData.getFileName(),
+                    originalObjectKey,
+                    trashObjectKey,
+                    deletedAt
+            );
+
+            logsService.moveToTrashLog(
+                    metaData.getFileName(),
+                    metaData.getId(),
+                    EntityType.FILE.name(),
+                    detailsJson
+            );
+
+            log.info(
+                    "Object moved to trash successfully. originalKey={}, trashKey={}",
+                    originalObjectKey,
+                    trashObjectKey
+            );
+
         } catch (Exception e) {
-            throw new RuntimeException("Failed to delete object: " + objectKey, e);
+            throw new RuntimeException("Failed to move object to trash: " + originalObjectKey, e);
         }
     }
 
@@ -318,9 +385,28 @@ public class ObjectStorageService {
         }
 
         String p = prefix.trim().replace("\\", "/");
+
         if (p.isEmpty()) {
             throw new IllegalArgumentException("prefix is empty");
         }
+
+        if (!p.endsWith("/")) {
+            p += "/";
+        }
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        User user = userRepository.findByUsername(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Folders folderToDelete = folderRepository.findByPrefixAndOwnerAndDeletedFalse(p, user)
+                .orElseThrow(() -> new RuntimeException("Folder not found or not owned by user"));
+
+        Long folderId = folderToDelete.getId();
+
+        String trashBasePrefix = "users/" + user.getId() + "/folders/" + folderId + "/";
+
+        Instant deletedAt = Instant.now();
 
         try {
             Iterable<Result<Item>> results = minioClient.listObjects(
@@ -331,78 +417,132 @@ public class ObjectStorageService {
                             .build()
             );
 
-            final int BATCH_SIZE = 1000;
+            for (Result<Item> result : results) {
+                Item item = result.get();
+                String originalObjectKey = item.objectName();
 
-            List<DeleteObject> batch = new ArrayList<>(BATCH_SIZE);
+                String relativeKey = originalObjectKey.substring(p.length());
+                String trashObjectKey = trashBasePrefix + relativeKey;
 
-            List<String> fileObjectNames = new ArrayList<>(BATCH_SIZE);
-            List<Long> fileIds = new ArrayList<>(BATCH_SIZE);
+                minioClient.copyObject(
+                        CopyObjectArgs.builder()
+                                .bucket(trashBucket)
+                                .object(trashObjectKey)
+                                .source(
+                                        CopySource.builder()
+                                                .bucket(bucket)
+                                                .object(originalObjectKey)
+                                                .build()
+                                )
+                                .build()
+                );
 
-            List<String> folderObjectNames = new ArrayList<>(BATCH_SIZE);
-            List<Long> folderIds = new ArrayList<>(BATCH_SIZE);
+                minioClient.removeObject(
+                        RemoveObjectArgs.builder()
+                                .bucket(bucket)
+                                .object(originalObjectKey)
+                                .build()
+                );
 
-            for (Result<Item> r : results) {
-                Item item = r.get();
-                String objectName = item.objectName();
+                fileMetaDataRepository.findByObjectKey(originalObjectKey)
+                        .ifPresent(file -> {
+                            file.setDeleted(true);
+                            file.setDeletedAt(deletedAt);
+                            file.setOriginalObjectKey(originalObjectKey);
+                            file.setObjectKey(trashObjectKey);
+                            fileMetaDataRepository.save(file);
 
-                log.debug("Deleting object from bucket: {}", objectName);
+                            String detailsJson = """
+                                {
+                                  "name": "%s",
+                                  "originalObjectKey": "%s",
+                                  "trashObjectKey": "%s",
+                                  "deletedAt": "%s",
+                                  "folderId": %d
+                                }
+                                """.formatted(
+                                    file.getFileName(),
+                                    originalObjectKey,
+                                    trashObjectKey,
+                                    deletedAt,
+                                    folderId
+                            );
 
-                batch.add(new DeleteObject(objectName));
+                            logsService.moveToTrashLog(
+                                    file.getFileName(),
+                                    file.getId(),
+                                    EntityType.FILE.name(),
+                                    detailsJson
+                            );
+                        });
 
-                Optional<FileMetaData> file = fileMetaDataRepository.findByObjectKey(objectName);
-                Long fileId = file.map(FileMetaData::getId).orElse(null);
-                Optional<Folders> folder = folderRepository.findByPrefix(objectName);
-                Long folderId = folder.map(Folders::getId).orElse(null);
-
-                if (fileId != null) {
-                    fileObjectNames.add(objectName);
-                    fileIds.add(fileId);
-                } else if (folderId != null) {
-                    folderObjectNames.add(objectName);
-                    folderIds.add(folderId);
-                } else {
-                    log.warn("No DB metadata found for object '{}', skipping action log", objectName);
-                }
-
-                if (batch.size() >= BATCH_SIZE) {
-                    deleteBatch(batch);
-
-                    for (int i = 0; i < fileObjectNames.size(); i++) {
-                        logsService.deleteLog(fileObjectNames.get(i), fileIds.get(i), "FILE");
-                    }
-
-                    for (int i = 0; i < folderObjectNames.size(); i++) {
-                        logsService.deleteLog(folderObjectNames.get(i), folderIds.get(i), "FOLDER");
-                    }
-
-                    batch.clear();
-                    fileObjectNames.clear();
-                    fileIds.clear();
-                    folderObjectNames.clear();
-                    folderIds.clear();
-                }
+                log.info(
+                        "Moved folder object to trash. originalKey={}, trashKey={}",
+                        originalObjectKey,
+                        trashObjectKey
+                );
             }
 
-            if (!batch.isEmpty()) {
-                deleteBatch(batch);
+            List<Folders> foldersInSubtree =
+                    folderRepository.findByOwnerAndPrefixStartingWith(user, p);
 
-                for (int i = 0; i < fileObjectNames.size(); i++) {
-                    logsService.deleteLog(fileObjectNames.get(i), fileIds.get(i), "FILE");
-                }
+            for (Folders folder : foldersInSubtree) {
+                folder.setDeleted(true);
+                folder.setDeletedAt(deletedAt);
 
-                for (int i = 0; i < folderObjectNames.size(); i++) {
-                    logsService.deleteLog(folderObjectNames.get(i), folderIds.get(i), "FOLDER");
-                }
+                String folderDetailsJson = """
+                    {
+                      "name": "%s",
+                      "prefix": "%s",
+                      "trashPrefix": "%s",
+                      "deletedAt": "%s"
+                    }
+                    """.formatted(
+                        folder.getName(),
+                        folder.getPrefix(),
+                        "users/" + user.getId() + "/folders/" + folder.getId() + "/",
+                        deletedAt
+                );
 
-                batch.clear();
-                fileObjectNames.clear();
-                fileIds.clear();
-                folderObjectNames.clear();
-                folderIds.clear();
+                logsService.moveToTrashLog(
+                        folder.getName(),
+                        folder.getId(),
+                        EntityType.FOLDER.name(),
+                        folderDetailsJson
+                );
             }
+
+            folderRepository.saveAll(foldersInSubtree);
+
+            log.info(
+                    "Folder subtree moved to trash successfully. folderId={}, originalPrefix={}, trashPrefix={}",
+                    folderId,
+                    p,
+                    trashBasePrefix
+            );
 
         } catch (Exception e) {
-            throw new RuntimeException("Failed to delete objects by prefix: " + p, e);
+            throw new RuntimeException("Failed to move folder to trash: " + p, e);
+        }
+    }
+
+    @Transactional
+    public void deleteMultipleFiles(List<Long> fileIds) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            throw new IllegalArgumentException("No file IDs provided");
+        }
+
+        List<Long> uniqueIds = fileIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (uniqueIds.isEmpty()) {
+            throw new IllegalArgumentException("No valid file IDs provided");
+        }
+
+        for (Long fileId : uniqueIds) {
+            delete(fileId);
         }
     }
 
@@ -447,5 +587,76 @@ public class ObjectStorageService {
         }
     }
 
+    public void deleteTrashObject(String objectKey) {
+        try {
+            minioClient.removeObject(
+                    RemoveObjectArgs.builder()
+                            .bucket(trashBucket)
+                            .object(objectKey)
+                            .build()
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to permanently delete trash object: " + objectKey, e);
+        }
+    }
+
+    public void deleteTrashPrefix(String prefix) {
+        try {
+            Iterable<Result<Item>> results = minioClient.listObjects(
+                    ListObjectsArgs.builder()
+                            .bucket(trashBucket)
+                            .prefix(prefix)
+                            .recursive(true)
+                            .build()
+            );
+
+            for (Result<Item> result : results) {
+                Item item = result.get();
+
+                minioClient.removeObject(
+                        RemoveObjectArgs.builder()
+                                .bucket(trashBucket)
+                                .object(item.objectName())
+                                .build()
+                );
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to permanently delete trash prefix: " + prefix, e);
+        }
+    }
+
+    public void restoreTrashObject(String trashObjectKey, String restoredObjectKey) {
+        try {
+            if (trashObjectKey == null || trashObjectKey.isBlank()) {
+                throw new IllegalArgumentException("Trash object key is required");
+            }
+
+            if (restoredObjectKey == null || restoredObjectKey.isBlank()) {
+                throw new IllegalArgumentException("Restored object key is required");
+            }
+
+            minioClient.copyObject(
+                    CopyObjectArgs.builder()
+                            .bucket(bucket)
+                            .object(restoredObjectKey)
+                            .source(
+                                    CopySource.builder()
+                                            .bucket(trashBucket)
+                                            .object(trashObjectKey)
+                                            .build()
+                            )
+                            .build()
+            );
+
+            minioClient.removeObject(
+                    RemoveObjectArgs.builder()
+                            .bucket(trashBucket)
+                            .object(trashObjectKey)
+                            .build()
+            );
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to restore trash object: " + trashObjectKey, e);
+        }
+    }
 
 }

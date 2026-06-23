@@ -1,5 +1,6 @@
 package kakha.kudava.filedrivespring.repository;
 
+import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.User;
 import org.jetbrains.annotations.NotNull;
@@ -9,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,4 +45,40 @@ public interface FolderRepository extends JpaRepository<Folders, Long> {
     Optional<Folders> findByPrefixAndDeletedFalse(String rootPrefix);
 
     List<Folders> findByParentId(Long id);
+
+    List<Folders> findByOwnerAndPrefixStartingWith(User user, String p);
+
+    Optional<Folders> findByPrefixAndOwnerAndDeletedFalse(String prefix, User owner);
+
+    List<Folders> findByOwnerAndDeletedTrue(User owner);
+
+    Optional<Folders> findByIdAndDeletedTrueAndOwner(Long id, User owner);
+
+    List<Folders> findByOwnerAndDeletedTrueAndPrefixStartingWith(User owner, String prefix);
+
+
+    Optional<Folders> findByPrefixAndOwnerAndDeletedFalseAndPermanentlyDeletedFalse(
+            String prefix,
+            User owner
+    );
+
+    Optional<Folders> findByOwnerAndParentIsNullAndDeletedFalseAndPermanentlyDeletedFalse(
+            User owner
+    );
+
+    List<Folders> findByOwnerAndDeletedTrueAndPermanentlyDeletedFalse(User owner);
+
+    Optional<Folders> findByIdAndDeletedTrueAndPermanentlyDeletedFalseAndOwner(
+            Long id,
+            User owner
+    );
+
+    List<Folders> findByOwnerAndDeletedTrueAndPermanentlyDeletedFalseAndPrefixStartingWith(
+            User owner,
+            String prefix
+    );
+
+    List<Folders> findByDeletedTrueAndPermanentlyDeletedFalseAndDeletedAtBefore(
+            Instant cutoff
+    );
 }

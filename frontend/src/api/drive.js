@@ -301,3 +301,101 @@ export async function renameFolder(folderId, newName) {
         throw new Error(message || "Failed to rename folder");
     }
 }
+
+export async function deleteFile(fileId) {
+    const response = await apiFetch(`/api/files/${fileId}`, {
+        method: "DELETE",
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to delete file");
+    }
+}
+
+export async function deleteFolder(folderId) {
+    const response = await apiFetch(`/api/folders/${folderId}`, {
+        method: "DELETE",
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to delete folder");
+    }
+}
+
+export async function moveToTrash(fileIds = [], folderIds = []) {
+    const response = await apiFetch("/api/trashcan/move", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            fileIds,
+            folderIds,
+        }),
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to move selected items to trash");
+    }
+}
+
+export async function getTrashcan() {
+    const response = await apiFetch("/api/trashcan");
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to load trashcan");
+    }
+
+    return response.json();
+}
+
+export async function deletePermanently(fileIds = [], folderIds = []) {
+    const response = await apiFetch("/api/trashcan/permanent", {
+        method: "DELETE",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            fileIds,
+            folderIds,
+        }),
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to permanently delete selected items");
+    }
+}
+
+export async function clearTrash() {
+    const response = await apiFetch("/api/trashcan/clear", {
+        method: "DELETE",
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to clear trash");
+    }
+}
+
+export async function restoreFromTrash(fileIds = [], folderIds = []) {
+    const response = await apiFetch("/api/trashcan/restore", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            fileIds,
+            folderIds,
+        }),
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to restore selected items");
+    }
+}

@@ -31,6 +31,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -152,24 +153,26 @@ public class FolderService {
         log.info("Soft-deleted {} files and {} folders for prefix={}", filesDeleted, foldersDeleted, p);
     }
 
-    public List<FolderItemDTO> viewFolders(Long id){
-        List<Folders> folders = folderRepository.findFoldersByParent_Id(id);
+    public List<FolderItemDTO> viewFolders(Long id) {
+        User user = currentUser();
 
-        List<FolderItemDTO> folderDtos = folders.stream().map(f -> {
+        List<Folders> folders =
+                folderRepository.findFoldersByParent_IdAndOwnerAndDeletedFalse(id, user);
+
+        return folders.stream().map(f -> {
             FolderItemDTO dto = new FolderItemDTO();
             dto.setId(f.getId());
             dto.setName(f.getName());
             dto.setPrefix(f.getPrefix());
             return dto;
         }).toList();
-
-        return folderDtos;
     }
 
-    public List<FileItemDTO> viewFiles(Long id){
-        List<FileMetaData> files = fileMetaDataRepository.findByParent_Id(id);
+    public List<FileItemDTO> viewFiles(Long id) {
+        List<FileMetaData> files =
+                fileMetaDataRepository.findByParent_IdAndDeletedFalse(id);
 
-        List<FileItemDTO> resultFiles = files.stream().map(file -> {
+        return files.stream().map(file -> {
             FileItemDTO dto = new FileItemDTO();
             dto.setId(file.getId());
             dto.setFileName(file.getFileName());
@@ -180,8 +183,6 @@ public class FolderService {
             dto.setParentId(file.getParent() != null ? file.getParent().getId() : null);
             return dto;
         }).toList();
-
-        return resultFiles;
     }
     private FolderDTO toDto(Folders f) {
         FolderDTO dto = new FolderDTO();
@@ -210,8 +211,10 @@ public class FolderService {
     }
 
     public FolderViewDTO viewFolder(Long id) {
-        Folders folder = folderRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Folder not found: " + id));
+        User user = currentUser();
+
+        Folders folder = folderRepository.findByIdAndOwnerAndDeletedFalse(id, user)
+                .orElseThrow(() -> new RuntimeException("Folder not found or not owned by user"));
 
         FolderViewDTO dto = new FolderViewDTO();
         dto.setId(folder.getId());
@@ -319,5 +322,27 @@ public class FolderService {
                 .replace(">", "_")
                 .replace("|", "_")
                 .trim();
+    }
+
+    @Transactional
+    public void deleteMultiple(List<Long> folderIds) throws InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InstantiationException, IllegalAccessException {
+
+            if (folderIds == null || folderIds.isEmpty()) {
+                throw new IllegalArgumentException("No file IDs provided");
+            }
+
+            List<Long> uniqueIds = folderIds.stream()
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+
+            if (uniqueIds.isEmpty()) {
+                throw new IllegalArgumentException("No valid file IDs provided");
+            }
+
+            for (Long folderId : uniqueIds) {
+                delete(folderId);
+            }
+
     }
 }
