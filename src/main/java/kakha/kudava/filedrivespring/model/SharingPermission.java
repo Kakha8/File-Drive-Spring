@@ -1,9 +1,14 @@
 package kakha.kudava.filedrivespring.model;
 
 import jakarta.persistence.*;
+import kakha.kudava.filedrivespring.enums.SharingRole;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 
+@Getter
+@Setter
 @Entity
 @Table(name = "sharing_permissions")
 public class SharingPermission {
@@ -35,4 +40,5 @@ public class SharingPermission {
     private Instant createdAt;
 
     private Instant revokedAt;
+    private Instant updatedAt;
 }
