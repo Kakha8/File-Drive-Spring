@@ -52,14 +52,11 @@ public class SharingService {
     }
 
     @Transactional
-    public SharedItemDTO shareFile(Long fileId, String targetUsername, SharingRole role) {
+    public List<SharedItemDTO> shareFiles(List<Long> fileIds, String targetUsername, SharingRole role) {
         User owner = currentUser();
 
-        FileMetaData file = fileMetaDataRepository.findById(fileId)
-                .orElseThrow(() -> new RuntimeException("File not found"));
-
-        if (!ownsFile(file, owner)) {
-            throw new RuntimeException("You can only share files you own");
+        if (fileIds == null || fileIds.isEmpty()) {
+            throw new RuntimeException("No files selected");
         }
 
         User sharedWith = userRepository.findByUsername(targetUsername)
@@ -67,24 +64,29 @@ public class SharingService {
 
         validateNotSharingWithSelf(owner, sharedWith);
 
-        SharingPermission permission = upsertFileShare(file, owner, sharedWith, role);
+        List<SharedItemDTO> sharedItems = new ArrayList<>();
 
-        return toDto(permission);
+        for (Long fileId : fileIds) {
+            FileMetaData file = fileMetaDataRepository.findById(fileId)
+                    .orElseThrow(() -> new RuntimeException("File not found: " + fileId));
+
+            if (!ownsFile(file, owner)) {
+                throw new RuntimeException("You can only share files you own. Invalid file id: " + fileId);
+            }
+
+            SharingPermission permission = upsertFileShare(file, owner, sharedWith, role);
+            sharedItems.add(toDto(permission));
+        }
+
+        return sharedItems;
     }
 
     @Transactional
-    public SharedItemDTO shareFolder(Long folderId, String targetUsername, SharingRole role) {
+    public List<SharedItemDTO> shareFolders(List<Long> folderIds, String targetUsername, SharingRole role) {
         User owner = currentUser();
 
-        Folders folder = folderRepository.findById(folderId)
-                .orElseThrow(() -> new RuntimeException("Folder not found"));
-
-        if (!ownsFolder(folder, owner)) {
-            throw new RuntimeException("You can only share folders you own");
-        }
-
-        if (folder.getParent() == null) {
-            throw new RuntimeException("Sharing the root folder is not allowed");
+        if (folderIds == null || folderIds.isEmpty()) {
+            throw new RuntimeException("No folders selected");
         }
 
         User sharedWith = userRepository.findByUsername(targetUsername)
@@ -92,9 +94,25 @@ public class SharingService {
 
         validateNotSharingWithSelf(owner, sharedWith);
 
-        SharingPermission permission = upsertFolderShare(folder, owner, sharedWith, role);
+        List<SharedItemDTO> sharedItems = new ArrayList<>();
 
-        return toDto(permission);
+        for (Long folderId : folderIds) {
+            Folders folder = folderRepository.findById(folderId)
+                    .orElseThrow(() -> new RuntimeException("Folder not found: " + folderId));
+
+            if (!ownsFolder(folder, owner)) {
+                throw new RuntimeException("You can only share folders you own. Invalid folder id: " + folderId);
+            }
+
+            if (folder.getParent() == null) {
+                throw new RuntimeException("Sharing the root folder is not allowed. Invalid folder id: " + folderId);
+            }
+
+            SharingPermission permission = upsertFolderShare(folder, owner, sharedWith, role);
+            sharedItems.add(toDto(permission));
+        }
+
+        return sharedItems;
     }
 
     @Transactional
