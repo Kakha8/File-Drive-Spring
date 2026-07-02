@@ -7,6 +7,7 @@ import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.enums.EntityType;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
+import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,34 +25,39 @@ public class MoveService {
     private final FolderRepository folderRepository;
     private final LogsService logsService;
     private final ObjectMapper objectMapper;
+    private final ResourceAccessService access;
+    private final SharingService sharingService;
 
     public MoveService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
-                       FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper) {
+                       FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper, ResourceAccessService access, SharingService sharingService) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
         this.logsService = logsService;
         this.objectMapper = objectMapper;
+        this.access = access;
+        this.sharingService = sharingService;
     }
 
     @Transactional
     public FileMetaData copyFile(Long fileId, Long targetFolderId) {
-        FileMetaData fileMeta = fileMetaDataRepository.findById(fileId)
-                .orElseThrow(() -> new RuntimeException("File not found"));
-
-        Folders targetFolder = folderRepository.findById(targetFolderId)
-                .orElseThrow(() -> new RuntimeException("Target folder not found"));
+        FileMetaData fileMeta = access.requireFileView(fileId);
+        Folders targetFolder = access.requireFolderEdit(targetFolderId);
+        User currentUser = access.currentUser();
 
         String oldKey = fileMeta.getObjectKey();
 
         String prefix = targetFolder.getPrefix();
-        if (!prefix.endsWith("/")) prefix += "/";
+        if (!prefix.endsWith("/")) {
+            prefix += "/";
+        }
 
         String newKey = prefix + UUID.randomUUID() + "-" + fileMeta.getFileName();
 
+        boolean objectCopied = false;
+
         try {
-            // copy
             minioClient.copyObject(
                     CopyObjectArgs.builder()
                             .bucket(bucket)
@@ -65,18 +71,24 @@ public class MoveService {
                             .build()
             );
 
+            objectCopied = true;
+
             FileMetaData newFile = new FileMetaData();
             newFile.setObjectKey(newKey);
             newFile.setFileName(fileMeta.getFileName());
             newFile.setSize(fileMeta.getSize());
             newFile.setDeleted(false);
+            newFile.setPermanentlyDeleted(false);
             newFile.setChecksum(fileMeta.getChecksum());
             newFile.setParent(targetFolder);
+            newFile.setOwner(currentUser);
             newFile.setObjectType(fileMeta.getObjectType());
 
+            FileMetaData savedFile = fileMetaDataRepository.save(newFile);
 
             Map<String, Object> detailsMap = new LinkedHashMap<>();
-
+            detailsMap.put("sourceFileId", fileMeta.getId());
+            detailsMap.put("newFileId", savedFile.getId());
             detailsMap.put("targetFolder", targetFolder.getPrefix());
             detailsMap.put("targetFolderId", targetFolder.getId());
 
@@ -89,21 +101,30 @@ public class MoveService {
                     detailsJson
             );
 
-            return fileMetaDataRepository.save(newFile);
+            return savedFile;
 
         } catch (Exception e) {
-            throw new RuntimeException("Move failed", e);
+            if (objectCopied) {
+                try {
+                    minioClient.removeObject(
+                            RemoveObjectArgs.builder()
+                                    .bucket(bucket)
+                                    .object(newKey)
+                                    .build()
+                    );
+                } catch (Exception ignored) {
+                }
+            }
+
+            throw new RuntimeException("Copy failed", e);
         }
     }
 
 
     @Transactional
     public FileMetaData moveFile(Long fileId, Long targetFolderId) {
-        FileMetaData fileMeta = fileMetaDataRepository.findById(fileId)
-                .orElseThrow(() -> new RuntimeException("File not found"));
-
-        Folders targetFolder = folderRepository.findById(targetFolderId)
-                .orElseThrow(() -> new RuntimeException("Target folder not found"));
+        FileMetaData fileMeta = access.requireFileOwner(fileId);
+        Folders targetFolder = access.requireFolderEdit(targetFolderId);
 
         Folders currentFolder = fileMeta.getParent();
         if (currentFolder == null) {
@@ -172,14 +193,23 @@ public class MoveService {
 
     @Transactional
     public void moveFolder(Long folderId, Long targetFolderId) {
-        Folders folder = folderRepository.findById(folderId)
-                .orElseThrow(() -> new RuntimeException("Folder not found"));
-
-        Folders target = folderRepository.findById(targetFolderId)
-                .orElseThrow(() -> new RuntimeException("Target folder not found"));
+        Folders folder = access.requireFolderOwner(folderId);
+        Folders target = access.requireFolderEdit(targetFolderId);
 
         String oldPrefix = normalize(folder.getPrefix());
         String newPrefix = normalize(target.getPrefix()) + folder.getName() + "/";
+
+        if (folder.getParent() == null) {
+            throw new RuntimeException("Root folder cannot be moved");
+        }
+
+        if (folder.getId().equals(target.getId())) {
+            throw new RuntimeException("Cannot move folder into itself");
+        }
+
+        if (isDescendantOf(target, folder)) {
+            throw new RuntimeException("Cannot move folder into one of its own subfolders");
+        }
 
         try {
             Iterable<Result<Item>> objects = minioClient.listObjects(
@@ -230,6 +260,20 @@ public class MoveService {
         }
     }
 
+
+    private boolean isDescendantOf(Folders possibleChild, Folders possibleParent) {
+        Folders current = possibleChild;
+
+        while (current != null) {
+            if (current.getId() != null && current.getId().equals(possibleParent.getId())) {
+                return true;
+            }
+
+            current = current.getParent();
+        }
+
+        return false;
+    }
     private void updateFolderPrefixes(Folders folder,
                                       String oldPrefix,
                                       String newPrefix,
@@ -251,11 +295,16 @@ public class MoveService {
 
     @Transactional
     public Folders copyFolder(Long folderId, Long targetFolderId) {
-        Folders sourceFolder = folderRepository.findById(folderId)
-                .orElseThrow(() -> new RuntimeException("Folder not found"));
+        Folders sourceFolder = access.requireFolderView(folderId);
+        Folders targetFolder = access.requireFolderEdit(targetFolderId);
 
-        Folders targetFolder = folderRepository.findById(targetFolderId)
-                .orElseThrow(() -> new RuntimeException("Target folder not found"));
+        if (sourceFolder.getId().equals(targetFolder.getId())) {
+            throw new RuntimeException("Cannot copy folder into itself");
+        }
+
+        if (isDescendantOf(targetFolder, sourceFolder)) {
+            throw new RuntimeException("Cannot copy folder into one of its own subfolders");
+        }
 
         String targetPrefix = normalizePrefix(targetFolder.getPrefix());
         String newRootPrefix = targetPrefix + sourceFolder.getName() + "/";
@@ -284,21 +333,28 @@ public class MoveService {
     }
 
     private Folders copyFolderRecursive(Folders sourceFolder, Folders newParent, String newPrefix) throws Exception {
-        // 1. create copied folder entity
+        User user = access.currentUser();
+
         Folders copiedFolder = new Folders();
         copiedFolder.setName(sourceFolder.getName());
         copiedFolder.setPrefix(newPrefix);
         copiedFolder.setDeleted(false);
+        copiedFolder.setPermanentlyDeleted(false);
         copiedFolder.setParent(newParent);
+        copiedFolder.setOwner(newParent.getOwner());
 
         copiedFolder = folderRepository.save(copiedFolder);
 
-        // 2. copy files that belong directly to this folder
-        List<FileMetaData> files = fileMetaDataRepository.findAllByParentId(sourceFolder.getId());
+        List<FileMetaData> files = fileMetaDataRepository.findAllByParentId(sourceFolder.getId())
+                .stream()
+                .filter(file -> !file.isDeleted())
+                .filter(file -> !file.isPermanentlyDeleted())
+                .filter(file -> sharingService.canViewFile(file, user))
+                .toList();
 
         for (FileMetaData sourceFile : files) {
             String oldKey = sourceFile.getObjectKey();
-            String newKey = newPrefix + UUID.randomUUID() + "-" + sourceFile.getFileName();
+            String newKey = normalizePrefix(newPrefix) + UUID.randomUUID() + "-" + sourceFile.getFileName();
 
             minioClient.copyObject(
                     CopyObjectArgs.builder()
@@ -318,13 +374,17 @@ public class MoveService {
             copiedFile.setFileName(sourceFile.getFileName());
             copiedFile.setSize(sourceFile.getSize());
             copiedFile.setDeleted(false);
+            copiedFile.setPermanentlyDeleted(false);
             copiedFile.setChecksum(sourceFile.getChecksum());
             copiedFile.setParent(copiedFolder);
+            copiedFile.setOwner(copiedFolder.getOwner());
             copiedFile.setObjectType(sourceFile.getObjectType());
 
-            fileMetaDataRepository.save(copiedFile);
+            FileMetaData savedFile = fileMetaDataRepository.save(copiedFile);
 
             Map<String, Object> fileDetailsMap = new LinkedHashMap<>();
+            fileDetailsMap.put("sourceFileId", sourceFile.getId());
+            fileDetailsMap.put("newFileId", savedFile.getId());
             fileDetailsMap.put("targetFolder", copiedFolder.getPrefix());
             fileDetailsMap.put("targetFolderId", copiedFolder.getId());
 
@@ -338,9 +398,16 @@ public class MoveService {
             );
         }
 
-        // 3. recursively copy child folders
         if (sourceFolder.getChildren() != null) {
             for (Folders child : sourceFolder.getChildren()) {
+                if (child.isDeleted() || child.isPermanentlyDeleted()) {
+                    continue;
+                }
+
+                if (!sharingService.canViewFolder(child, user)) {
+                    continue;
+                }
+
                 String childPrefix = normalizePrefix(newPrefix) + child.getName() + "/";
                 copyFolderRecursive(child, copiedFolder, childPrefix);
             }

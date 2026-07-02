@@ -257,9 +257,7 @@ public class SharingService {
     }
 
     private boolean ownsFile(FileMetaData file, User user) {
-        return file.getParent() != null
-                && file.getParent().getOwner() != null
-                && sameUser(file.getParent().getOwner(), user);
+        return file.getOwner() != null && sameUser(file.getOwner(), user);
     }
 
     private boolean ownsFolder(Folders folder, User user) {

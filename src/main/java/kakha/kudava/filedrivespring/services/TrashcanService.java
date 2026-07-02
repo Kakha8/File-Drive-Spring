@@ -47,7 +47,7 @@ public class TrashcanService {
         User user = currentUser();
 
         List<TrashFileDTO> deletedFiles =
-                fileMetaDataRepository.findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalse(user)
+                fileMetaDataRepository.findByOwnerAndDeletedTrueAndPermanentlyDeletedFalse(user)
                         .stream()
                         .map(file -> new TrashFileDTO(
                                 file.getId(),
@@ -123,7 +123,7 @@ public class TrashcanService {
 
         for (Long fileId : fileIds) {
             FileMetaData file = fileMetaDataRepository
-                    .findByIdAndDeletedTrueAndPermanentlyDeletedFalseAndParent_Owner(fileId, user)
+                    .findByIdAndDeletedTrueAndPermanentlyDeletedFalseAndOwner(fileId, user)
                     .orElseThrow(() -> new RuntimeException("Trashed file not found or access denied: " + fileId));
 
             if (file.getObjectKey() == null || file.getObjectKey().isBlank()) {
@@ -144,15 +144,15 @@ public class TrashcanService {
             file.setPermanentlyDeletedAt(now);
 
             String detailsJson = """
-                {
-                  "name": "%s",
-                  "trashObjectKey": "%s",
-                  "originalObjectKey": "%s",
-                  "deletedAt": "%s",
-                  "permanentlyDeletedAt": "%s",
-                  "source": "manual_permanent_delete"
-                }
-                """.formatted(
+            {
+              "name": "%s",
+              "trashObjectKey": "%s",
+              "originalObjectKey": "%s",
+              "deletedAt": "%s",
+              "permanentlyDeletedAt": "%s",
+              "source": "manual_permanent_delete"
+            }
+            """.formatted(
                     file.getFileName(),
                     trashObjectKey,
                     file.getOriginalObjectKey(),
@@ -204,7 +204,7 @@ public class TrashcanService {
             trashPrefixesToDelete.add(trashPrefix);
 
             List<FileMetaData> filesInFolder = fileMetaDataRepository
-                    .findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
+                    .findByOwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
                             user,
                             originalPrefix
                     );
@@ -309,7 +309,7 @@ public class TrashcanService {
         User user = currentUser();
 
         List<FileMetaData> filesToClear = fileMetaDataRepository
-                .findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalse(user);
+                .findByOwnerAndDeletedTrueAndPermanentlyDeletedFalse(user);
 
         List<Folders> foldersToClear = folderRepository
                 .findByOwnerAndDeletedTrueAndPermanentlyDeletedFalse(user);
@@ -321,12 +321,12 @@ public class TrashcanService {
         Instant now = Instant.now();
 
         String clearDetailsJson = """
-            {
-              "fileCount": %d,
-              "folderCount": %d,
-              "clearedAt": "%s"
-            }
-            """.formatted(
+        {
+          "fileCount": %d,
+          "folderCount": %d,
+          "clearedAt": "%s"
+        }
+        """.formatted(
                 filesToClear.size(),
                 foldersToClear.size(),
                 now
@@ -345,15 +345,15 @@ public class TrashcanService {
             file.setPermanentlyDeletedAt(now);
 
             String detailsJson = """
-                {
-                  "name": "%s",
-                  "trashObjectKey": "%s",
-                  "originalObjectKey": "%s",
-                  "deletedAt": "%s",
-                  "permanentlyDeletedAt": "%s",
-                  "source": "clear_trash"
-                }
-                """.formatted(
+            {
+              "name": "%s",
+              "trashObjectKey": "%s",
+              "originalObjectKey": "%s",
+              "deletedAt": "%s",
+              "permanentlyDeletedAt": "%s",
+              "source": "clear_trash"
+            }
+            """.formatted(
                     file.getFileName(),
                     trashObjectKey,
                     file.getOriginalObjectKey(),
@@ -378,15 +378,15 @@ public class TrashcanService {
             folder.setPermanentlyDeletedAt(now);
 
             String detailsJson = """
-                {
-                  "name": "%s",
-                  "prefix": "%s",
-                  "trashPrefix": "%s",
-                  "deletedAt": "%s",
-                  "permanentlyDeletedAt": "%s",
-                  "source": "clear_trash"
-                }
-                """.formatted(
+            {
+              "name": "%s",
+              "prefix": "%s",
+              "trashPrefix": "%s",
+              "deletedAt": "%s",
+              "permanentlyDeletedAt": "%s",
+              "source": "clear_trash"
+            }
+            """.formatted(
                     folder.getName(),
                     folder.getPrefix(),
                     trashPrefix,
@@ -438,7 +438,7 @@ public class TrashcanService {
 
         for (Long fileId : fileIds) {
             FileMetaData file = fileMetaDataRepository
-                    .findByIdAndDeletedTrueAndPermanentlyDeletedFalseAndParent_Owner(fileId, user)
+                    .findByIdAndDeletedTrueAndPermanentlyDeletedFalseAndOwner(fileId, user)
                     .orElseThrow(() -> new RuntimeException("Trashed file not found or access denied: " + fileId));
 
             if (file.getObjectKey() == null || file.getObjectKey().isBlank()) {
@@ -462,14 +462,14 @@ public class TrashcanService {
             objectStorageService.restoreTrashObject(trashObjectKey, restoredObjectKey);
 
             String detailsJson = """
-                {
-                  "name": "%s",
-                  "trashObjectKey": "%s",
-                  "restoredObjectKey": "%s",
-                  "originalObjectKey": "%s",
-                  "restoredParentId": %d
-                }
-                """.formatted(
+            {
+              "name": "%s",
+              "trashObjectKey": "%s",
+              "restoredObjectKey": "%s",
+              "originalObjectKey": "%s",
+              "restoredParentId": %d
+            }
+            """.formatted(
                     file.getFileName(),
                     trashObjectKey,
                     restoredObjectKey,
@@ -548,7 +548,7 @@ public class TrashcanService {
                 .findByOwnerAndDeletedTrueAndPermanentlyDeletedFalseAndPrefixStartingWith(user, oldRootPrefix);
 
         List<FileMetaData> filesInSubtree = fileMetaDataRepository
-                .findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
+                .findByOwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
                         user,
                         oldRootPrefix
                 );
@@ -874,7 +874,7 @@ public class TrashcanService {
             String trashPrefix = "users/" + owner.getId() + "/folders/" + folder.getId() + "/";
 
             List<FileMetaData> filesInFolder = fileMetaDataRepository
-                    .findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
+                    .findByOwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
                             owner,
                             originalPrefix
                     );
@@ -972,8 +972,7 @@ public class TrashcanService {
             file.setPermanentlyDeleted(true);
             file.setPermanentlyDeletedAt(now);
 
-            User owner = file.getParent() == null ? null : file.getParent().getOwner();
-
+            User owner = file.getOwner();
             String detailsJson = """
                 {
                   "reason": "older_than_max_age",

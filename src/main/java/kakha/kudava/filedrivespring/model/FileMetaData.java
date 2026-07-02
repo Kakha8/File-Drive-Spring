@@ -49,6 +49,10 @@ public class FileMetaData {
     @Column
     private String originalObjectKey;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "owner_id", nullable = false)
+    private User owner;
+
     @ManyToOne(fetch = FetchType.EAGER)
     private Folders parent;
 

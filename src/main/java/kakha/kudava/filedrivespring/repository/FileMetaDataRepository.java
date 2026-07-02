@@ -23,13 +23,6 @@ public interface FileMetaDataRepository extends JpaRepository<FileMetaData, Long
     """)
     int softDeleteFilesByFolderPrefix(@Param("prefix") String prefix);
 
-    List<FileMetaData> findByParent_Id(Long parentId);
-    @Query("""
-    select f.parent.id
-    from FileMetaData f
-    where f.objectKey = :objectKey
-""")
-    Long findParentIdByObjectKey(@Param("objectKey") String objectKey);
 
     List<FileMetaData> findByObjectKeyStartingWithAndDeletedFalse(String prefix);
     Optional<FileMetaData> findByObjectKey(String objectKey);
@@ -39,30 +32,26 @@ public interface FileMetaDataRepository extends JpaRepository<FileMetaData, Long
     List<FileMetaData> findByParentId(Long id);
 
     List<FileMetaData> findByParent_IdAndDeletedFalse(Long parentId);
-    List<FileMetaData> findByParent_OwnerAndDeletedTrue(User user);
-    Optional<FileMetaData> findByIdAndDeletedTrueAndParent_Owner(Long id, User owner);
-
-    List<FileMetaData> findByParent_OwnerAndDeletedTrueAndOriginalObjectKeyStartingWith(
-            User owner,
-            String originalObjectKey
-    );
-
 
     boolean existsByObjectKeyAndDeletedFalseAndPermanentlyDeletedFalse(String objectKey);
 
-    List<FileMetaData> findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalse(User owner);
 
-    Optional<FileMetaData> findByIdAndDeletedTrueAndPermanentlyDeletedFalseAndParent_Owner(
-            Long id,
-            User owner
-    );
-
-    List<FileMetaData> findByParent_OwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
-            User owner,
-            String originalObjectKey
-    );
 
     List<FileMetaData> findByDeletedTrueAndPermanentlyDeletedFalseAndDeletedAtBefore(
             Instant cutoff
     );
+
+    List<FileMetaData> findByOwnerAndDeletedTrueAndPermanentlyDeletedFalse(User owner);
+
+    Optional<FileMetaData> findByIdAndDeletedTrueAndPermanentlyDeletedFalseAndOwner(
+            Long id,
+            User owner
+    );
+
+    List<FileMetaData> findByOwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
+            User owner,
+            String originalObjectKey
+    );
+
+
 }

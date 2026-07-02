@@ -30,21 +30,21 @@ public class RenameService {
     private final FolderRepository folderRepository;
     private final LogsService logsService;
     private final ObjectMapper objectMapper;
+    private final ResourceAccessService access;
 
 
-    public RenameService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper) {
+    public RenameService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository, FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper, ResourceAccessService access) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
         this.logsService = logsService;
         this.objectMapper = objectMapper;
+        this.access = access;
     }
 
-    public void renameObject(String oldKey, String newKey) {
+    private void renameObject(String oldKey, String newKey) {
         try {
-
-            //Copy object to new key
             minioClient.copyObject(
                     CopyObjectArgs.builder()
                             .bucket(bucket)
@@ -58,7 +58,6 @@ public class RenameService {
                             .build()
             );
 
-            // Delete old object
             minioClient.removeObject(
                     RemoveObjectArgs.builder()
                             .bucket(bucket)
@@ -76,9 +75,7 @@ public class RenameService {
     @Transactional
     public void renameFile(Long fileId, String newName) throws JsonProcessingException {
 
-        FileMetaData meta = fileMetaDataRepository
-                .findById(fileId)
-                .orElseThrow();
+        FileMetaData meta = access.requireFileEdit(fileId);
 
         String oldKey = meta.getObjectKey();
 
@@ -123,8 +120,7 @@ public class RenameService {
 
     @Transactional
     public void renameFolder(Long folderId, String newName) throws JsonProcessingException {
-        Folders folder = folderRepository.findById(folderId).orElseThrow();
-
+        Folders folder = access.requireFolderEdit(folderId);
         String oldPrefix = folder.getPrefix();
         Folders parent = folder.getParent();
 
@@ -179,7 +175,7 @@ public class RenameService {
 
     }
 
-    public void renameObjectsByPrefix(String oldPrefix, String newPrefix) {
+    private void renameObjectsByPrefix(String oldPrefix, String newPrefix) {
         try {
             Iterable<Result<Item>> results = minioClient.listObjects(
                     ListObjectsArgs.builder()

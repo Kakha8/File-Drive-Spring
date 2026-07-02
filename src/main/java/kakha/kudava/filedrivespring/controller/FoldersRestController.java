@@ -48,20 +48,14 @@ public class FoldersRestController {
         this.objectStorageService = objectStorageService;
     }
 
-    @GetMapping
+/*    @GetMapping
     public List<Folders> list() {
         return folderRepository.findAll();
-    }
+    }*/
 
     @GetMapping("/{id}")
     public ResponseEntity<FolderViewDTO> get(@PathVariable Long id) {
-        List<FolderItemDTO> folders = folderService.viewFolders(id);
-        List<FileItemDTO> files = folderService.viewFiles(id);
-
-        FolderViewDTO dto = new FolderViewDTO();
-        dto.setFolders(folders);
-        dto.setFiles(files);
-        return ResponseEntity.ok(dto);
+        return ResponseEntity.ok(folderService.viewFolder(id));
     }
 
     @GetMapping("/{id}/download")
@@ -78,8 +72,8 @@ public class FoldersRestController {
     }
 
     @GetMapping("/root")
-    public ResponseEntity<FolderViewDTO> getRoot(Authentication authentication) {
-        return ResponseEntity.ok(folderService.viewCurrentUserRoot(authentication.getName()));
+    public ResponseEntity<FolderViewDTO> getRoot(Authentication authentication) throws Exception {
+        return ResponseEntity.ok(folderService.viewCurrentUserRoot());
     }
 
     @PostMapping
@@ -92,10 +86,7 @@ public class FoldersRestController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Map<String, String>> delete(@PathVariable("id") Long id) throws InsufficientDataException,
-            ErrorResponseException,
-            IOException, NoSuchAlgorithmException,
-            InvalidKeyException, InstantiationException, IllegalAccessException {
+    public ResponseEntity<Map<String, String>> delete(@PathVariable("id") Long id) throws Exception {
         folderService.delete(id);
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }

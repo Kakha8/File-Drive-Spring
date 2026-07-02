@@ -8,7 +8,7 @@ import lombok.Setter;
 public class FileItemDTO {
     private Long id;
     private String fileName;
-    private String objectKey;
+    //private String objectKey;
     private String objectType;
     private Long parentId;
     private Long size;

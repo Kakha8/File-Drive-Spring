@@ -5,6 +5,7 @@ import kakha.kudava.filedrivespring.dto.DownloadZipRequest;
 
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
+import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.records.ZipCount;
 import kakha.kudava.filedrivespring.records.ZipDownloadResult;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
@@ -26,17 +27,21 @@ public class DownloadService {
     private final ObjectStorageService objectStorageService;
     private final LogsService logsService;
     private final ObjectMapper objectMapper;
+    private final ResourceAccessService access;
+    private final SharingService sharingService;
 
     public DownloadService(
             FileMetaDataRepository fileMetaDataRepository,
             FolderRepository folderRepository,
-            ObjectStorageService objectStorageService, LogsService logsService, ObjectMapper objectMapper
+            ObjectStorageService objectStorageService, LogsService logsService, ObjectMapper objectMapper, ResourceAccessService access, SharingService sharingService
     ) {
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
         this.objectStorageService = objectStorageService;
         this.logsService = logsService;
         this.objectMapper = objectMapper;
+        this.access = access;
+        this.sharingService = sharingService;
     }
 
     public ZipDownloadResult downloadAsZip(DownloadZipRequest request) throws Exception {
@@ -55,17 +60,14 @@ public class DownloadService {
 
         try (ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream)) {
             for (Long fileId : fileIds) {
-                FileMetaData file = fileMetaDataRepository.findById(fileId)
-                        .orElseThrow(() -> new RuntimeException("File not found: " + fileId));
+                FileMetaData file = access.requireFileView(fileId);
 
                 addFileToZip(file, "", zipOutputStream, usedZipNames);
                 fileCount++;
             }
 
             for (Long folderId : folderIds) {
-                Folders folder = folderRepository.findById(folderId)
-                        .orElseThrow(() -> new RuntimeException("Folder not found: " + folderId));
-
+                Folders folder = access.requireFolderView(folderId);
                 String folderPath = uniqueZipName(
                         sanitizeZipName(folder.getName()) + "/",
                         usedZipNames
@@ -107,14 +109,26 @@ public class DownloadService {
 
         addDirectoryEntry(currentPath, zipOutputStream, usedZipNames);
 
-        List<FileMetaData> files = fileMetaDataRepository.findByParentId(folder.getId());
+        User user = access.currentUser();
+
+        List<FileMetaData> files = fileMetaDataRepository.findByParentId(folder.getId())
+                .stream()
+                .filter(file -> !file.isDeleted())
+                .filter(file -> !file.isPermanentlyDeleted())
+                .filter(file -> sharingService.canViewFile(file, user))
+                .toList();
 
         for (FileMetaData file : files) {
             addFileToZip(file, currentPath, zipOutputStream, usedZipNames);
             fileCount++;
         }
 
-        List<Folders> childFolders = folderRepository.findByParentId(folder.getId());
+        List<Folders> childFolders = folderRepository.findByParentId(folder.getId())
+                .stream()
+                .filter(child -> !child.isDeleted())
+                .filter(child -> !child.isPermanentlyDeleted())
+                .filter(child -> sharingService.canViewFolder(child, user))
+                .toList();
 
         for (Folders childFolder : childFolders) {
             String childPath = uniqueZipName(
@@ -161,12 +175,6 @@ public class DownloadService {
             Set<String> usedZipNames
     ) throws Exception {
         String path = folderPath.endsWith("/") ? folderPath : folderPath + "/";
-
-        if (usedZipNames.contains(path)) {
-            return;
-        }
-
-        usedZipNames.add(path);
 
         ZipEntry folderEntry = new ZipEntry(path);
         zipOutputStream.putNextEntry(folderEntry);

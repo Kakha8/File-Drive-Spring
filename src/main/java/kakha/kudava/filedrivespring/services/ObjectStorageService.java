@@ -40,6 +40,7 @@ import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -64,6 +65,7 @@ public class ObjectStorageService {
     private final RootFolderService rootFolderService;
     private final UploadCancellationService uploadCancellationService;
     private final String trashBucket;
+    private final ResourceAccessService access;
 
 
     public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
@@ -72,7 +74,7 @@ public class ObjectStorageService {
                                 QuarantinedFilesRepository quarantinedFilesRepository, @Value("${s3.quarantine-bucket}") String quarantineBucket,
                                 UserRepository userRepository, QuarantineService quarantineService,
                                 RootFolderService rootFolderService, UploadCancellationService uploadCancellationService,
-                                @Value("${s3.trash-bucket}") String trashBucket) {
+                                @Value("${s3.trash-bucket}") String trashBucket, ResourceAccessService access) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
@@ -87,6 +89,7 @@ public class ObjectStorageService {
         this.rootFolderService = rootFolderService;
         this.uploadCancellationService = uploadCancellationService;
         this.trashBucket = trashBucket;
+        this.access = access;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId, String uploadId) throws Exception {
@@ -107,8 +110,7 @@ public class ObjectStorageService {
         if (parentId == null) {
             folder = rootFolderService.ensureRootFolder(user);
         } else {
-            folder = folderRepository.findByIdAndOwnerAndDeletedFalse(parentId, user)
-                    .orElseThrow(() -> new RuntimeException("Folder not found or not owned by user: " + parentId));
+            folder = access.requireFolderEdit(parentId);
         }
 
         throwIfUploadCanceled(uploadId);
@@ -116,7 +118,9 @@ public class ObjectStorageService {
         String safeName = file.getOriginalFilename() == null ? "file" : file.getOriginalFilename();
 
         String prefix = folder.getPrefix();
-        if (!prefix.endsWith("/")) prefix += "/";
+        if (!prefix.endsWith("/")) {
+            prefix += "/";
+        }
 
         String objectKey = prefix + UUID.randomUUID() + "-" + safeName;
 
@@ -207,12 +211,14 @@ public class ObjectStorageService {
 
                 FileMetaData entity = new FileMetaData();
                 entity.setDeleted(false);
+                entity.setPermanentlyDeleted(false);
                 entity.setObjectKey(objectKey);
                 entity.setObjectType(file.getContentType());
-                entity.setFileName(file.getOriginalFilename());
+                entity.setFileName(safeName);
                 entity.setChecksum(checksum);
                 entity.setSize(fileSize);
                 entity.setParent(folder);
+                entity.setOwner(user);
 
                 throwIfUploadCanceled(uploadId);
 
@@ -223,6 +229,7 @@ public class ObjectStorageService {
             }
         } catch (UploadCanceledException ex) {
             log.warn("Upload canceled: uploadId={}, fileName={}", uploadId, safeName, ex);
+
             if (uploadedToStorage) {
                 try {
                     minioClient.removeObject(
@@ -256,8 +263,7 @@ public class ObjectStorageService {
     }
 
     public FileMetaData getMeta(Long id) {
-        return fileMetaDataRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Object not found"));
+        return access.requireFileView(id);
     }
 
     public record UploadResult(String objectKey, String checksum, Long fileSize) {}
@@ -265,25 +271,24 @@ public class ObjectStorageService {
 
 
     public InputStream download(Long id) throws Exception {
-        FileMetaData fileMetaData = fileMetaDataRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Object not found"));
+        FileMetaData fileMetaData = access.requireFileView(id);
+
         String objectKey = fileMetaData.getObjectKey();
 
         log.info("Downloading object from {}", objectKey);
 
         logsService.downloadLog(objectKey, id, "FILE");
-        GetObjectArgs.Builder getBuilder = GetObjectArgs.builder()
-                .bucket(bucket)
-                .object(objectKey);
 
-
-
-        return minioClient.getObject(getBuilder.build());
+        return minioClient.getObject(
+                GetObjectArgs.builder()
+                        .bucket(bucket)
+                        .object(objectKey)
+                        .build()
+        );
     }
 
     public InputStream downloadWithoutLog(Long id) throws Exception {
-        FileMetaData fileMetaData = fileMetaDataRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Object not found"));
+        FileMetaData fileMetaData = access.requireFileView(id);
 
         String objectKey = fileMetaData.getObjectKey();
 
@@ -298,18 +303,12 @@ public class ObjectStorageService {
     }
 
     public void delete(Long id) {
-
-        FileMetaData metaData = fileMetaDataRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Object not found"));
+        FileMetaData metaData = access.requireFileOwner(id);
+        User user = access.currentUser();
 
         if (metaData.isDeleted()) {
             throw new RuntimeException("Object is already in trash");
         }
-
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        User user = userRepository.findByUsername(authentication.getName())
-                .orElseThrow(() -> new RuntimeException("User not found"));
 
         String originalObjectKey = metaData.getObjectKey();
 
@@ -337,44 +336,21 @@ public class ObjectStorageService {
                             .build()
             );
 
-            Instant deletedAt = Instant.now();
-
-            metaData.setDeleted(true);
-            metaData.setDeletedAt(deletedAt);
             metaData.setOriginalObjectKey(originalObjectKey);
             metaData.setObjectKey(trashObjectKey);
+            metaData.setDeleted(true);
+            metaData.setDeletedAt(Instant.now());
 
             fileMetaDataRepository.save(metaData);
 
-            String detailsJson = """
-                {
-                  "name": "%s",
-                  "originalObjectKey": "%s",
-                  "trashObjectKey": "%s",
-                  "deletedAt": "%s"
-                }
-                """.formatted(
-                    metaData.getFileName(),
-                    originalObjectKey,
-                    trashObjectKey,
-                    deletedAt
-            );
-
-            logsService.moveToTrashLog(
+            logsService.deleteLog(
                     metaData.getFileName(),
                     metaData.getId(),
-                    EntityType.FILE.name(),
-                    detailsJson
-            );
-
-            log.info(
-                    "Object moved to trash successfully. originalKey={}, trashKey={}",
-                    originalObjectKey,
-                    trashObjectKey
+                    "FILE"
             );
 
         } catch (Exception e) {
-            throw new RuntimeException("Failed to move object to trash: " + originalObjectKey, e);
+            throw new RuntimeException("Failed to move object to trash", e);
         }
     }
 

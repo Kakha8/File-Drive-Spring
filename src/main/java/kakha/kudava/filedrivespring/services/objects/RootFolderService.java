@@ -6,11 +6,14 @@ import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
+import lombok.extern.slf4j.Slf4j;
+import lombok.extern.slf4j.XSlf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
 
+@Slf4j
 @Service
 public class RootFolderService {
 
@@ -33,23 +36,31 @@ public class RootFolderService {
 
     @Transactional
     public Folders ensureRootFolder(User user) {
-        return folderRepository.findByOwnerAndParentIsNullAndDeletedFalse(user)
-                .orElseGet(() -> createRootFolder(user));
+        return folderRepository
+                .findByOwnerAndParentIsNullAndDeletedFalseAndPermanentlyDeletedFalse(user)
+                .orElseGet(() -> {
+                    Folders root = new Folders();
+                    root.setName("My Drive");
+                    root.setPrefix("users/" + user.getId() + "/");
+                    root.setOwner(user);
+                    root.setParent(null);
+                    root.setDeleted(false);
+                    root.setPermanentlyDeleted(false);
+
+                    return folderRepository.save(root);
+                });
     }
 
     private Folders createRootFolder(User user) {
-        if (user.getId() == null) {
-            throw new IllegalStateException("User must be saved before creating root folder");
-        }
-
-        String prefix = rootPrefix(user);
+        String rootPrefix = "users/" + user.getId() + "/";
 
         Folders root = new Folders();
-        root.setName(user.getUsername());
-        root.setPrefix(prefix);
+        root.setName("root");
+        root.setPrefix(rootPrefix);
         root.setOwner(user);
         root.setParent(null);
         root.setDeleted(false);
+        root.setPermanentlyDeleted(false);
 
         Folders saved = folderRepository.save(root);
 
@@ -57,26 +68,13 @@ public class RootFolderService {
             minioClient.putObject(
                     PutObjectArgs.builder()
                             .bucket(bucket)
-                            .object(prefix)
-                            .stream(new ByteArrayInputStream(new byte[]{}), 0, -1)
+                            .object(rootPrefix)
+                            .stream(new ByteArrayInputStream(new byte[0]), 0, -1)
                             .contentType("application/x-directory")
                             .build()
             );
         } catch (Exception e) {
-            throw new RuntimeException("Failed to create root folder prefix: " + prefix, e);
-        }
-
-        try {
-            minioClient.putObject(
-                    PutObjectArgs.builder()
-                            .bucket(trashBucket)
-                            .object(prefix)
-                            .stream(new ByteArrayInputStream(new byte[]{}), 0, -1)
-                            .contentType("application/x-directory")
-                            .build()
-            );
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create root folder prefix for trash: " + prefix, e);
+            log.warn("Root folder DB row was created, but MinIO prefix placeholder failed: {}", rootPrefix, e);
         }
 
         return saved;
