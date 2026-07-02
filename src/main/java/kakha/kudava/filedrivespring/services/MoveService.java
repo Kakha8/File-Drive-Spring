@@ -44,7 +44,6 @@ public class MoveService {
     public FileMetaData copyFile(Long fileId, Long targetFolderId) {
         FileMetaData fileMeta = access.requireFileView(fileId);
         Folders targetFolder = access.requireFolderEdit(targetFolderId);
-        User currentUser = access.currentUser();
 
         String oldKey = fileMeta.getObjectKey();
 
@@ -81,7 +80,12 @@ public class MoveService {
             newFile.setPermanentlyDeleted(false);
             newFile.setChecksum(fileMeta.getChecksum());
             newFile.setParent(targetFolder);
-            newFile.setOwner(currentUser);
+
+            /*
+             * Copied file belongs to the destination folder owner.
+             */
+            newFile.setOwner(targetFolder.getOwner());
+
             newFile.setObjectType(fileMeta.getObjectType());
 
             FileMetaData savedFile = fileMetaDataRepository.save(newFile);
@@ -91,6 +95,7 @@ public class MoveService {
             detailsMap.put("newFileId", savedFile.getId());
             detailsMap.put("targetFolder", targetFolder.getPrefix());
             detailsMap.put("targetFolderId", targetFolder.getId());
+            detailsMap.put("newOwnerId", targetFolder.getOwner() != null ? targetFolder.getOwner().getId() : null);
 
             String detailsJson = objectMapper.writeValueAsString(detailsMap);
 
@@ -124,7 +129,7 @@ public class MoveService {
     @Transactional
     public FileMetaData moveFile(Long fileId, Long targetFolderId) {
         FileMetaData fileMeta = access.requireFileOwner(fileId);
-        Folders targetFolder = access.requireFolderEdit(targetFolderId);
+        Folders targetFolder = access.requireFolderOwner(targetFolderId);
 
         Folders currentFolder = fileMeta.getParent();
         if (currentFolder == null) {
@@ -135,8 +140,6 @@ public class MoveService {
         String oldFolder = currentFolder.getPrefix();
         Long oldFolderId = currentFolder.getId();
 
-        Folders oldParentFolder = currentFolder.getParent(); // may be null for root
-        Long oldParentId = oldParentFolder != null ? oldParentFolder.getId() : null;
 
         String prefix = targetFolder.getPrefix();
         if (!prefix.endsWith("/")) prefix += "/";
@@ -194,10 +197,19 @@ public class MoveService {
     @Transactional
     public void moveFolder(Long folderId, Long targetFolderId) {
         Folders folder = access.requireFolderOwner(folderId);
-        Folders target = access.requireFolderEdit(targetFolderId);
+        Folders target = access.requireFolderOwner(targetFolderId);
 
         String oldPrefix = normalize(folder.getPrefix());
         String newPrefix = normalize(target.getPrefix()) + folder.getName() + "/";
+
+        folderRepository
+                .findByPrefixAndOwnerAndDeletedFalseAndPermanentlyDeletedFalse(
+                        newPrefix,
+                        target.getOwner()
+                )
+                .ifPresent(existing -> {
+                    throw new RuntimeException("Folder already exists in target: " + folder.getName());
+                });
 
         if (folder.getParent() == null) {
             throw new RuntimeException("Root folder cannot be moved");
@@ -279,13 +291,18 @@ public class MoveService {
                                       String newPrefix,
                                       Folders newParent) {
 
-        // update current folder
-        String updatedPrefix = folder.getPrefix().replaceFirst(oldPrefix, newPrefix);
+        String currentPrefix = normalize(folder.getPrefix());
+
+        if (!currentPrefix.startsWith(oldPrefix)) {
+            throw new RuntimeException("Folder prefix does not start with old prefix");
+        }
+
+        String updatedPrefix = newPrefix + currentPrefix.substring(oldPrefix.length());
+
         folder.setPrefix(updatedPrefix);
         folder.setParent(newParent);
         folderRepository.save(folder);
 
-        // update children recursively
         if (folder.getChildren() != null) {
             for (Folders child : folder.getChildren()) {
                 updateFolderPrefixes(child, oldPrefix, newPrefix, folder);
@@ -308,6 +325,15 @@ public class MoveService {
 
         String targetPrefix = normalizePrefix(targetFolder.getPrefix());
         String newRootPrefix = targetPrefix + sourceFolder.getName() + "/";
+
+        folderRepository
+                .findByPrefixAndOwnerAndDeletedFalseAndPermanentlyDeletedFalse(
+                        newRootPrefix,
+                        targetFolder.getOwner()
+                )
+                .ifPresent(existing -> {
+                    throw new RuntimeException("Folder already exists in target: " + sourceFolder.getName());
+                });
 
         try {
             Folders copiedRoot = copyFolderRecursive(sourceFolder, targetFolder, newRootPrefix);
@@ -377,7 +403,12 @@ public class MoveService {
             copiedFile.setPermanentlyDeleted(false);
             copiedFile.setChecksum(sourceFile.getChecksum());
             copiedFile.setParent(copiedFolder);
+
+            /*
+             * Copied file belongs to the copied folder owner.
+             */
             copiedFile.setOwner(copiedFolder.getOwner());
+
             copiedFile.setObjectType(sourceFile.getObjectType());
 
             FileMetaData savedFile = fileMetaDataRepository.save(copiedFile);

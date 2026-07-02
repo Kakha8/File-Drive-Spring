@@ -218,7 +218,7 @@ public class ObjectStorageService {
                 entity.setChecksum(checksum);
                 entity.setSize(fileSize);
                 entity.setParent(folder);
-                entity.setOwner(user);
+                entity.setOwner(folder.getOwner());
 
                 throwIfUploadCanceled(uploadId);
 

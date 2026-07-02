@@ -118,7 +118,11 @@ public class FolderService {
 
         String fullPrefix = parentPrefix + cleanName + "/";
 
-        folderRepository.findByPrefixAndOwnerAndDeletedFalseAndPermanentlyDeletedFalse(fullPrefix, parent.getOwner())
+        folderRepository
+                .findByPrefixAndOwnerAndDeletedFalseAndPermanentlyDeletedFalse(
+                        fullPrefix,
+                        parent.getOwner()
+                )
                 .ifPresent(existing -> {
                     throw new RuntimeException("Folder already exists: " + cleanName);
                 });
@@ -129,15 +133,10 @@ public class FolderService {
         entity.setParent(parent);
 
         /*
-         * Important:
-         * If users create folders inside a shared folder, decide owner policy.
-         *
-         * Safer/simple policy:
-         * folder owner follows parent owner.
-         *
-         * This keeps the whole folder tree owned by one user.
+         * Folder owner owns the whole tree.
+         * Editors are contributors, not owners.
          */
-        entity.setOwner(user);
+        entity.setOwner(parent.getOwner());
 
         entity.setDeleted(false);
         entity.setPermanentlyDeleted(false);
@@ -239,6 +238,7 @@ public class FolderService {
         List<FileMetaData> files =
                 fileMetaDataRepository.findByParent_IdAndDeletedFalse(folder.getId())
                         .stream()
+                        .filter(file -> !file.isPermanentlyDeleted())
                         .filter(file -> sharingService.canViewFile(file, user))
                         .toList();
         return files.stream().map(file -> {
