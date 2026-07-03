@@ -1,5 +1,6 @@
 package kakha.kudava.filedrivespring.repository;
 
+import io.minio.PutObjectArgs;
 import kakha.kudava.filedrivespring.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -14,4 +15,5 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByUsername(String username);
     void deleteById(Long id);
 
+    List<User> findByUsernameContainingIgnoreCase(String username);
 }

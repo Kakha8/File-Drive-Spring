@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { logout as apiLogout } from "../api/auth";
 import ConfirmTrashModal from "../components/ConfirmTrashModal";
+import ShareModal from "../components/ShareModal";
 import {
     createFolder,
     getFileBlob,
@@ -157,6 +158,15 @@ const Icons = {
             <path d="M4 20h16" />
             <path d="m14.5 4.5 5 5" />
             <path d="M13 6 5 14l-1 5 5-1 8-8" />
+        </Icon>
+    ),
+    Share: ({ className }) => (
+        <Icon className={className}>
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <path d="M8.6 10.7 15.4 6.3" />
+            <path d="M8.6 13.3 15.4 17.7" />
         </Icon>
     ),
     Copy: ({ className }) => (
@@ -328,6 +338,9 @@ function Main({ onLogout }) {
 
     const [renamingItem, setRenamingItem] = useState(null);
     const renameInputRef = useRef(null);
+
+      const [shareTarget, setShareTarget] = useState(null);
+    const [shareSubmitting, setShareSubmitting] = useState(false);
 
     const [trashRequest, setTrashRequest] = useState(null);
     const [trashMoving, setTrashMoving] = useState(false);
@@ -597,6 +610,22 @@ function Main({ onLogout }) {
         }
     }
 
+    async function submitShare(payload) {
+        try {
+            setShareSubmitting(true);
+            setError("");
+
+            // Backend API will be connected next.
+            // For now this proves the modal opens and gives the right payload.
+            console.log("Share payload:", payload);
+
+            setShareTarget(null);
+        } catch (err) {
+            setError(err.message || "Failed to share item");
+        } finally {
+            setShareSubmitting(false);
+        }
+    }
     function startCreateFolder() {
         if (!currentFolderId || creatingFolder) return;
 
@@ -856,6 +885,18 @@ function Main({ onLogout }) {
         });
     }
 
+    function handleShare(item) {
+        setError("");
+        setOpenMenuId(null);
+        setSelectedIds([item.id]);
+
+        setShareTarget({
+            resourceType: item.type === "folder" ? "FOLDER" : "FILE",
+            resourceId: item.rawId,
+            name: item.name,
+        });
+    }
+
     function cancelRename() {
         setRenamingItem(null);
     }
@@ -883,6 +924,23 @@ function Main({ onLogout }) {
             setError(err.message || "Failed to rename item");
             setRenamingItem(null);
         }
+    }
+
+    function handleShare(item) {
+        setError("");
+        setOpenMenuId(null);
+        setSelectedIds([item.id]);
+
+        const target = {
+            resourceType: item.type === "folder" ? "FOLDER" : "FILE",
+            resourceId: item.rawId,
+            name: item.name,
+        };
+
+        setShareTarget(target);
+
+
+        console.log("Open share modal:", target);
     }
 
     function handleCopy(item) {
@@ -1384,6 +1442,7 @@ function Main({ onLogout }) {
                                         onDraftCancel={cancelCreateFolder}
                                         onDownload={handleDownload}
                                         onRename={handleRename}
+                                        onShare={handleShare}
                                         onCopy={handleCopy}
                                         onCut={handleCut}
                                         onDelete={handleDelete}
@@ -1426,6 +1485,18 @@ function Main({ onLogout }) {
                 onCancel={cancelMoveToTrash}
             />
 
+            <ShareModal
+                open={Boolean(shareTarget)}
+                target={shareTarget}
+                loading={shareSubmitting}
+                onClose={() => {
+                    if (!shareSubmitting) {
+                        setShareTarget(null);
+                    }
+                }}
+                onSubmit={submitShare}
+            />
+
             <UploadPanel
                 uploads={uploads}
                 minimized={uploadPanelMinimized}
@@ -1461,6 +1532,7 @@ function FileRow({
                      onRenameCancel,
                      onDownload,
                      onRename,
+                     onShare,
                      onCopy,
                      onCut,
                      onDelete,
@@ -1599,6 +1671,14 @@ function FileRow({
                                 >
                                     <Icons.Rename className="menu-action-icon" />
                                     Rename
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={(event) => runAction(event, onShare)}
+                                >
+                                    <Icons.Share className="menu-action-icon" />
+                                    Share
                                 </button>
 
                                 <button
