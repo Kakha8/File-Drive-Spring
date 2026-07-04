@@ -32,9 +32,10 @@ export default function ShareModal({
                                        open,
                                        target,
                                        loading = false,
+                                       successMessage = "",
                                        onClose,
                                        onSubmit,
-                                   }) {
+                                   })  {
     const [query, setQuery] = useState("");
     const [results, setResults] = useState([]);
     const [selectedUsers, setSelectedUsers] = useState([]);
@@ -202,9 +203,7 @@ export default function ShareModal({
 
         if (event.key === "ArrowUp") {
             event.preventDefault();
-
             setActiveIndex((current) => Math.max(current - 1, 0));
-
             return;
         }
 
@@ -411,7 +410,6 @@ export default function ShareModal({
                             })}
                         </div>
                     )}
-
                     <div className="share-role-help">
                         <p>
                             Viewers can view and download. Editors can rename,
@@ -419,31 +417,72 @@ export default function ShareModal({
                             folders. Owners stay unchanged.
                         </p>
                     </div>
-
                     {error && <p className="share-modal-error">{error}</p>}
-                </div>
-
-                <div className="share-modal-actions">
-                    <button
-                        type="button"
-                        className="share-btn share-btn-secondary"
-                        onClick={onClose}
-                        disabled={loading}
+                    {successMessage && (
+                        <p className="share-modal-success">{successMessage}</p>
+                    )}
+                    <div
+                        style={{
+                            display: "flex",
+                            justifyContent: "flex-end",
+                            alignItems: "center",
+                            gap: "12px",
+                            marginTop: "22px",
+                            paddingTop: "18px",
+                            borderTop: "1px solid rgba(148, 163, 184, 0.18)",
+                        }}
                     >
-                        Cancel
-                    </button>
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            disabled={loading}
+                            style={{
+                                minWidth: "96px",
+                                border: "none",
+                                borderRadius: "12px",
+                                padding: "10px 16px",
+                                background: "#1f2937",
+                                color: "#f3f4f6",
+                                fontSize: "14px",
+                                fontWeight: 700,
+                                cursor: loading ? "not-allowed" : "pointer",
+                                opacity: loading ? 0.55 : 1,
+                            }}
+                        >
+                            Cancel
+                        </button>
 
-                    <button
-                        type="submit"
-                        className="share-btn share-btn-primary"
-                        disabled={loading}
-                    >
-                        {loading
-                            ? "Sharing..."
-                            : selectedUsers.length > 1
-                                ? `Share with ${selectedUsers.length} people`
-                                : "Share"}
-                    </button>
+                        <button
+                            type="submit"
+                            disabled={loading || selectedUsers.length === 0 || Boolean(successMessage)}
+                            style={{
+                                minWidth: "96px",
+                                border: "none",
+                                borderRadius: "12px",
+                                padding: "10px 16px",
+                                background:
+                                    loading || selectedUsers.length === 0 || Boolean(successMessage)
+                                        ? "#2563eb"
+                                        : "#3b82f6",
+                                color: "#ffffff",
+                                fontSize: "14px",
+                                fontWeight: 700,
+                                cursor:
+                                    loading || selectedUsers.length === 0 || Boolean(successMessage)
+                                        ? "not-allowed"
+                                        : "pointer",
+                                opacity:
+                                    loading || selectedUsers.length === 0 || Boolean(successMessage)
+                                        ? 0.65
+                                        : 1,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                            }}
+                        >
+                            {successMessage ? "Shared" : loading ? "Sharing..." : "Share"}
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>

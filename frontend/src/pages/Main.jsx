@@ -16,6 +16,7 @@ import {
     cancelUpload,
     moveToTrash,
 } from "../api/drive";
+import {shareResource} from "../api/sharing.js";
 
 function Icon({ children, className = "" }) {
     return (
@@ -339,8 +340,9 @@ function Main({ onLogout }) {
     const [renamingItem, setRenamingItem] = useState(null);
     const renameInputRef = useRef(null);
 
-      const [shareTarget, setShareTarget] = useState(null);
+    const [shareTarget, setShareTarget] = useState(null);
     const [shareSubmitting, setShareSubmitting] = useState(false);
+    const [shareSuccess, setShareSuccess] = useState("");
 
     const [trashRequest, setTrashRequest] = useState(null);
     const [trashMoving, setTrashMoving] = useState(false);
@@ -614,12 +616,22 @@ function Main({ onLogout }) {
         try {
             setShareSubmitting(true);
             setError("");
+            setShareSuccess("");
 
-            // Backend API will be connected next.
-            // For now this proves the modal opens and gives the right payload.
-            console.log("Share payload:", payload);
+            await shareResource(payload);
 
-            setShareTarget(null);
+            const count = payload.shares?.length || 0;
+
+            setShareSuccess(
+                count === 1
+                    ? "Shared successfully with 1 person."
+                    : `Shared successfully with ${count} people.`
+            );
+
+            window.setTimeout(() => {
+                setShareTarget(null);
+                setShareSuccess("");
+            }, 1200);
         } catch (err) {
             setError(err.message || "Failed to share item");
         } finally {
@@ -885,17 +897,7 @@ function Main({ onLogout }) {
         });
     }
 
-    function handleShare(item) {
-        setError("");
-        setOpenMenuId(null);
-        setSelectedIds([item.id]);
 
-        setShareTarget({
-            resourceType: item.type === "folder" ? "FOLDER" : "FILE",
-            resourceId: item.rawId,
-            name: item.name,
-        });
-    }
 
     function cancelRename() {
         setRenamingItem(null);
@@ -928,6 +930,7 @@ function Main({ onLogout }) {
 
     function handleShare(item) {
         setError("");
+        setShareSuccess("");
         setOpenMenuId(null);
         setSelectedIds([item.id]);
 
@@ -938,9 +941,6 @@ function Main({ onLogout }) {
         };
 
         setShareTarget(target);
-
-
-        console.log("Open share modal:", target);
     }
 
     function handleCopy(item) {
@@ -1489,9 +1489,11 @@ function Main({ onLogout }) {
                 open={Boolean(shareTarget)}
                 target={shareTarget}
                 loading={shareSubmitting}
+                successMessage={shareSuccess}
                 onClose={() => {
                     if (!shareSubmitting) {
                         setShareTarget(null);
+                        setShareSuccess("");
                     }
                 }}
                 onSubmit={submitShare}
@@ -1545,6 +1547,30 @@ function FileRow({
     function handleMenuButtonClick(event) {
         event.stopPropagation();
         setOpenMenuId(menuOpen ? null : item.id);
+    }
+
+    async function handleSubmit(event) {
+        event.preventDefault();
+
+        if (selectedUsers.length === 0) {
+            setError("Select at least one user");
+            inputRef.current?.focus();
+            return;
+        }
+
+        const shares = selectedUsers.map((user) => ({
+            userId: user.id,
+            username: getUsername(user),
+            role: user.role || "VIEWER",
+        }));
+
+        setError("");
+
+        await onSubmit?.({
+            resourceType: target.resourceType,
+            resourceId: target.resourceId,
+            shares,
+        });
     }
 
     function runAction(event, action) {
