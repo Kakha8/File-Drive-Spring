@@ -281,6 +281,7 @@ function normalizeFolderItems(folderData) {
         lastEdited: "—",
         time: "",
         size: "—",
+        shared: Boolean(folder.shared),
         folder,
     }));
 
@@ -297,6 +298,7 @@ function normalizeFolderItems(folderData) {
             lastEdited: "—",
             time: "",
             size: formatBytes(file.size),
+            shared: Boolean(file.shared),
             file,
         }));
 
@@ -619,6 +621,7 @@ function Main({ onLogout }) {
             setShareSuccess("");
 
             await shareResource(payload);
+            await reloadCurrentFolder();
 
             const count = payload.shares?.length || 0;
 
@@ -1644,7 +1647,19 @@ function FileRow({
                             }}
                         />
                     ) : (
-                        <strong>{item.name}</strong>
+                        <span className="item-title-line">
+                            <strong>{item.name}</strong>
+
+                            {item.shared && (
+                                <span
+                                    className="shared-indicator"
+                                    title="Shared"
+                                    aria-label="Shared"
+                                >
+                        <Icons.Shared className="shared-indicator-icon" />
+                        </span>
+                            )}
+                    </span>
                     )}
 
                     <small>{isDraft ? "Folder" : getTypeLabel(item.type)}</small>

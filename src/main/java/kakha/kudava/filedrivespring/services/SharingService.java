@@ -183,6 +183,48 @@ public class SharingService {
         return canAccessFolder(folder, user, SharingRole.EDITOR);
     }
 
+    public boolean showsSharedIndicator(FileMetaData file, User viewer) {
+        if (file == null || viewer == null) {
+            return false;
+        }
+
+        if (!ownsFile(file, viewer)) {
+            return true;
+        }
+
+        if (sharingPermissionRepository.existsByFileAndActiveTrue(file)) {
+            return true;
+        }
+
+        return file.getParent() != null && hasActiveFolderShareInChain(file.getParent());
+    }
+
+    public boolean showsSharedIndicator(Folders folder, User viewer) {
+        if (folder == null || viewer == null) {
+            return false;
+        }
+
+        if (!ownsFolder(folder, viewer)) {
+            return true;
+        }
+
+        return hasActiveFolderShareInChain(folder);
+    }
+
+    private boolean hasActiveFolderShareInChain(Folders folder) {
+        Folders current = folder;
+
+        while (current != null) {
+            if (sharingPermissionRepository.existsByFolderAndActiveTrue(current)) {
+                return true;
+            }
+
+            current = current.getParent();
+        }
+
+        return false;
+    }
+
     private boolean canAccessFolder(Folders folder, User user, SharingRole requiredRole) {
         Folders current = folder;
 

@@ -227,6 +227,7 @@ public class FolderService {
             dto.setId(f.getId());
             dto.setName(f.getName());
             dto.setPrefix(f.getPrefix());
+            dto.setShared(sharingService.showsSharedIndicator(f, user));
             return dto;
         }).toList();
     }
@@ -245,11 +246,11 @@ public class FolderService {
             FileItemDTO dto = new FileItemDTO();
             dto.setId(file.getId());
             dto.setFileName(file.getFileName());
-            //dto.setObjectKey(file.getObjectKey());
             dto.setObjectType(file.getObjectType());
             dto.setSize(file.getSize());
             dto.setDeleted(file.isDeleted());
             dto.setParentId(file.getParent() != null ? file.getParent().getId() : null);
+            dto.setShared(sharingService.showsSharedIndicator(file, user));
             return dto;
         }).toList();
     }

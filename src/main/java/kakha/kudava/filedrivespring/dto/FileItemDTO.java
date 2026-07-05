@@ -13,4 +13,5 @@ public class FileItemDTO {
     private Long parentId;
     private Long size;
     private boolean deleted;
+    private boolean shared;
 }

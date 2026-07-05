@@ -35,4 +35,8 @@ public interface SharingPermissionRepository extends JpaRepository<SharingPermis
     List<SharingPermission> findBySharedWithAndActiveTrue(User sharedWith);
 
     List<SharingPermission> findByOwnerAndActiveTrue(User owner);
+
+    boolean existsByFolderAndActiveTrue(Folders current);
+
+    boolean existsByFileAndActiveTrue(FileMetaData file);
 }

@@ -2449,3 +2449,33 @@ body,
   align-items: center;
   justify-content: center;
 }
+
+.item-title-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.shared-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  opacity: 0.95;
+  flex: 0 0 auto;
+}
+
+.shared-indicator-icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.2;
+}
+
+.file-row:hover .shared-indicator {
+  color: #bfdbfe;
+}
+
+.file-row.selected .shared-indicator {
+  color: #dbeafe;
+}
