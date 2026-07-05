@@ -69,3 +69,13 @@ export async function shareResource(payload) {
 
     return Promise.all(requests);
 }
+
+export async function getSharedWithMe() {
+    const response = await apiFetch("/api/share/with-me");
+
+    if (!response.ok) {
+        throw new Error(await readApiError(response, "Failed to load shared items"));
+    }
+
+    return response.json();
+}

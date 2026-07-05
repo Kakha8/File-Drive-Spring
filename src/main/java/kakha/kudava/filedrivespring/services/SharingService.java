@@ -339,10 +339,12 @@ public class SharingService {
             dto.setResourceType("FILE");
             dto.setResourceId(permission.getFile().getId());
             dto.setName(permission.getFile().getFileName());
+            dto.setSize(permission.getFile().getSize());
         } else if (permission.getFolder() != null) {
             dto.setResourceType("FOLDER");
             dto.setResourceId(permission.getFolder().getId());
             dto.setName(permission.getFolder().getName());
+            dto.setSize(null);
         }
 
         return dto;

@@ -16,5 +16,6 @@ public class SharedItemDTO {
     private String ownerUsername;
     private String sharedWithUsername;
 
+    private Long size;
     private SharingRole role;
 }

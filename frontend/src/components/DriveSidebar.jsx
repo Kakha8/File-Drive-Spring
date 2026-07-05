@@ -78,7 +78,7 @@ const Icons = {
 
 const navItems = [
     { key: "my", label: "My files", icon: Icons.File, path: "/main" },
-    { key: "shared", label: "Shared", icon: Icons.Shared, path: null },
+    { key: "shared", label: "Shared", icon: Icons.Shared, path: "/shared" },
     { key: "recent", label: "Recent", icon: Icons.Clock, path: null },
     { key: "favorites", label: "Favorites", icon: Icons.Star, path: null },
     { key: "archived", label: "Archived", icon: Icons.Archive, path: null },
@@ -217,6 +217,16 @@ export default function DriveSidebar({
                         <button type="button">
                             <span className="dot final-dot" />
                             <span>{locationLabel}</span>
+                        </button>
+                    </div>
+                )}
+
+                {isOpen && active === "shared" && (
+                    <div className="label-section">
+                        <p>Location</p>
+                        <button type="button">
+                            <span className="dot shared-dot" />
+                            <span>Shared with me</span>
                         </button>
                     </div>
                 )}

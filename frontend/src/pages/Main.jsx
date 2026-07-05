@@ -1212,6 +1212,14 @@ function Main({ onLogout }) {
                                             return;
                                         }
 
+                                        if (item.key === "shared") {
+
+                                            navigate("/shared");
+
+                                            return;
+
+                                        }
+
                                         setNav(item.key);
                                     }}
                                     title={!sidebarOpen ? item.label : undefined}
@@ -1604,66 +1612,66 @@ function FileRow({
                     )}
                 </span>
 
-                <span>
-                    {isDraft ? (
-                        <input
-                            ref={draftInputRef}
-                            className="new-folder-name-input"
-                            defaultValue={item.name}
-                            disabled={creatingFolder}
-                            onClick={(event) => event.stopPropagation()}
-                            onDoubleClick={(event) => event.stopPropagation()}
-                            onBlur={(event) => onDraftCommit(event.target.value)}
-                            onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    onDraftCommit(event.currentTarget.value);
-                                }
+                <span className="file-name-text">
+    {isDraft ? (
+        <input
+            ref={draftInputRef}
+            className="new-folder-name-input"
+            defaultValue={item.name}
+            disabled={creatingFolder}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onBlur={(event) => onDraftCommit(event.target.value)}
+            onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    onDraftCommit(event.currentTarget.value);
+                }
 
-                                if (event.key === "Escape") {
-                                    event.preventDefault();
-                                    onDraftCancel();
-                                }
-                            }}
-                        />
-                    ) : isRenaming ? (
-                        <input
-                            ref={renameInputRef}
-                            className="new-folder-name-input"
-                            defaultValue={item.name}
-                            onClick={(event) => event.stopPropagation()}
-                            onDoubleClick={(event) => event.stopPropagation()}
-                            onBlur={(event) => onRenameCommit(item, event.target.value)}
-                            onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    onRenameCommit(item, event.currentTarget.value);
-                                }
+                if (event.key === "Escape") {
+                    event.preventDefault();
+                    onDraftCancel();
+                }
+            }}
+        />
+    ) : isRenaming ? (
+        <input
+            ref={renameInputRef}
+            className="new-folder-name-input"
+            defaultValue={item.name}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onBlur={(event) => onRenameCommit(item, event.target.value)}
+            onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    onRenameCommit(item, event.currentTarget.value);
+                }
 
-                                if (event.key === "Escape") {
-                                    event.preventDefault();
-                                    onRenameCancel();
-                                }
-                            }}
-                        />
-                    ) : (
-                        <span className="item-title-line">
-                            <strong>{item.name}</strong>
+                if (event.key === "Escape") {
+                    event.preventDefault();
+                    onRenameCancel();
+                }
+            }}
+        />
+    ) : (
+        <span className="item-title-line">
+            <strong title={item.name}>{item.name}</strong>
 
-                            {item.shared && (
-                                <span
-                                    className="shared-indicator"
-                                    title="Shared"
-                                    aria-label="Shared"
-                                >
-                        <Icons.Shared className="shared-indicator-icon" />
-                        </span>
-                            )}
-                    </span>
-                    )}
+            {item.shared && (
+                <span
+                    className="shared-indicator"
+                    title="Shared"
+                    aria-label="Shared"
+                >
+                    <Icons.Shared className="shared-indicator-icon" />
+                </span>
+            )}
+        </span>
+    )}
 
                     <small>{isDraft ? "Folder" : getTypeLabel(item.type)}</small>
-                </span>
+</span>
             </div>
 
             <div className="owner-cell">
