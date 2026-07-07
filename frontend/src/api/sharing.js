@@ -55,7 +55,13 @@ async function shareFolderWithUser(resourceId, share) {
 }
 
 export async function shareResource(payload) {
-    const requests = payload.shares.map((share) => {
+    const shares = payload.shares || [];
+
+    if (shares.length === 0) {
+        return [];
+    }
+
+    const requests = shares.map((share) => {
         if (payload.resourceType === "FILE") {
             return shareFileWithUser(payload.resourceId, share);
         }
@@ -78,4 +84,33 @@ export async function getSharedWithMe() {
     }
 
     return response.json();
+}
+
+export async function getResourceShares(resourceType, resourceId) {
+    const path =
+        resourceType === "FILE"
+            ? `/api/share/files/${resourceId}`
+            : `/api/share/folders/${resourceId}`;
+
+    const response = await apiFetch(path);
+
+    if (!response.ok) {
+        throw new Error(
+            await readApiError(response, "Failed to load current shares")
+        );
+    }
+
+    return response.json();
+}
+
+export async function revokeShare(shareId) {
+    const response = await apiFetch(`/api/share/${shareId}`, {
+        method: "DELETE",
+    });
+
+    if (!response.ok) {
+        throw new Error(
+            await readApiError(response, "Failed to remove share")
+        );
+    }
 }

@@ -39,4 +39,8 @@ public interface SharingPermissionRepository extends JpaRepository<SharingPermis
     boolean existsByFolderAndActiveTrue(Folders current);
 
     boolean existsByFileAndActiveTrue(FileMetaData file);
+
+    List<SharingPermission> findByFileAndActiveTrue(FileMetaData file);
+
+    List<SharingPermission> findByFolderAndActiveTrue(Folders folder);
 }

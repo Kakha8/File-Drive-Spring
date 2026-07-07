@@ -16,8 +16,7 @@ import {
     cancelUpload,
     moveToTrash,
 } from "../api/drive";
-import {shareResource} from "../api/sharing.js";
-
+import { revokeShare, shareResource } from "../api/sharing.js";
 function Icon({ children, className = "" }) {
     return (
         <svg
@@ -620,23 +619,28 @@ function Main({ onLogout }) {
             setError("");
             setShareSuccess("");
 
-            await shareResource(payload);
+            const removedShareIds = payload.removedShareIds || [];
+
+            await Promise.all(
+                removedShareIds.map((shareId) => revokeShare(shareId))
+            );
+
+            await shareResource({
+                resourceType: payload.resourceType,
+                resourceId: payload.resourceId,
+                shares: payload.shares || [],
+            });
+
             await reloadCurrentFolder();
 
-            const count = payload.shares?.length || 0;
-
-            setShareSuccess(
-                count === 1
-                    ? "Shared successfully with 1 person."
-                    : `Shared successfully with ${count} people.`
-            );
+            setShareSuccess("Sharing updated.");
 
             window.setTimeout(() => {
                 setShareTarget(null);
                 setShareSuccess("");
             }, 1200);
         } catch (err) {
-            setError(err.message || "Failed to share item");
+            setError(err.message || "Failed to update sharing");
         } finally {
             setShareSubmitting(false);
         }

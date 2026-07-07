@@ -20,6 +20,16 @@ public class SharingRestController {
         this.sharingService = sharingService;
     }
 
+    @GetMapping("/files/{fileId}")
+    public ResponseEntity<List<SharedItemDTO>> getFileShares(@PathVariable Long fileId) {
+        return ResponseEntity.ok(sharingService.getFileShares(fileId));
+    }
+
+    @GetMapping("/folders/{folderId}")
+    public ResponseEntity<List<SharedItemDTO>> getFolderShares(@PathVariable Long folderId) {
+        return ResponseEntity.ok(sharingService.getFolderShares(folderId));
+    }
+
     @PostMapping("/files")
     public ResponseEntity<List<SharedItemDTO>> shareFiles(
             @RequestBody ShareFilesRequest request
