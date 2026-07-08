@@ -9,4 +9,5 @@ public class FolderItemDTO {
     private Long id;
     private String name;
     private String prefix;
+    private boolean shared;
 }

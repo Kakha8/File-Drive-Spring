@@ -16,6 +16,8 @@ import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.repository.UserRepository;
 import kakha.kudava.filedrivespring.services.LogsService;
 import kakha.kudava.filedrivespring.services.ObjectStorageService;
+import kakha.kudava.filedrivespring.services.ResourceAccessService;
+import kakha.kudava.filedrivespring.services.SharingService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
@@ -28,10 +30,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -43,6 +42,7 @@ public class FolderService {
     private final ObjectStorageService objectStorageService;
     private final UserRepository userRepository;
     private final RootFolderService rootFolderService;
+    private final ResourceAccessService access;
 
     @Value("${s3.bucket}")
     private String bucket;
@@ -50,17 +50,20 @@ public class FolderService {
     private final FileMetaDataRepository fileMetaDataRepository;
     private final ObjectMapper objectMapper;
     private final LogsService logsService;
-    public FolderService(FolderRepository folderRepository, ObjectStorageService objectStorageService, UserRepository userRepository, RootFolderService rootFolderService,
+    private final SharingService sharingService;
+    public FolderService(FolderRepository folderRepository, ObjectStorageService objectStorageService, UserRepository userRepository, RootFolderService rootFolderService, ResourceAccessService access,
                          MinioClient minioClient,
-                         FileMetaDataRepository fileMetaDataRepository, ObjectMapper objectMapper, LogsService logsService) {
+                         FileMetaDataRepository fileMetaDataRepository, ObjectMapper objectMapper, LogsService logsService, SharingService sharingService) {
         this.folderRepository = folderRepository;
         this.objectStorageService = objectStorageService;
         this.userRepository = userRepository;
         this.rootFolderService = rootFolderService;
+        this.access = access;
         this.minioClient = minioClient;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.objectMapper = objectMapper;
         this.logsService = logsService;
+        this.sharingService = sharingService;
     }
 
     private User currentUser() {
@@ -74,41 +77,71 @@ public class FolderService {
                 .orElseThrow(() -> new RuntimeException("Authenticated user not found: " + auth.getName()));
     }
 
+    @Transactional
     public FolderDTO create(FolderCreateRequest req) throws Exception {
-        User user = currentUser();
+        User user = access.currentUser();
+
+        if (req == null || req.getName() == null || req.getName().isBlank()) {
+            throw new IllegalArgumentException("Folder name is required");
+        }
 
         Folders parent;
 
         if (req.getParentId() == null) {
             parent = rootFolderService.ensureRootFolder(user);
         } else {
-            parent = folderRepository.findByIdAndOwnerAndDeletedFalse(req.getParentId(), user)
-                    .orElseThrow(() -> new RuntimeException("Parent folder not found or not owned by user"));
+            parent = access.requireFolderEdit(req.getParentId());
         }
 
-        String cleanName = req.getName().replaceAll("^/|/$", "");
+        String cleanName = req.getName()
+                .trim()
+                .replace("\\", "/")
+                .replaceAll("^/|/$", "");
+
+        if (cleanName.isBlank()) {
+            throw new IllegalArgumentException("Folder name is required");
+        }
+
+        if (cleanName.contains("/")) {
+            throw new IllegalArgumentException("Folder name cannot contain slashes");
+        }
+
         String parentPrefix = parent.getPrefix();
-        if (!parentPrefix.endsWith("/")) parentPrefix += "/";
+
+        if (parentPrefix == null || parentPrefix.isBlank()) {
+            throw new RuntimeException("Parent folder prefix is missing");
+        }
+
+        if (!parentPrefix.endsWith("/")) {
+            parentPrefix += "/";
+        }
 
         String fullPrefix = parentPrefix + cleanName + "/";
+
+        folderRepository
+                .findByPrefixAndOwnerAndDeletedFalseAndPermanentlyDeletedFalse(
+                        fullPrefix,
+                        parent.getOwner()
+                )
+                .ifPresent(existing -> {
+                    throw new RuntimeException("Folder already exists: " + cleanName);
+                });
 
         Folders entity = new Folders();
         entity.setName(cleanName);
         entity.setPrefix(fullPrefix);
         entity.setParent(parent);
-        entity.setOwner(user);
+
+        /*
+         * Folder owner owns the whole tree.
+         * Editors are contributors, not owners.
+         */
+        entity.setOwner(parent.getOwner());
+
         entity.setDeleted(false);
+        entity.setPermanentlyDeleted(false);
 
         Folders saved = folderRepository.save(entity);
-
-        minioClient.putObject(
-                PutObjectArgs.builder()
-                        .bucket(bucket)
-                        .object(fullPrefix)
-                        .stream(new ByteArrayInputStream(new byte[]{}), 0, -1)
-                        .contentType("application/x-directory")
-                        .build()
-        );
 
         return toDto(saved);
     }
@@ -117,70 +150,107 @@ public class FolderService {
         String normalizedName = folderName.replaceAll("^/|/$", "");
 
         if (parentId == null) {
-            return normalizedName + "/";
+            User user = access.currentUser();
+            Folders root = rootFolderService.ensureRootFolder(user);
+
+            String rootPrefix = root.getPrefix();
+            if (!rootPrefix.endsWith("/")) {
+                rootPrefix += "/";
+            }
+
+            return rootPrefix + normalizedName + "/";
         }
 
-        Folders parent = folderRepository.findById(parentId)
-                .orElseThrow(() -> new RuntimeException("Parent folder not found: " + parentId));
+        Folders parent = access.requireFolderEdit(parentId);
 
         String parentPrefix = parent.getPrefix();
-        if (!parentPrefix.endsWith("/")) parentPrefix += "/";
+        if (!parentPrefix.endsWith("/")) {
+            parentPrefix += "/";
+        }
 
         return parentPrefix + normalizedName + "/";
     }
 
     @Transactional
-    public void delete(Long id) throws
-            InsufficientDataException,
-            ErrorResponseException,
-            IOException, NoSuchAlgorithmException, InvalidKeyException, InstantiationException, IllegalAccessException {
-        String prefix = folderRepository.findPrefixById(id);
-        if (prefix == null) {
-            throw new RuntimeException("Folder not found: " + id);
+    public void delete(Long id) throws Exception {
+        Folders folder = access.requireFolderOwner(id);
+
+        if (folder.getParent() == null) {
+            throw new RuntimeException("Root folder cannot be deleted");
         }
 
-        // normalizing
-        String p = prefix.trim().replace("\\", "/");
-        if (!p.endsWith("/")) {
-            p = p + "/";
+        String prefix = folder.getPrefix();
+
+        if (prefix == null || prefix.isBlank()) {
+            throw new RuntimeException("Folder prefix is missing");
         }
 
-        objectStorageService.deleteByPrefix(p);
+        String normalizedPrefix = prefix.trim().replace("\\", "/");
 
-        int filesDeleted = fileMetaDataRepository.softDeleteFilesByFolderPrefix(p);
-        int foldersDeleted = folderRepository.softDeleteTreeByPrefix(p);
+        if (!normalizedPrefix.endsWith("/")) {
+            normalizedPrefix += "/";
+        }
 
-        log.info("Soft-deleted {} files and {} folders for prefix={}", filesDeleted, foldersDeleted, p);
+        objectStorageService.deleteByPrefix(normalizedPrefix);
+
+        int filesDeleted = fileMetaDataRepository.softDeleteFilesByFolderPrefix(normalizedPrefix);
+        int foldersDeleted = folderRepository.softDeleteTreeByPrefix(normalizedPrefix);
+
+        log.info(
+                "Soft-deleted {} files and {} folders for prefix={}",
+                filesDeleted,
+                foldersDeleted,
+                normalizedPrefix
+        );
+
+        logsService.deleteLog(
+                folder.getName(),
+                folder.getId(),
+                "FOLDER"
+        );
     }
 
     public List<FolderItemDTO> viewFolders(Long id) {
-        User user = currentUser();
+        Folders parent = access.requireFolderView(id);
+        User user = access.currentUser();
 
         List<Folders> folders =
-                folderRepository.findFoldersByParent_IdAndOwnerAndDeletedFalse(id, user);
+                folderRepository.findFoldersByParent_Id(parent.getId())
+                        .stream()
+                        .filter(folder -> !folder.isDeleted())
+                        .filter(folder -> !folder.isPermanentlyDeleted())
+                        .filter(folder -> sharingService.canViewFolder(folder, user))
+                        .toList();
 
         return folders.stream().map(f -> {
             FolderItemDTO dto = new FolderItemDTO();
             dto.setId(f.getId());
             dto.setName(f.getName());
             dto.setPrefix(f.getPrefix());
+            dto.setShared(sharingService.showsSharedIndicator(f, user));
             return dto;
         }).toList();
     }
 
     public List<FileItemDTO> viewFiles(Long id) {
-        List<FileMetaData> files =
-                fileMetaDataRepository.findByParent_IdAndDeletedFalse(id);
+        Folders folder = access.requireFolderView(id);
+        User user = access.currentUser();
 
+        List<FileMetaData> files =
+                fileMetaDataRepository.findByParent_IdAndDeletedFalse(folder.getId())
+                        .stream()
+                        .filter(file -> !file.isPermanentlyDeleted())
+                        .filter(file -> sharingService.canViewFile(file, user))
+                        .toList();
         return files.stream().map(file -> {
             FileItemDTO dto = new FileItemDTO();
             dto.setId(file.getId());
             dto.setFileName(file.getFileName());
-            dto.setObjectKey(file.getObjectKey());
             dto.setObjectType(file.getObjectType());
             dto.setSize(file.getSize());
             dto.setDeleted(file.isDeleted());
             dto.setParentId(file.getParent() != null ? file.getParent().getId() : null);
+            dto.setShared(sharingService.showsSharedIndicator(file, user));
             return dto;
         }).toList();
     }
@@ -193,19 +263,10 @@ public class FolderService {
         return dto;
     }
 
-    public FolderViewDTO viewCurrentUserRoot(String username) {
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found: " + username));
+    public FolderViewDTO viewCurrentUserRoot() throws Exception {
+        User user = access.currentUser();
 
-        String prefixWithoutSlash = "users/" + user.getId();
-        String prefixWithSlash = prefixWithoutSlash + "/";
-
-        Folders root = folderRepository.findByPrefixAndDeletedFalse(prefixWithSlash)
-                .or(() -> folderRepository.findByPrefixAndDeletedFalse(prefixWithoutSlash))
-                .orElseThrow(() -> new RuntimeException(
-                        "Root folder not found for user id: " + user.getId()
-                                + ". Tried: " + prefixWithSlash + " and " + prefixWithoutSlash
-                ));
+        Folders root = rootFolderService.ensureRootFolder(user);
 
         return viewFolder(root.getId());
     }
@@ -213,8 +274,7 @@ public class FolderService {
     public FolderViewDTO viewFolder(Long id) {
         User user = currentUser();
 
-        Folders folder = folderRepository.findByIdAndOwnerAndDeletedFalse(id, user)
-                .orElseThrow(() -> new RuntimeException("Folder not found or not owned by user"));
+        Folders folder = access.requireFolderView(id);
 
         FolderViewDTO dto = new FolderViewDTO();
         dto.setId(folder.getId());
@@ -226,17 +286,20 @@ public class FolderService {
     }
 
     public FolderDownloadResult downloadFolderAsZip(Long folderId) throws Exception {
-        Folders rootFolder = folderRepository.findById(folderId)
-                .orElseThrow(() -> new RuntimeException("Folder not found"));
+        Folders rootFolder = access.requireFolderView(folderId);
 
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        Set<String> usedZipNames = new HashSet<>();
 
         ZipCount count;
 
         try (ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream)) {
-            String rootPath = sanitizeZipName(rootFolder.getName()) + "/";
+            String rootPath = uniqueZipName(
+                    sanitizeZipName(rootFolder.getName()) + "/",
+                    usedZipNames
+            );
 
-            count = addFolderToZip(rootFolder, rootPath, zipOutputStream);
+            count = addFolderToZip(rootFolder, rootPath, zipOutputStream, usedZipNames);
         }
 
         String zipName = sanitizeZipName(rootFolder.getName()) + ".zip";
@@ -263,47 +326,134 @@ public class FolderService {
         );
     }
 
+    private String uniqueZipName(String desiredName, Set<String> usedZipNames) {
+        if (!usedZipNames.contains(desiredName)) {
+            usedZipNames.add(desiredName);
+            return desiredName;
+        }
+
+        boolean isDirectory = desiredName.endsWith("/");
+        String cleanName = isDirectory
+                ? desiredName.substring(0, desiredName.length() - 1)
+                : desiredName;
+
+        String parentPath = "";
+        String baseName = cleanName;
+        String extension = "";
+
+        int slashIndex = cleanName.lastIndexOf("/");
+        if (slashIndex >= 0) {
+            parentPath = cleanName.substring(0, slashIndex + 1);
+            baseName = cleanName.substring(slashIndex + 1);
+        }
+
+        if (!isDirectory) {
+            int dotIndex = baseName.lastIndexOf(".");
+            if (dotIndex > 0) {
+                extension = baseName.substring(dotIndex);
+                baseName = baseName.substring(0, dotIndex);
+            }
+        }
+
+        int counter = 1;
+
+        while (true) {
+            String candidate = parentPath + baseName + " (" + counter + ")" + extension;
+
+            if (isDirectory) {
+                candidate += "/";
+            }
+
+            if (!usedZipNames.contains(candidate)) {
+                usedZipNames.add(candidate);
+                return candidate;
+            }
+
+            counter++;
+        }
+    }
+
     private ZipCount addFolderToZip(
             Folders folder,
             String currentPath,
-            ZipOutputStream zipOutputStream
+            ZipOutputStream zipOutputStream,
+            Set<String> usedZipNames
     ) throws Exception {
         int fileCount = 0;
         int folderCount = 1;
 
-        ZipEntry folderEntry = new ZipEntry(currentPath);
-        zipOutputStream.putNextEntry(folderEntry);
-        zipOutputStream.closeEntry();
+        addDirectoryEntry(currentPath, zipOutputStream, usedZipNames);
 
-        List<FileMetaData> files = fileMetaDataRepository.findByParentId(folder.getId());
+        User user = access.currentUser();
+
+        List<FileMetaData> files = fileMetaDataRepository.findByParentId(folder.getId())
+                .stream()
+                .filter(file -> !file.isDeleted())
+                .filter(file -> !file.isPermanentlyDeleted())
+                .filter(file -> sharingService.canViewFile(file, user))
+                .toList();
 
         for (FileMetaData file : files) {
-            String filePath = currentPath + sanitizeZipName(file.getFileName());
-
-            try (InputStream fileInputStream = objectStorageService.downloadWithoutLog(file.getId())) {
-                ZipEntry fileEntry = new ZipEntry(filePath);
-                zipOutputStream.putNextEntry(fileEntry);
-
-                fileInputStream.transferTo(zipOutputStream);
-
-                zipOutputStream.closeEntry();
-            }
-
+            addFileToZip(file, currentPath, zipOutputStream, usedZipNames);
             fileCount++;
         }
 
-        List<Folders> childFolders = folderRepository.findByParentId(folder.getId());
+        List<Folders> childFolders = folderRepository.findByParentId(folder.getId())
+                .stream()
+                .filter(child -> !child.isDeleted())
+                .filter(child -> !child.isPermanentlyDeleted())
+                .filter(child -> sharingService.canViewFolder(child, user))
+                .toList();
 
         for (Folders childFolder : childFolders) {
-            String childPath = currentPath + sanitizeZipName(childFolder.getName()) + "/";
+            String childPath = uniqueZipName(
+                    currentPath + sanitizeZipName(childFolder.getName()) + "/",
+                    usedZipNames
+            );
 
-            ZipCount childCount = addFolderToZip(childFolder, childPath, zipOutputStream);
+            ZipCount childCount = addFolderToZip(
+                    childFolder,
+                    childPath,
+                    zipOutputStream,
+                    usedZipNames
+            );
 
             fileCount += childCount.fileCount();
             folderCount += childCount.folderCount();
         }
 
         return new ZipCount(fileCount, folderCount);
+    }
+
+    private void addFileToZip(
+            FileMetaData file,
+            String folderPath,
+            ZipOutputStream zipOutputStream,
+            Set<String> usedZipNames
+    ) throws Exception {
+        String safeFileName = sanitizeZipName(file.getFileName());
+        String zipPath = uniqueZipName(folderPath + safeFileName, usedZipNames);
+
+        try (InputStream fileInputStream = objectStorageService.downloadWithoutLog(file.getId())) {
+            ZipEntry fileEntry = new ZipEntry(zipPath);
+            zipOutputStream.putNextEntry(fileEntry);
+
+            fileInputStream.transferTo(zipOutputStream);
+
+            zipOutputStream.closeEntry();
+        }
+    }
+
+    private void addDirectoryEntry(
+            String folderPath,
+            ZipOutputStream zipOutputStream,
+            Set<String> usedZipNames
+    ) throws Exception {
+        String path = folderPath.endsWith("/") ? folderPath : folderPath + "/";
+
+        ZipEntry folderEntry = new ZipEntry(path);
+        zipOutputStream.putNextEntry(folderEntry);
+        zipOutputStream.closeEntry();
     }
 
     private String sanitizeZipName(String name) {
@@ -325,24 +475,22 @@ public class FolderService {
     }
 
     @Transactional
-    public void deleteMultiple(List<Long> folderIds) throws InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InstantiationException, IllegalAccessException {
+    public void deleteMultiple(List<Long> folderIds) throws Exception {
+        if (folderIds == null || folderIds.isEmpty()) {
+            throw new IllegalArgumentException("No folder IDs provided");
+        }
 
-            if (folderIds == null || folderIds.isEmpty()) {
-                throw new IllegalArgumentException("No file IDs provided");
-            }
+        List<Long> uniqueIds = folderIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
 
-            List<Long> uniqueIds = folderIds.stream()
-                    .filter(Objects::nonNull)
-                    .distinct()
-                    .toList();
+        if (uniqueIds.isEmpty()) {
+            throw new IllegalArgumentException("No valid folder IDs provided");
+        }
 
-            if (uniqueIds.isEmpty()) {
-                throw new IllegalArgumentException("No valid file IDs provided");
-            }
-
-            for (Long folderId : uniqueIds) {
-                delete(folderId);
-            }
-
+        for (Long folderId : uniqueIds) {
+            delete(folderId);
+        }
     }
 }

@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import Main from "./pages/Main";
 import Trashcan from "./pages/Trashcan";
 import "./App.css";
+import SharedWithMe from "./pages/SharedWithMe.jsx";
 
 const SIDEBAR_STORAGE_KEY = "drive-sidebar-open";
 
@@ -78,6 +79,18 @@ function App() {
                     }
                 />
 
+                <Route
+                    path="/shared"
+                    element={
+                        loggedIn ? (
+                            <SharedWithMe
+                                onLogout={() => setLoggedIn(false)}
+                            />
+                        ) : (
+                            <Navigate to="/login" replace />
+                        )
+                    }
+                />
                 <Route
                     path="/trashcan"
                     element={

@@ -6,6 +6,7 @@ import kakha.kudava.filedrivespring.repository.UserRepository;
 import kakha.kudava.filedrivespring.services.users.UserService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -39,6 +40,30 @@ public class UsersRestController {
             return ResponseEntity.ok(Map.of(
                     "id", String.valueOf(user.get().getId()),
                     "username", user.get().getUsername()));
+    }
+
+    @GetMapping("/search")
+    public List<UserDTO> searchUsers(@RequestParam(name = "q", defaultValue = "") String q,
+                                     Authentication authentication) {
+        String query = q.trim();
+
+        if (query.isBlank()) {
+            return List.of();
+        }
+
+        String currentUsername = authentication.getName();
+
+        return userRepository.findByUsernameContainingIgnoreCase(query)
+                .stream()
+                .filter(user -> !user.getUsername().equals(currentUsername))
+                .limit(10)
+                .map(user -> {
+                    UserDTO dto = new UserDTO();
+                    dto.setId(user.getId());
+                    dto.setUsername(user.getUsername());
+                    return dto;
+                })
+                .toList();
     }
 
     @PostMapping

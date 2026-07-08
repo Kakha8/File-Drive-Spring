@@ -7,29 +7,22 @@ let refreshPromise = null;
 export async function login(username, password) {
     const response = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
+        credentials: "include",
         headers: {
             "Content-Type": "application/json",
         },
-        credentials: "include",
-        body: JSON.stringify({
-            username,
-            password,
-        }),
+        body: JSON.stringify({ username, password }),
     });
 
     if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Login failed");
+        throw new Error(await readApiError(response, "Login failed"));
     }
 
     const data = await response.json();
     const token = data.accessToken || data.token;
 
-    if (!token) {
-        throw new Error("Login response missing access token");
-    }
-
     setAccessToken(token);
+
     return { accessToken: token };
 }
 
@@ -88,5 +81,19 @@ export function getUserRole() {
         return payload.role || null;
     } catch {
         return null;
+    }
+}
+
+async function readApiError(response, fallbackMessage) {
+    try {
+        const data = await response.json();
+        return data.message || data.error || fallbackMessage;
+    } catch {
+        try {
+            const text = await response.text();
+            return text || fallbackMessage;
+        } catch {
+            return fallbackMessage;
+        }
     }
 }

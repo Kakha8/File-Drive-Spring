@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { logout as apiLogout } from "../api/auth";
 import ConfirmTrashModal from "../components/ConfirmTrashModal";
+import ShareModal from "../components/ShareModal";
 import {
     createFolder,
     getFileBlob,
@@ -15,7 +16,7 @@ import {
     cancelUpload,
     moveToTrash,
 } from "../api/drive";
-
+import { revokeShare, shareResource } from "../api/sharing.js";
 function Icon({ children, className = "" }) {
     return (
         <svg
@@ -159,6 +160,15 @@ const Icons = {
             <path d="M13 6 5 14l-1 5 5-1 8-8" />
         </Icon>
     ),
+    Share: ({ className }) => (
+        <Icon className={className}>
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <path d="M8.6 10.7 15.4 6.3" />
+            <path d="M8.6 13.3 15.4 17.7" />
+        </Icon>
+    ),
     Copy: ({ className }) => (
         <Icon className={className}>
             <rect x="8" y="8" width="12" height="12" rx="2" />
@@ -270,6 +280,7 @@ function normalizeFolderItems(folderData) {
         lastEdited: "—",
         time: "",
         size: "—",
+        shared: Boolean(folder.shared),
         folder,
     }));
 
@@ -286,6 +297,7 @@ function normalizeFolderItems(folderData) {
             lastEdited: "—",
             time: "",
             size: formatBytes(file.size),
+            shared: Boolean(file.shared),
             file,
         }));
 
@@ -328,6 +340,10 @@ function Main({ onLogout }) {
 
     const [renamingItem, setRenamingItem] = useState(null);
     const renameInputRef = useRef(null);
+
+    const [shareTarget, setShareTarget] = useState(null);
+    const [shareSubmitting, setShareSubmitting] = useState(false);
+    const [shareSuccess, setShareSuccess] = useState("");
 
     const [trashRequest, setTrashRequest] = useState(null);
     const [trashMoving, setTrashMoving] = useState(false);
@@ -597,6 +613,38 @@ function Main({ onLogout }) {
         }
     }
 
+    async function submitShare(payload) {
+        try {
+            setShareSubmitting(true);
+            setError("");
+            setShareSuccess("");
+
+            const removedShareIds = payload.removedShareIds || [];
+
+            await Promise.all(
+                removedShareIds.map((shareId) => revokeShare(shareId))
+            );
+
+            await shareResource({
+                resourceType: payload.resourceType,
+                resourceId: payload.resourceId,
+                shares: payload.shares || [],
+            });
+
+            await reloadCurrentFolder();
+
+            setShareSuccess("Sharing updated.");
+
+            window.setTimeout(() => {
+                setShareTarget(null);
+                setShareSuccess("");
+            }, 1200);
+        } catch (err) {
+            setError(err.message || "Failed to update sharing");
+        } finally {
+            setShareSubmitting(false);
+        }
+    }
     function startCreateFolder() {
         if (!currentFolderId || creatingFolder) return;
 
@@ -856,6 +904,8 @@ function Main({ onLogout }) {
         });
     }
 
+
+
     function cancelRename() {
         setRenamingItem(null);
     }
@@ -883,6 +933,21 @@ function Main({ onLogout }) {
             setError(err.message || "Failed to rename item");
             setRenamingItem(null);
         }
+    }
+
+    function handleShare(item) {
+        setError("");
+        setShareSuccess("");
+        setOpenMenuId(null);
+        setSelectedIds([item.id]);
+
+        const target = {
+            resourceType: item.type === "folder" ? "FOLDER" : "FILE",
+            resourceId: item.rawId,
+            name: item.name,
+        };
+
+        setShareTarget(target);
     }
 
     function handleCopy(item) {
@@ -1151,6 +1216,14 @@ function Main({ onLogout }) {
                                             return;
                                         }
 
+                                        if (item.key === "shared") {
+
+                                            navigate("/shared");
+
+                                            return;
+
+                                        }
+
                                         setNav(item.key);
                                     }}
                                     title={!sidebarOpen ? item.label : undefined}
@@ -1384,6 +1457,7 @@ function Main({ onLogout }) {
                                         onDraftCancel={cancelCreateFolder}
                                         onDownload={handleDownload}
                                         onRename={handleRename}
+                                        onShare={handleShare}
                                         onCopy={handleCopy}
                                         onCut={handleCut}
                                         onDelete={handleDelete}
@@ -1426,6 +1500,20 @@ function Main({ onLogout }) {
                 onCancel={cancelMoveToTrash}
             />
 
+            <ShareModal
+                open={Boolean(shareTarget)}
+                target={shareTarget}
+                loading={shareSubmitting}
+                successMessage={shareSuccess}
+                onClose={() => {
+                    if (!shareSubmitting) {
+                        setShareTarget(null);
+                        setShareSuccess("");
+                    }
+                }}
+                onSubmit={submitShare}
+            />
+
             <UploadPanel
                 uploads={uploads}
                 minimized={uploadPanelMinimized}
@@ -1461,6 +1549,7 @@ function FileRow({
                      onRenameCancel,
                      onDownload,
                      onRename,
+                     onShare,
                      onCopy,
                      onCut,
                      onDelete,
@@ -1473,6 +1562,30 @@ function FileRow({
     function handleMenuButtonClick(event) {
         event.stopPropagation();
         setOpenMenuId(menuOpen ? null : item.id);
+    }
+
+    async function handleSubmit(event) {
+        event.preventDefault();
+
+        if (selectedUsers.length === 0) {
+            setError("Select at least one user");
+            inputRef.current?.focus();
+            return;
+        }
+
+        const shares = selectedUsers.map((user) => ({
+            userId: user.id,
+            username: getUsername(user),
+            role: user.role || "VIEWER",
+        }));
+
+        setError("");
+
+        await onSubmit?.({
+            resourceType: target.resourceType,
+            resourceId: target.resourceId,
+            shares,
+        });
     }
 
     function runAction(event, action) {
@@ -1503,54 +1616,66 @@ function FileRow({
                     )}
                 </span>
 
-                <span>
-                    {isDraft ? (
-                        <input
-                            ref={draftInputRef}
-                            className="new-folder-name-input"
-                            defaultValue={item.name}
-                            disabled={creatingFolder}
-                            onClick={(event) => event.stopPropagation()}
-                            onDoubleClick={(event) => event.stopPropagation()}
-                            onBlur={(event) => onDraftCommit(event.target.value)}
-                            onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    onDraftCommit(event.currentTarget.value);
-                                }
+                <span className="file-name-text">
+    {isDraft ? (
+        <input
+            ref={draftInputRef}
+            className="new-folder-name-input"
+            defaultValue={item.name}
+            disabled={creatingFolder}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onBlur={(event) => onDraftCommit(event.target.value)}
+            onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    onDraftCommit(event.currentTarget.value);
+                }
 
-                                if (event.key === "Escape") {
-                                    event.preventDefault();
-                                    onDraftCancel();
-                                }
-                            }}
-                        />
-                    ) : isRenaming ? (
-                        <input
-                            ref={renameInputRef}
-                            className="new-folder-name-input"
-                            defaultValue={item.name}
-                            onClick={(event) => event.stopPropagation()}
-                            onDoubleClick={(event) => event.stopPropagation()}
-                            onBlur={(event) => onRenameCommit(item, event.target.value)}
-                            onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    onRenameCommit(item, event.currentTarget.value);
-                                }
+                if (event.key === "Escape") {
+                    event.preventDefault();
+                    onDraftCancel();
+                }
+            }}
+        />
+    ) : isRenaming ? (
+        <input
+            ref={renameInputRef}
+            className="new-folder-name-input"
+            defaultValue={item.name}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onBlur={(event) => onRenameCommit(item, event.target.value)}
+            onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    onRenameCommit(item, event.currentTarget.value);
+                }
 
-                                if (event.key === "Escape") {
-                                    event.preventDefault();
-                                    onRenameCancel();
-                                }
-                            }}
-                        />
-                    ) : (
-                        <strong>{item.name}</strong>
-                    )}
+                if (event.key === "Escape") {
+                    event.preventDefault();
+                    onRenameCancel();
+                }
+            }}
+        />
+    ) : (
+        <span className="item-title-line">
+            <strong title={item.name}>{item.name}</strong>
+
+            {item.shared && (
+                <span
+                    className="shared-indicator"
+                    title="Shared"
+                    aria-label="Shared"
+                >
+                    <Icons.Shared className="shared-indicator-icon" />
+                </span>
+            )}
+        </span>
+    )}
 
                     <small>{isDraft ? "Folder" : getTypeLabel(item.type)}</small>
-                </span>
+</span>
             </div>
 
             <div className="owner-cell">
@@ -1599,6 +1724,14 @@ function FileRow({
                                 >
                                     <Icons.Rename className="menu-action-icon" />
                                     Rename
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={(event) => runAction(event, onShare)}
+                                >
+                                    <Icons.Share className="menu-action-icon" />
+                                    Share
                                 </button>
 
                                 <button

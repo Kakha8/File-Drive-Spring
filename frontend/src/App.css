@@ -2449,3 +2449,71 @@ body,
   align-items: center;
   justify-content: center;
 }
+
+.item-title-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.shared-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  opacity: 0.95;
+  flex: 0 0 auto;
+}
+
+.shared-indicator-icon {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.2;
+}
+
+.file-row:hover .shared-indicator {
+  color: #bfdbfe;
+}
+
+.file-row.selected .shared-indicator {
+  color: #dbeafe;
+}
+
+.name-cell {
+  min-width: 0;
+}
+
+.file-name-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  overflow: hidden;
+}
+
+.item-title-line {
+  max-width: 100%;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.item-title-line strong {
+  min-width: 0;
+  max-width: 100%;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-name-text small {
+  max-width: 100%;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

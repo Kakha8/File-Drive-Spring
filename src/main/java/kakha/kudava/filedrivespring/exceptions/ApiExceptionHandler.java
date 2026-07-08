@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 @Slf4j
 @RestControllerAdvice
@@ -59,6 +60,19 @@ public class ApiExceptionHandler {
                         "INTERNAL_SERVER_ERROR",
                         "Unexpected server error",
                         HttpStatus.INTERNAL_SERVER_ERROR.value()
+                ));
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiErrorResponse> handleResponseStatusException(ResponseStatusException ex) {
+        int status = ex.getStatusCode().value();
+
+        return ResponseEntity
+                .status(status)
+                .body(ApiErrorResponse.of(
+                        ex.getStatusCode().toString(),
+                        ex.getReason(),
+                        status
                 ));
     }
 }
