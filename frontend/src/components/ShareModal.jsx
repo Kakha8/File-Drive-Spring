@@ -421,76 +421,76 @@ export default function ShareModal({
                         )}
                     </label>
 
-                    <div className="share-selected-users">
+                    <div className="share-selected-section">
                         <p className="share-selected-title">
                             People with access
+
+                            {selectedUsers.length > 0 && (
+                                <span className="share-selected-count">
+                {selectedUsers.length}
+            </span>
+                            )}
                         </p>
 
-                        {existingLoading ? (
-                            <div className="share-search-status">
-                                Loading current shares...
-                            </div>
-                        ) : selectedUsers.length === 0 ? (
-                            <div className="share-search-status">
-                                Only you have access.
-                            </div>
-                        ) : (
-                            selectedUsers.map((user) => {
-                                const username = getUsername(user);
+                        <div className="share-selected-users">
+                            {existingLoading ? (
+                                <div className="share-search-status">
+                                    Loading current shares...
+                                </div>
+                            ) : selectedUsers.length === 0 ? (
+                                <div className="share-search-status">
+                                    Only you have access.
+                                </div>
+                            ) : (
+                                selectedUsers.map((user) => {
+                                    const username = getUsername(user);
 
-                                return (
-                                    <div
-                                        key={user.shareId || user.id || username}
-                                        className="share-selected-user"
-                                    >
-                                        <div className="share-selected-user-main">
-                                            <span className="share-user-avatar">
-                                                {username
-                                                    .slice(0, 1)
-                                                    .toUpperCase()}
-                                            </span>
+                                    return (
+                                        <div
+                                            key={user.shareId || user.id || username}
+                                            className="share-selected-user"
+                                        >
+                                            <div className="share-selected-user-main">
+                            <span className="share-user-avatar">
+                                {username.slice(0, 1).toUpperCase()}
+                            </span>
 
-                                            <span className="share-selected-username">
-                                                {username}
-                                            </span>
+                                                <span className="share-selected-username">
+                                {username}
+                            </span>
+                                            </div>
+
+                                            <div className="share-selected-actions">
+                                                <select
+                                                    className="share-selected-role"
+                                                    value={user.role || "VIEWER"}
+                                                    onChange={(event) =>
+                                                        updateUserRole(
+                                                            username,
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    disabled={busy}
+                                                >
+                                                    <option value="VIEWER">Viewer</option>
+                                                    <option value="EDITOR">Editor</option>
+                                                </select>
+
+                                                <button
+                                                    type="button"
+                                                    className="share-remove-user"
+                                                    onClick={() => removeUser(username)}
+                                                    disabled={busy}
+                                                    aria-label={`Remove ${username}`}
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
                                         </div>
-
-                                        <div className="share-selected-actions">
-                                            <select
-                                                className="share-selected-role"
-                                                value={user.role || "VIEWER"}
-                                                onChange={(event) =>
-                                                    updateUserRole(
-                                                        username,
-                                                        event.target.value
-                                                    )
-                                                }
-                                                disabled={busy}
-                                            >
-                                                <option value="VIEWER">
-                                                    Viewer
-                                                </option>
-                                                <option value="EDITOR">
-                                                    Editor
-                                                </option>
-                                            </select>
-
-                                            <button
-                                                type="button"
-                                                className="share-remove-user"
-                                                onClick={() =>
-                                                    removeUser(username)
-                                                }
-                                                disabled={busy}
-                                                aria-label={`Remove ${username}`}
-                                            >
-                                                ×
-                                            </button>
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        )}
+                                    );
+                                })
+                            )}
+                        </div>
                     </div>
 
                     <div className="share-role-help">
