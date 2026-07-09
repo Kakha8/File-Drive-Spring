@@ -27,7 +27,7 @@ public class UserService {
         this.passwordEncoder = passwordEncoder;
     }
 
-    public UserDTO saveUser(UserDTO userDTO) {
+/*    public UserDTO saveUser(UserDTO userDTO) {
         User user = new User();
         user.setUsername(userDTO.getUsername());
         user.setPassword(passwordEncoder.encode(userDTO.getPassword()));
@@ -38,7 +38,7 @@ public class UserService {
 
         log.info("User saved successfully: {}", userDTO.getUsername());
         return userDTO;
-    }
+    }*/
 
     public List<UserDTO> getAllUsers() {
         List<User> users = userRepository.findAll();
