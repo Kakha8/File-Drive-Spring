@@ -3,6 +3,7 @@ package kakha.kudava.filedrivespring.controller;
 import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.UserRepository;
+import kakha.kudava.filedrivespring.services.users.RegistrationService;
 import kakha.kudava.filedrivespring.services.users.UserService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,10 +21,12 @@ public class UsersRestController {
 
     private final UserService userService;
     private final UserRepository userRepository;
+    private final RegistrationService registrationService;
 
-    public UsersRestController(UserService userService, UserRepository userRepository) {
+    public UsersRestController(UserService userService, UserRepository userRepository, RegistrationService registrationService) {
         this.userService = userService;
         this.userRepository = userRepository;
+        this.registrationService = registrationService;
     }
 
     @PreAuthorize("hasRole('ADMIN')")
@@ -70,7 +73,7 @@ public class UsersRestController {
                 .toList();
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+/*    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     public ResponseEntity<Map<String, String>> addUser(@RequestBody UserDTO userDTO) {
         UserDTO savedUser = userService.saveUser(userDTO);
@@ -78,7 +81,7 @@ public class UsersRestController {
                 .body(Map.of("Message" , "User added successfully!" ,
                 "Username", savedUser.getUsername() )
         );
-    }
+    }*/
 
     @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")

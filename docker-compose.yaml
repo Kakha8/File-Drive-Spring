@@ -18,8 +18,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:h2:file:/app/data/mydb;AUTO_SERVER=TRUE
 
       S3_ENDPOINT: https://minio:9000
-      S3_ACCESS_KEY: minioadmin
-      S3_SECRET_KEY: minioadmin123
+      S3_ACCESS_KEY: ${MINIO_APP_USER}
+      S3_SECRET_KEY: ${MINIO_APP_PASSWORD}
       S3_BUCKET: file-drive-bucket
       S3_QUARANTINE_BUCKET: file-drive-quarantine
 
@@ -52,16 +52,16 @@ services:
     depends_on:
       - kes
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin123
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
 
       MINIO_KMS_KES_ENDPOINT: https://kes:7373
       MINIO_KMS_KES_API_KEY: ${MINIO_KMS_KES_API_KEY}
       MINIO_KMS_KES_CAPATH: /certs/rootCA.crt
       MINIO_KMS_KES_KEY_NAME: file-drive-master-key
     ports:
-      - "9000:9000" # S3 API
-      - "9001:9001" # Web console
+      - "127.0.0.1:9000:9000"
+      #- "9001:9001" # Web console
     volumes:
       - ./minio-data:/data
       - ./certs/minio/public.crt:/root/.minio/certs/public.crt:ro
@@ -72,8 +72,8 @@ services:
     image: minio/kes:latest
     container_name: kes
     command: server --config /config/server-config.yml
-    ports:
-      - "7373:7373"
+    expose:
+      - "7373"
     volumes:
       - ./kes/server-config.yml:/config/server-config.yml:ro
       - ./certs/kes/public.crt:/certs/public.crt:ro
@@ -98,24 +98,75 @@ services:
     image: minio/mc:latest
     depends_on:
       - minio
-    entrypoint: >
-      /bin/sh -c "
-      echo 'Waiting for MinIO...';
-      until mc alias set local https://minio:9000 minioadmin minioadmin123 --insecure; do
-        sleep 2;
-      done;
-      mc mb -p local/file-drive-bucket --insecure || true;
-      mc admin kms key create local file-drive-master-key --insecure || true;
-      mc encrypt set sse-s3 local/file-drive-bucket --insecure || true;
-      mc encrypt info local/file-drive-bucket --insecure || true;
-      mc anonymous set download local/file-drive-bucket --insecure || true;
-      mc mb -p local/file-drive-quarantine --insecure || true;
-      mc anonymous set none local/file-drive-quarantine --insecure || true;
-      
-      mc mb -p local/file-drive-trash --insecure || true;
-      mc encrypt set sse-s3 local/file-drive-trash --insecure || true;
-      mc encrypt info local/file-drive-trash --insecure || true;
-      mc anonymous set none local/file-drive-trash --insecure || true;
-      
-      echo 'Bucket is ready';
-      "
+    env_file:
+      - .env
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+
+        echo "Waiting for MinIO..."
+        until mc alias set local https://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" --insecure; do
+          sleep 2
+        done
+
+        echo "Creating buckets..."
+        mc mb -p local/file-drive-bucket --insecure || true
+        mc mb -p local/file-drive-quarantine --insecure || true
+        mc mb -p local/file-drive-trash --insecure || true
+
+        echo "Configuring encryption..."
+        mc admin kms key create local file-drive-master-key --insecure || true
+        mc encrypt set sse-s3 local/file-drive-bucket --insecure || true
+        mc encrypt set sse-s3 local/file-drive-trash --insecure || true
+
+        echo "Disabling anonymous access..."
+        mc anonymous set none local/file-drive-bucket --insecure || true
+        mc anonymous set none local/file-drive-quarantine --insecure || true
+        mc anonymous set none local/file-drive-trash --insecure || true
+
+        echo "Creating limited app policy..."
+        cat > /tmp/filedrive-app-policy.json <<'EOF'
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:GetBucketLocation",
+                "s3:ListBucket",
+                "s3:ListBucketMultipartUploads"
+              ],
+              "Resource": [
+                "arn:aws:s3:::file-drive-bucket",
+                "arn:aws:s3:::file-drive-quarantine",
+                "arn:aws:s3:::file-drive-trash"
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:AbortMultipartUpload",
+                "s3:ListMultipartUploadParts"
+              ],
+              "Resource": [
+                "arn:aws:s3:::file-drive-bucket/*",
+                "arn:aws:s3:::file-drive-quarantine/*",
+                "arn:aws:s3:::file-drive-trash/*"
+              ]
+            }
+          ]
+        }
+        EOF
+
+        mc admin policy create local filedrive-app-policy /tmp/filedrive-app-policy.json --insecure || true
+
+        echo "Creating limited MinIO app user..."
+        mc admin user add local "$MINIO_APP_USER" "$MINIO_APP_PASSWORD" --insecure || true
+        mc admin policy attach local filedrive-app-policy --user "$MINIO_APP_USER" --insecure || true
+
+        echo "Buckets, encryption, private access, and app MinIO user are ready"
