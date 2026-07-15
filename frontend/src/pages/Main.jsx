@@ -276,6 +276,51 @@ function formatBytes(bytes) {
     return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
+
+function formatLastEdited(value) {
+    if (!value) {
+        return { lastEdited: "—", time: "" };
+    }
+
+    const editedAt = new Date(value);
+
+    if (Number.isNaN(editedAt.getTime())) {
+        return { lastEdited: "—", time: "" };
+    }
+
+    const now = new Date();
+    const todayKey = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const editedKey = Date.UTC(
+        editedAt.getFullYear(),
+        editedAt.getMonth(),
+        editedAt.getDate()
+    );
+    const daysAgo = Math.round((todayKey - editedKey) / 86_400_000);
+
+    let lastEdited;
+
+    if (daysAgo === 0) {
+        lastEdited = "Today";
+    } else if (daysAgo === 1) {
+        lastEdited = "Yesterday";
+    } else {
+        lastEdited = new Intl.DateTimeFormat(undefined, {
+            month: "short",
+            day: "numeric",
+            ...(editedAt.getFullYear() === now.getFullYear()
+                ? {}
+                : { year: "numeric" }),
+        }).format(editedAt);
+    }
+
+    const time = new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+    }).format(editedAt);
+
+    return { lastEdited, time };
+}
+
 function getFileIcon(type) {
     if (type === "folder") return Icons.Folder;
     if (type && type.startsWith("image/")) return Icons.Image;
@@ -316,37 +361,45 @@ function getFileTag(item) {
 function normalizeFolderItems(folderData) {
     if (!folderData) return [];
 
-    const folders = (folderData.folders || []).map((folder) => ({
-        id: `folder-${folder.id}`,
-        rawId: folder.id,
-        name: folder.name || "Untitled folder",
-        type: "folder",
-        owner: folderData.name || "You",
-        ownerInitials: "ME",
-        tag: "Folder",
-        lastEdited: "—",
-        time: "",
-        size: "—",
-        shared: Boolean(folder.shared),
-        folder,
-    }));
+    const folders = (folderData.folders || []).map((folder) => {
+        const edited = formatLastEdited(folder.lastModifiedDate);
+
+        return {
+            id: `folder-${folder.id}`,
+            rawId: folder.id,
+            name: folder.name || "Untitled folder",
+            type: "folder",
+            owner: folderData.name || "You",
+            ownerInitials: "ME",
+            tag: "Folder",
+            lastEdited: edited.lastEdited,
+            time: edited.time,
+            size: "—",
+            shared: Boolean(folder.shared),
+            folder,
+        };
+    });
 
     const files = (folderData.files || [])
         .filter((file) => !file.deleted)
-        .map((file) => ({
-            id: `file-${file.id}`,
-            rawId: file.id,
-            name: file.fileName || "Untitled file",
-            type: file.objectType || "file",
-            owner: folderData.name || "You",
-            ownerInitials: "ME",
-            tag: getFileTag({ type: file.objectType || "file" }),
-            lastEdited: "—",
-            time: "",
-            size: formatBytes(file.size),
-            shared: Boolean(file.shared),
-            file,
-        }));
+        .map((file) => {
+            const edited = formatLastEdited(file.lastModifiedDate);
+
+            return {
+                id: `file-${file.id}`,
+                rawId: file.id,
+                name: file.fileName || "Untitled file",
+                type: file.objectType || "file",
+                owner: folderData.name || "You",
+                ownerInitials: "ME",
+                tag: getFileTag({ type: file.objectType || "file" }),
+                lastEdited: edited.lastEdited,
+                time: edited.time,
+                size: formatBytes(file.size),
+                shared: Boolean(file.shared),
+                file,
+            };
+        });
 
     return [...folders, ...files];
 }

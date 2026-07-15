@@ -205,6 +205,68 @@ function getFileIcon(type) {
     return Icons.File;
 }
 
+
+function formatLastEdited(value) {
+    if (!value) {
+        return { lastEdited: "—", time: "" };
+    }
+
+    const editedAt = new Date(value);
+
+    if (Number.isNaN(editedAt.getTime())) {
+        return { lastEdited: "—", time: "" };
+    }
+
+    const now = new Date();
+    const todayKey = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const editedKey = Date.UTC(
+        editedAt.getFullYear(),
+        editedAt.getMonth(),
+        editedAt.getDate()
+    );
+    const daysAgo = Math.round((todayKey - editedKey) / 86_400_000);
+
+    let lastEdited;
+
+    if (daysAgo === 0) {
+        lastEdited = "Today";
+    } else if (daysAgo === 1) {
+        lastEdited = "Yesterday";
+    } else {
+        lastEdited = new Intl.DateTimeFormat(undefined, {
+            month: "short",
+            day: "numeric",
+            ...(editedAt.getFullYear() === now.getFullYear()
+                ? {}
+                : { year: "numeric" }),
+        }).format(editedAt);
+    }
+
+    const time = new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+    }).format(editedAt);
+
+    return { lastEdited, time };
+}
+
+
+function formatBytes(bytes) {
+    if (!bytes && bytes !== 0) return "—";
+    if (bytes === 0) return "0 B";
+
+    const units = ["B", "KB", "MB", "GB"];
+    let value = bytes;
+    let index = 0;
+
+    while (value >= 1024 && index < units.length - 1) {
+        value /= 1024;
+        index += 1;
+    }
+
+    return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
 function getTypeLabel(item) {
     if (item.resourceType === "FOLDER") return "Folder";
     if (item.type === "application/pdf") return "PDF document";
@@ -228,6 +290,7 @@ function normalizeSharedItems(items) {
     return (items || []).map((item) => {
         const type = getSharedType(item);
         const owner = item.ownerUsername || "Unknown";
+        const edited = formatLastEdited(item.lastModifiedDate);
 
         return {
             id: `shared-${item.shareId}`,
@@ -239,7 +302,10 @@ function normalizeSharedItems(items) {
             owner,
             ownerInitials: owner.slice(0, 2).toUpperCase(),
             role: item.role || "VIEWER",
-            size: "—",
+            lastModifiedDate: item.lastModifiedDate || null,
+            lastEdited: edited.lastEdited,
+            time: edited.time,
+            size: formatBytes(item.size),
         };
     });
 }
@@ -395,12 +461,20 @@ export default function SharedWithMe({ onLogout }) {
     }
 
     function handleEditorSaved(result) {
+        const lastModifiedDate =
+            result?.lastModifiedDate || new Date().toISOString();
+        const edited = formatLastEdited(lastModifiedDate);
+
         setItems((currentItems) =>
             currentItems.map((currentItem) =>
                 currentItem.rawId === result?.fileId
                     ? {
                         ...currentItem,
                         type: result.contentType || currentItem.type,
+                        lastModifiedDate,
+                        lastEdited: edited.lastEdited,
+                        time: edited.time,
+                        size: formatBytes(result?.size),
                     }
                     : currentItem
             )
@@ -687,7 +761,10 @@ function SharedFileRow({
                 <TagPill tag={item.role} />
             </div>
 
-            <div>—</div>
+            <div title={item.lastModifiedDate || undefined}>
+                {item.lastEdited}
+                {item.time && <small>{item.time}</small>}
+            </div>
 
             <div className="size-cell">
                 <span>{item.size}</span>
