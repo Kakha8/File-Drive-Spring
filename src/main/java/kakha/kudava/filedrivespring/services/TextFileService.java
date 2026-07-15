@@ -28,12 +28,30 @@ import java.security.MessageDigest;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class TextFileService {
 
-    private static final String TEXT_CONTENT_TYPE =
-            "text/plain; charset=UTF-8";
+    private static final Set<String> EDITABLE_EXTENSIONS = Set.of(
+            "txt",
+            "md",
+            "csv",
+            "json",
+            "xml",
+            "yaml",
+            "yml",
+            "properties",
+            "ini",
+            "log",
+            "html",
+            "css",
+            "js",
+            "ts",
+            "java",
+            "py",
+            "sql"
+    );
 
     private final MinioClient minioClient;
     private final String bucket;
@@ -65,11 +83,9 @@ public class TextFileService {
     }
 
     public TextFileContentDTO getContent(Long fileId) throws Exception {
-        // Checks that the file exists and the current user may view it.
-        FileMetaData file =
-                resourceAccessService.requireFileView(fileId);
+        FileMetaData file = resourceAccessService.requireFileView(fileId);
 
-        requireTxtFile(file);
+        requireEditableTextFile(file);
 
         byte[] bytes;
 
@@ -92,11 +108,9 @@ public class TextFileService {
             UpdateTextFileRequest request
     ) throws Exception {
 
-        // Checks that the current user has edit permission.
-        FileMetaData file =
-                resourceAccessService.requireFileEdit(fileId);
+        FileMetaData file = resourceAccessService.requireFileEdit(fileId);
 
-        requireTxtFile(file);
+        requireEditableTextFile(file);
 
         if (request == null || request.getContent() == null) {
             throw new ResponseStatusException(
@@ -114,24 +128,24 @@ public class TextFileService {
 
         String newChecksum = sha256(newBytes);
 
-        // Content has not changed, so there is no need to rewrite MinIO.
+        // Skip the MinIO write when the content has not changed.
         if (newChecksum.equalsIgnoreCase(file.getChecksum())) {
             return toDto(file, request.getContent());
         }
 
-        scanContent(newBytes);
+        scanContent(file, newBytes);
 
         String oldChecksum = file.getChecksum();
         Long oldSize = file.getSize();
+        String contentType = resolveContentType(file.getFileName());
 
-        replaceMinioObject(file, newBytes);
+        replaceMinioObject(file, newBytes, contentType);
 
         file.setChecksum(newChecksum);
         file.setSize((long) newBytes.length);
-        file.setObjectType(TEXT_CONTENT_TYPE);
+        file.setObjectType(contentType);
 
-        FileMetaData savedFile =
-                fileMetaDataRepository.save(file);
+        FileMetaData savedFile = fileMetaDataRepository.save(file);
 
         createUpdateLog(
                 savedFile,
@@ -146,7 +160,8 @@ public class TextFileService {
 
     private void replaceMinioObject(
             FileMetaData file,
-            byte[] content
+            byte[] content,
+            String contentType
     ) throws Exception {
 
         try (InputStream inputStream =
@@ -161,15 +176,22 @@ public class TextFileService {
                                     content.length,
                                     -1
                             )
-                            .contentType(TEXT_CONTENT_TYPE)
+                            .contentType(contentType)
                             .build()
             );
         }
     }
 
-    private void scanContent(byte[] content) throws Exception {
+    private void scanContent(
+            FileMetaData file,
+            byte[] content
+    ) throws Exception {
+
+        String extension = getExtension(file.getFileName());
+        String suffix = extension.isBlank() ? ".txt" : "." + extension;
+
         Path temporaryFile =
-                Files.createTempFile("text-edit-", ".txt");
+                Files.createTempFile("text-edit-", suffix);
 
         try {
             Files.write(temporaryFile, content);
@@ -191,8 +213,7 @@ public class TextFileService {
             FileMetaData file,
             String expectedChecksum
     ) {
-        if (expectedChecksum == null ||
-                expectedChecksum.isBlank()) {
+        if (expectedChecksum == null || expectedChecksum.isBlank()) {
             return;
         }
 
@@ -209,10 +230,16 @@ public class TextFileService {
             FileMetaData file,
             String content
     ) {
+        String contentType = file.getObjectType();
+
+        if (contentType == null || contentType.isBlank()) {
+            contentType = resolveContentType(file.getFileName());
+        }
+
         return new TextFileContentDTO(
                 file.getId(),
                 file.getFileName(),
-                file.getObjectType(),
+                contentType,
                 StandardCharsets.UTF_8.name(),
                 file.getSize(),
                 file.getChecksum(),
@@ -220,18 +247,83 @@ public class TextFileService {
         );
     }
 
-    private void requireTxtFile(FileMetaData file) {
-        String fileName = file.getFileName();
+    private void requireEditableTextFile(FileMetaData file) {
+        String extension = getExtension(file.getFileName());
 
-        if (fileName == null ||
-                !fileName.toLowerCase(Locale.ROOT)
-                        .endsWith(".txt")) {
-
+        if (extension.isBlank()) {
             throw new ResponseStatusException(
                     HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-                    "Only .txt files can be edited"
+                    "Files without an extension cannot be edited"
             );
         }
+
+        if (!EDITABLE_EXTENSIONS.contains(extension)) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Editing is not supported for ." + extension + " files"
+            );
+        }
+    }
+
+    private String getExtension(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return "";
+        }
+
+        int lastDot = fileName.lastIndexOf('.');
+
+        if (lastDot < 0 || lastDot == fileName.length() - 1) {
+            return "";
+        }
+
+        return fileName.substring(lastDot + 1)
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private String resolveContentType(String fileName) {
+        return switch (getExtension(fileName)) {
+            case "txt", "log", "ini", "properties" ->
+                    "text/plain; charset=UTF-8";
+
+            case "md" ->
+                    "text/markdown; charset=UTF-8";
+
+            case "csv" ->
+                    "text/csv; charset=UTF-8";
+
+            case "json" ->
+                    "application/json; charset=UTF-8";
+
+            case "xml" ->
+                    "application/xml; charset=UTF-8";
+
+            case "yaml", "yml" ->
+                    "application/yaml; charset=UTF-8";
+
+            case "html" ->
+                    "text/html; charset=UTF-8";
+
+            case "css" ->
+                    "text/css; charset=UTF-8";
+
+            case "js" ->
+                    "text/javascript; charset=UTF-8";
+
+            case "ts" ->
+                    "application/typescript; charset=UTF-8";
+
+            case "java" ->
+                    "text/x-java-source; charset=UTF-8";
+
+            case "py" ->
+                    "text/x-python; charset=UTF-8";
+
+            case "sql" ->
+                    "application/sql; charset=UTF-8";
+
+            default ->
+                    "text/plain; charset=UTF-8";
+        };
     }
 
     private byte[] readWithLimit(
@@ -286,7 +378,7 @@ public class TextFileService {
         } catch (CharacterCodingException exception) {
             throw new ResponseStatusException(
                     HttpStatus.UNPROCESSABLE_ENTITY,
-                    "The .txt file is not valid UTF-8 text"
+                    "The file is not valid UTF-8 text"
             );
         }
     }
