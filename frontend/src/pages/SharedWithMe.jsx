@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import DriveSidebar from "../components/DriveSidebar";
+import { logout as apiLogout } from "../api/auth";
 import { getFileBlob, getFolderZipBlob } from "../api/drive";
 import { getSharedWithMe } from "../api/sharing";
+import TextEditorModal from "../components/TextEditorModal";
 
 function Icon({ children, className = "" }) {
     return (
@@ -118,7 +119,55 @@ const Icons = {
             <path d="M5 21h14" />
         </Icon>
     ),
+    Edit: ({ className }) => (
+        <Icon className={className}>
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+            <path d="m15 5 3 3" />
+        </Icon>
+    ),
 };
+
+
+const EDITABLE_EXTENSIONS = new Set([
+    "txt",
+    "md",
+    "csv",
+    "json",
+    "xml",
+    "yaml",
+    "yml",
+    "properties",
+    "ini",
+    "log",
+    "html",
+    "css",
+    "js",
+    "ts",
+    "java",
+    "py",
+    "sql",
+]);
+
+function getFileExtension(fileName) {
+    if (!fileName) return "";
+
+    const lastDot = fileName.lastIndexOf(".");
+
+    if (lastDot < 0 || lastDot === fileName.length - 1) {
+        return "";
+    }
+
+    return fileName.substring(lastDot + 1).toLowerCase();
+}
+
+function canEditSharedFile(item) {
+    return (
+        item?.resourceType === "FILE" &&
+        item?.role === "EDITOR" &&
+        EDITABLE_EXTENSIONS.has(getFileExtension(item?.name))
+    );
+}
 
 const navItems = [
     { key: "my", label: "My files", icon: Icons.File },
@@ -156,6 +205,52 @@ function getFileIcon(type) {
     return Icons.File;
 }
 
+
+function formatLastEdited(value) {
+    if (!value) {
+        return { lastEdited: "—", time: "" };
+    }
+
+    const editedAt = new Date(value);
+
+    if (Number.isNaN(editedAt.getTime())) {
+        return { lastEdited: "—", time: "" };
+    }
+
+    const now = new Date();
+    const todayKey = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const editedKey = Date.UTC(
+        editedAt.getFullYear(),
+        editedAt.getMonth(),
+        editedAt.getDate()
+    );
+    const daysAgo = Math.round((todayKey - editedKey) / 86_400_000);
+
+    let lastEdited;
+
+    if (daysAgo === 0) {
+        lastEdited = "Today";
+    } else if (daysAgo === 1) {
+        lastEdited = "Yesterday";
+    } else {
+        lastEdited = new Intl.DateTimeFormat(undefined, {
+            month: "short",
+            day: "numeric",
+            ...(editedAt.getFullYear() === now.getFullYear()
+                ? {}
+                : { year: "numeric" }),
+        }).format(editedAt);
+    }
+
+    const time = new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+    }).format(editedAt);
+
+    return { lastEdited, time };
+}
+
+
 function formatBytes(bytes) {
     if (!bytes && bytes !== 0) return "—";
     if (bytes === 0) return "0 B";
@@ -171,6 +266,7 @@ function formatBytes(bytes) {
 
     return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
+
 function getTypeLabel(item) {
     if (item.resourceType === "FOLDER") return "Folder";
     if (item.type === "application/pdf") return "PDF document";
@@ -194,6 +290,7 @@ function normalizeSharedItems(items) {
     return (items || []).map((item) => {
         const type = getSharedType(item);
         const owner = item.ownerUsername || "Unknown";
+        const edited = formatLastEdited(item.lastModifiedDate);
 
         return {
             id: `shared-${item.shareId}`,
@@ -205,6 +302,9 @@ function normalizeSharedItems(items) {
             owner,
             ownerInitials: owner.slice(0, 2).toUpperCase(),
             role: item.role || "VIEWER",
+            lastModifiedDate: item.lastModifiedDate || null,
+            lastEdited: edited.lastEdited,
+            time: edited.time,
             size: formatBytes(item.size),
         };
     });
@@ -233,6 +333,7 @@ export default function SharedWithMe({ onLogout }) {
     const [openMenuId, setOpenMenuId] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [editorTarget, setEditorTarget] = useState(null);
     const [confirmLogout, setConfirmLogout] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -343,6 +444,41 @@ export default function SharedWithMe({ onLogout }) {
 
     function handleOpen(item) {
         handleDownload(item);
+    }
+
+
+    function handleEdit(item) {
+        setOpenMenuId(null);
+
+        if (!canEditSharedFile(item)) {
+            setError("You do not have permission to edit this shared file.");
+            return;
+        }
+
+        setError("");
+        setSelectedIds([item.id]);
+        setEditorTarget(item);
+    }
+
+    function handleEditorSaved(result) {
+        const lastModifiedDate =
+            result?.lastModifiedDate || new Date().toISOString();
+        const edited = formatLastEdited(lastModifiedDate);
+
+        setItems((currentItems) =>
+            currentItems.map((currentItem) =>
+                currentItem.rawId === result?.fileId
+                    ? {
+                        ...currentItem,
+                        type: result.contentType || currentItem.type,
+                        lastModifiedDate,
+                        lastEdited: edited.lastEdited,
+                        time: edited.time,
+                        size: formatBytes(result?.size),
+                    }
+                    : currentItem
+            )
+        );
     }
 
     return (
@@ -532,6 +668,7 @@ export default function SharedWithMe({ onLogout }) {
                                         }
                                         onOpen={() => handleOpen(item)}
                                         onDownload={handleDownload}
+                                        onEdit={handleEdit}
                                     />
                                 ))}
 
@@ -550,6 +687,14 @@ export default function SharedWithMe({ onLogout }) {
                     </section>
                 </div>
             </section>
+
+            {editorTarget && (
+                <TextEditorModal
+                    item={editorTarget}
+                    onClose={() => setEditorTarget(null)}
+                    onSaved={handleEditorSaved}
+                />
+            )}
         </main>
     );
 }
@@ -560,6 +705,7 @@ function SharedFileRow({
                            onSelect,
                            onOpen,
                            onDownload,
+                           onEdit,
                            openMenuId,
                            setOpenMenuId,
                        }) {
@@ -589,21 +735,21 @@ function SharedFileRow({
                     <FileIcon className="svg-icon" />
                 </span>
 
-                <span className="file-name-text">
-    <span className="item-title-line">
-        <strong title={item.name}>{item.name}</strong>
+                <span>
+                    <span className="item-title-line">
+                        <strong>{item.name}</strong>
 
-        <span
-            className="shared-indicator"
-            title="Shared with me"
-            aria-label="Shared with me"
-        >
-            <Icons.Shared className="shared-indicator-icon" />
-        </span>
-    </span>
+                        <span
+                            className="shared-indicator"
+                            title="Shared with me"
+                            aria-label="Shared with me"
+                        >
+                            <Icons.Shared className="shared-indicator-icon" />
+                        </span>
+                    </span>
 
-    <small>{getTypeLabel(item)}</small>
-</span>
+                    <small>{getTypeLabel(item)}</small>
+                </span>
             </div>
 
             <div className="owner-cell">
@@ -615,7 +761,10 @@ function SharedFileRow({
                 <TagPill tag={item.role} />
             </div>
 
-            <div>—</div>
+            <div title={item.lastModifiedDate || undefined}>
+                {item.lastEdited}
+                {item.time && <small>{item.time}</small>}
+            </div>
 
             <div className="size-cell">
                 <span>{item.size}</span>
@@ -640,6 +789,17 @@ function SharedFileRow({
                             <Icons.Download className="menu-action-icon" />
                             Download
                         </button>
+
+
+                        {canEditSharedFile(item) && (
+                            <button
+                                type="button"
+                                onClick={(event) => runAction(event, onEdit)}
+                            >
+                                <Icons.Edit className="menu-action-icon" />
+                                Edit
+                            </button>
+                        )}
                     </div>
                 )}
             </div>

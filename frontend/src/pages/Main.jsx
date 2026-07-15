@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { logout as apiLogout } from "../api/auth";
 import ConfirmTrashModal from "../components/ConfirmTrashModal";
 import ShareModal from "../components/ShareModal";
+import TextEditorModal from "../components/TextEditorModal";
 import {
     createFolder,
     getFileBlob,
@@ -160,6 +161,13 @@ const Icons = {
             <path d="M13 6 5 14l-1 5 5-1 8-8" />
         </Icon>
     ),
+    Edit: ({ className }) => (
+        <Icon className={className}>
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+            <path d="m15 5 3 3" />
+        </Icon>
+    ),
     Share: ({ className }) => (
         <Icon className={className}>
             <circle cx="18" cy="5" r="3" />
@@ -213,6 +221,45 @@ const navItems = [
     { key: "trash", label: "Trash", icon: Icons.Trash },
 ];
 
+const EDITABLE_EXTENSIONS = new Set([
+    "txt",
+    "md",
+    "csv",
+    "json",
+    "xml",
+    "yaml",
+    "yml",
+    "properties",
+    "ini",
+    "log",
+    "html",
+    "css",
+    "js",
+    "ts",
+    "java",
+    "py",
+    "sql",
+]);
+
+function getFileExtension(fileName) {
+    if (!fileName) return "";
+
+    const lastDot = fileName.lastIndexOf(".");
+
+    if (lastDot < 0 || lastDot === fileName.length - 1) {
+        return "";
+    }
+
+    return fileName.substring(lastDot + 1).toLowerCase();
+}
+
+function isEditableFile(item) {
+    return (
+        item?.type !== "folder" &&
+        EDITABLE_EXTENSIONS.has(getFileExtension(item?.name))
+    );
+}
+
 function formatBytes(bytes) {
     if (!bytes && bytes !== 0) return "—";
     if (bytes === 0) return "0 B";
@@ -227,6 +274,51 @@ function formatBytes(bytes) {
     }
 
     return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+
+function formatLastEdited(value) {
+    if (!value) {
+        return { lastEdited: "—", time: "" };
+    }
+
+    const editedAt = new Date(value);
+
+    if (Number.isNaN(editedAt.getTime())) {
+        return { lastEdited: "—", time: "" };
+    }
+
+    const now = new Date();
+    const todayKey = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const editedKey = Date.UTC(
+        editedAt.getFullYear(),
+        editedAt.getMonth(),
+        editedAt.getDate()
+    );
+    const daysAgo = Math.round((todayKey - editedKey) / 86_400_000);
+
+    let lastEdited;
+
+    if (daysAgo === 0) {
+        lastEdited = "Today";
+    } else if (daysAgo === 1) {
+        lastEdited = "Yesterday";
+    } else {
+        lastEdited = new Intl.DateTimeFormat(undefined, {
+            month: "short",
+            day: "numeric",
+            ...(editedAt.getFullYear() === now.getFullYear()
+                ? {}
+                : { year: "numeric" }),
+        }).format(editedAt);
+    }
+
+    const time = new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+    }).format(editedAt);
+
+    return { lastEdited, time };
 }
 
 function getFileIcon(type) {
@@ -269,37 +361,45 @@ function getFileTag(item) {
 function normalizeFolderItems(folderData) {
     if (!folderData) return [];
 
-    const folders = (folderData.folders || []).map((folder) => ({
-        id: `folder-${folder.id}`,
-        rawId: folder.id,
-        name: folder.name || "Untitled folder",
-        type: "folder",
-        owner: folderData.name || "You",
-        ownerInitials: "ME",
-        tag: "Folder",
-        lastEdited: "—",
-        time: "",
-        size: "—",
-        shared: Boolean(folder.shared),
-        folder,
-    }));
+    const folders = (folderData.folders || []).map((folder) => {
+        const edited = formatLastEdited(folder.lastModifiedDate);
+
+        return {
+            id: `folder-${folder.id}`,
+            rawId: folder.id,
+            name: folder.name || "Untitled folder",
+            type: "folder",
+            owner: folderData.name || "You",
+            ownerInitials: "ME",
+            tag: "Folder",
+            lastEdited: edited.lastEdited,
+            time: edited.time,
+            size: "—",
+            shared: Boolean(folder.shared),
+            folder,
+        };
+    });
 
     const files = (folderData.files || [])
         .filter((file) => !file.deleted)
-        .map((file) => ({
-            id: `file-${file.id}`,
-            rawId: file.id,
-            name: file.fileName || "Untitled file",
-            type: file.objectType || "file",
-            owner: folderData.name || "You",
-            ownerInitials: "ME",
-            tag: getFileTag({ type: file.objectType || "file" }),
-            lastEdited: "—",
-            time: "",
-            size: formatBytes(file.size),
-            shared: Boolean(file.shared),
-            file,
-        }));
+        .map((file) => {
+            const edited = formatLastEdited(file.lastModifiedDate);
+
+            return {
+                id: `file-${file.id}`,
+                rawId: file.id,
+                name: file.fileName || "Untitled file",
+                type: file.objectType || "file",
+                owner: folderData.name || "You",
+                ownerInitials: "ME",
+                tag: getFileTag({ type: file.objectType || "file" }),
+                lastEdited: edited.lastEdited,
+                time: edited.time,
+                size: formatBytes(file.size),
+                shared: Boolean(file.shared),
+                file,
+            };
+        });
 
     return [...folders, ...files];
 }
@@ -317,6 +417,7 @@ function Main({ onLogout }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [viewer, setViewer] = useState(null);
+    const [editorTarget, setEditorTarget] = useState(null);
     const [confirmLogout, setConfirmLogout] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -906,6 +1007,17 @@ function Main({ onLogout }) {
 
 
 
+    function handleEdit(item) {
+        if (!item?.rawId || !isEditableFile(item)) {
+            return;
+        }
+
+        setError("");
+        setOpenMenuId(null);
+        setSelectedIds([item.id]);
+        setEditorTarget(item);
+    }
+
     function cancelRename() {
         setRenamingItem(null);
     }
@@ -1457,6 +1569,7 @@ function Main({ onLogout }) {
                                         onDraftCancel={cancelCreateFolder}
                                         onDownload={handleDownload}
                                         onRename={handleRename}
+                                        onEdit={handleEdit}
                                         onShare={handleShare}
                                         onCopy={handleCopy}
                                         onCut={handleCut}
@@ -1526,6 +1639,14 @@ function Main({ onLogout }) {
                 onCancelUpload={cancelSingleUpload}
             />
 
+            {editorTarget && (
+                <TextEditorModal
+                    item={editorTarget}
+                    onClose={() => setEditorTarget(null)}
+                    onSaved={reloadCurrentFolder}
+                />
+            )}
+
             {viewer && <FileViewer viewer={viewer} onClose={closeViewer} />}
         </main>
     );
@@ -1549,6 +1670,7 @@ function FileRow({
                      onRenameCancel,
                      onDownload,
                      onRename,
+                     onEdit,
                      onShare,
                      onCopy,
                      onCut,
@@ -1725,6 +1847,16 @@ function FileRow({
                                     <Icons.Rename className="menu-action-icon" />
                                     Rename
                                 </button>
+
+                                {isEditableFile(item) && (
+                                    <button
+                                        type="button"
+                                        onClick={(event) => runAction(event, onEdit)}
+                                    >
+                                        <Icons.Edit className="menu-action-icon" />
+                                        Edit
+                                    </button>
+                                )}
 
                                 <button
                                     type="button"

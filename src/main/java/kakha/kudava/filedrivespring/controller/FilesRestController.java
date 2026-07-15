@@ -1,15 +1,9 @@
 package kakha.kudava.filedrivespring.controller;
 
-import kakha.kudava.filedrivespring.dto.DeleteFilesReqDTO;
-import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
-import kakha.kudava.filedrivespring.dto.MoveFileRequest;
-import kakha.kudava.filedrivespring.dto.RenameRequest;
+import kakha.kudava.filedrivespring.dto.*;
 import kakha.kudava.filedrivespring.model.FileMetaData;
-import kakha.kudava.filedrivespring.services.MoveService;
-import kakha.kudava.filedrivespring.services.UploadCancellationService;
+import kakha.kudava.filedrivespring.services.*;
 import kakha.kudava.filedrivespring.services.objects.FileService;
-import kakha.kudava.filedrivespring.services.ObjectStorageService;
-import kakha.kudava.filedrivespring.services.RenameService;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -31,14 +25,16 @@ public class FilesRestController {
     private final MoveService moveService;
     private final UploadCancellationService uploadCancellationService;
     private final ObjectStorageService objectStorageService;
+    private final TextFileService textFileService;
 
-    public FilesRestController(ObjectStorageService storage, FileService fileService, RenameService renameService, MoveService moveService, UploadCancellationService uploadCancellationService, ObjectStorageService objectStorageService) {
+    public FilesRestController(ObjectStorageService storage, FileService fileService, RenameService renameService, MoveService moveService, UploadCancellationService uploadCancellationService, ObjectStorageService objectStorageService, TextFileService textFileService) {
         this.storage = storage;
         this.fileService = fileService;
         this.renameService = renameService;
         this.moveService = moveService;
         this.uploadCancellationService = uploadCancellationService;
         this.objectStorageService = objectStorageService;
+        this.textFileService = textFileService;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -101,4 +97,34 @@ public class FilesRestController {
         moveService.copyFile(id, req.getTargetFolderId());
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping(
+            value = "/{id}/content",
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<TextFileContentDTO> getTextContent(
+            @PathVariable Long id
+    ) throws Exception {
+
+        TextFileContentDTO result = textFileService.getContent(id);
+
+        return ResponseEntity.ok(result);
+    }
+
+    @PutMapping(
+            value = "/{id}/content",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<TextFileContentDTO> updateTextContent(
+            @PathVariable Long id,
+            @RequestBody UpdateTextFileRequest request
+    ) throws Exception {
+
+        TextFileContentDTO result =
+                textFileService.updateContent(id, request);
+
+        return ResponseEntity.ok(result);
+    }
+
 }

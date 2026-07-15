@@ -214,4 +214,22 @@ public class LogsService {
                 detailsJson
         );
     }
+
+    public void updateLog(
+            String fileName,
+            Long entityId,
+            String entityType,
+            String detailsJson
+    ) {
+        ActionLogs actionLogs = logAction(
+                ActionType.UPDATE.name(),
+                entityId,
+                entityType,
+                detailsJson
+        );
+
+        actionLogsRepository.save(actionLogs);
+
+        log.info("Logging the update of {}", fileName);
+    }
 }

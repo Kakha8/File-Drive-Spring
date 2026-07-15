@@ -1,0 +1,241 @@
+.text-editor-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(4px);
+}
+
+.text-editor-modal {
+    width: min(1000px, 94vw);
+    height: min(720px, 88vh);
+    min-height: 420px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: #f3f4f6;
+    background: #11151b;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.58);
+}
+
+.text-editor-modal-header {
+    min-height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 14px 18px 14px 22px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: #171b22;
+}
+
+.text-editor-modal-heading {
+    min-width: 0;
+}
+
+.text-editor-modal-heading h2 {
+    margin: 0;
+    overflow: hidden;
+    color: #f9fafb;
+    font-size: 17px;
+    font-weight: 650;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.text-editor-modal-heading p {
+    margin: 4px 0 0;
+    overflow: hidden;
+    color: #9ca3af;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.text-editor-modal-close {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    color: #d1d5db;
+    background: #232833;
+    cursor: pointer;
+    font-size: 25px;
+    line-height: 1;
+}
+
+.text-editor-modal-close:hover:not(:disabled) {
+    color: #ffffff;
+    background: #303746;
+}
+
+.text-editor-modal-close:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.text-editor-modal-body {
+    min-height: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #0b0f14;
+}
+
+.text-editor-modal-message {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    color: #aeb6c2;
+    font-size: 14px;
+}
+
+.text-editor-modal-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 11px 18px;
+    color: #fecaca;
+    background: rgba(127, 29, 29, 0.3);
+    border-bottom: 1px solid rgba(248, 113, 113, 0.25);
+    font-size: 13px;
+}
+
+.text-editor-modal-error button {
+    flex: 0 0 auto;
+    padding: 7px 11px;
+    color: #ffffff;
+    background: #262b34;
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.text-editor-modal-textarea {
+    width: 100%;
+    min-height: 0;
+    flex: 1;
+    resize: none;
+    box-sizing: border-box;
+    padding: 20px 22px;
+    color: #e5e7eb;
+    caret-color: #ffffff;
+    background: #0b0f14;
+    border: 0;
+    outline: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+    font-size: 14px;
+    line-height: 1.65;
+    tab-size: 4;
+}
+
+.text-editor-modal-textarea::selection {
+    background: rgba(96, 165, 250, 0.35);
+}
+
+.text-editor-modal-footer {
+    min-height: 66px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 10px 18px 10px 22px;
+    background: #171b22;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.text-editor-modal-status {
+    color: #9ca3af;
+    font-size: 12px;
+}
+
+.text-editor-modal-buttons {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.text-editor-modal-cancel,
+.text-editor-modal-save {
+    height: 39px;
+    padding: 0 16px;
+    border-radius: 10px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.text-editor-modal-cancel {
+    color: #e5e7eb;
+    background: #252a33;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.text-editor-modal-cancel:hover:not(:disabled) {
+    background: #303743;
+}
+
+.text-editor-modal-save {
+    color: #ffffff;
+    background: #3b82f6;
+    border: 1px solid #60a5fa;
+}
+
+.text-editor-modal-save:hover:not(:disabled) {
+    background: #2563eb;
+}
+
+.text-editor-modal-cancel:disabled,
+.text-editor-modal-save:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+}
+
+@media (max-width: 720px) {
+    .text-editor-modal-backdrop {
+        padding: 0;
+    }
+
+    .text-editor-modal {
+        width: 100vw;
+        height: 100dvh;
+        min-height: 0;
+        border: 0;
+        border-radius: 0;
+    }
+
+    .text-editor-modal-footer {
+        align-items: flex-end;
+        flex-direction: column;
+    }
+
+    .text-editor-modal-status {
+        width: 100%;
+    }
+
+    .text-editor-modal-buttons {
+        width: 100%;
+    }
+
+    .text-editor-modal-cancel,
+    .text-editor-modal-save {
+        flex: 1;
+    }
+
+    .text-editor-modal-shortcut {
+        display: none;
+    }
+}
