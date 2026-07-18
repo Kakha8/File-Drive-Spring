@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.services;
 
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
+import kakha.kudava.filedrivespring.dto.FavoritesDTO;
 import kakha.kudava.filedrivespring.dto.FavoritesRequestDTO;
 import kakha.kudava.filedrivespring.enums.EntityType;
 import kakha.kudava.filedrivespring.model.Favorites;
@@ -85,5 +86,40 @@ public class FavoritesService {
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<FavoritesDTO> getAll() {
+        User currentUser = resourceAccessService.currentUser();
+
+        return favoritesRepository
+                .findAllByUserAndRemovedAtIsNullOrderByCreatedAtDesc(currentUser)
+                .stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    private FavoritesDTO toDto(Favorites favorite) {
+        FavoritesDTO dto = new FavoritesDTO();
+
+        dto.setId(favorite.getId());
+        dto.setEntityType(favorite.getEntityType());
+        dto.setEntityId(favorite.getEntityId());
+        dto.setCreatedAt(favorite.getCreatedAt());
+
+        return dto;
+    }
+
+    @Transactional
+    public void remove(Long favoriteId) {
+        User currentUser = resourceAccessService.currentUser();
+
+        Favorites favorite = favoritesRepository
+                .findByIdAndUser(favoriteId, currentUser)
+                .orElseThrow(() ->
+                        new RuntimeException("Favorite not found")
+                );
+
+        favorite.remove();
     }
 }
