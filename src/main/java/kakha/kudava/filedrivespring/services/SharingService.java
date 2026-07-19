@@ -1,5 +1,6 @@
 package kakha.kudava.filedrivespring.services;
 
+import kakha.kudava.filedrivespring.dto.ShareRequestDTO;
 import kakha.kudava.filedrivespring.dto.SharedItemDTO;
 import kakha.kudava.filedrivespring.enums.EntityType;
 import kakha.kudava.filedrivespring.enums.SharingRole;
@@ -67,6 +68,54 @@ public class SharingService {
                                         + auth.getName()
                         )
                 );
+    }
+
+    @Transactional
+    public List<SharedItemDTO> share(ShareRequestDTO request) {
+        if (request == null) {
+            throw new RuntimeException("Share request cannot be null");
+        }
+
+        boolean hasFiles =
+                request.getFileIds() != null
+                        && !request.getFileIds().isEmpty();
+
+        boolean hasFolders =
+                request.getFolderIds() != null
+                        && !request.getFolderIds().isEmpty();
+
+        if (!hasFiles && !hasFolders) {
+            throw new RuntimeException("No files or folders selected");
+        }
+
+        if (request.getTargetUsername() == null
+                || request.getTargetUsername().isBlank()) {
+            throw new RuntimeException("Target username is required");
+        }
+
+        List<SharedItemDTO> results = new ArrayList<>();
+
+        if (hasFiles) {
+            results.addAll(
+                    shareFiles(
+                            request.getFileIds(),
+                            request.getTargetUsername(),
+                            request.getRole()
+                    )
+            );
+        }
+
+        if (hasFolders) {
+            results.addAll(
+                    shareFolders(
+                            request.getFolderIds(),
+                            request.getTargetUsername(),
+                            request.getRole()
+                    )
+            );
+        }
+
+        return results;
     }
 
     @Transactional

@@ -727,8 +727,8 @@ function Main({ onLogout }) {
             );
 
             await shareResource({
-                resourceType: payload.resourceType,
-                resourceId: payload.resourceId,
+                fileIds: payload.fileIds || [],
+                folderIds: payload.folderIds || [],
                 shares: payload.shares || [],
             });
 
@@ -1048,18 +1048,53 @@ function Main({ onLogout }) {
     }
 
     function handleShare(item) {
+        const selectedItems = allItems.filter((currentItem) =>
+            selectedIds.includes(currentItem.id)
+        );
+
+        const shouldShareSelection =
+            selectedItems.length > 1 && selectedIds.includes(item.id);
+
+        const itemsToShare = (shouldShareSelection ? selectedItems : [item])
+            .filter((currentItem) => !currentItem.isDraft && currentItem.rawId != null);
+
+        if (itemsToShare.length === 0) {
+            setError("No valid files or folders selected");
+            return;
+        }
+
+        const fileIds = itemsToShare
+            .filter((currentItem) => currentItem.type !== "folder")
+            .map((currentItem) => currentItem.rawId);
+
+        const folderIds = itemsToShare
+            .filter((currentItem) => currentItem.type === "folder")
+            .map((currentItem) => currentItem.rawId);
+
+        const singleItem = itemsToShare.length === 1 ? itemsToShare[0] : null;
+
         setError("");
         setShareSuccess("");
         setOpenMenuId(null);
-        setSelectedIds([item.id]);
 
-        const target = {
-            resourceType: item.type === "folder" ? "FOLDER" : "FILE",
-            resourceId: item.rawId,
-            name: item.name,
-        };
+        if (!shouldShareSelection) {
+            setSelectedIds([item.id]);
+        }
 
-        setShareTarget(target);
+        setShareTarget({
+            multiple: itemsToShare.length > 1,
+            fileIds,
+            folderIds,
+            resourceType: singleItem
+                ? singleItem.type === "folder"
+                    ? "FOLDER"
+                    : "FILE"
+                : null,
+            resourceId: singleItem?.rawId ?? null,
+            name: singleItem
+                ? singleItem.name
+                : `${itemsToShare.length} selected items`,
+        });
     }
 
     function handleCopy(item) {
