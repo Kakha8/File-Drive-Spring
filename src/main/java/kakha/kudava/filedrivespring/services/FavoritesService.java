@@ -18,14 +18,17 @@ public class FavoritesService {
 
     private final FavoritesRepository favoritesRepository;
     private final ResourceAccessService resourceAccessService;
+    private final LogsService logsService;
 
     public FavoritesService(
             FavoritesRepository favoritesRepository,
-            ResourceAccessService resourceAccessService
+            ResourceAccessService resourceAccessService, LogsService logsService
     ) {
         this.favoritesRepository = favoritesRepository;
         this.resourceAccessService = resourceAccessService;
+        this.logsService = logsService;
     }
+
 
     @Transactional
     public void add(FavoritesRequestDTO request) {
@@ -36,45 +39,64 @@ public class FavoritesService {
         for (Long fileId : safeIds(request.getFileIds())) {
             resourceAccessService.requireFileView(fileId);
 
-            addOrRestore(
+            boolean changed = addOrRestore(
                     currentUser,
                     EntityType.FILE,
                     fileId
             );
+
+            if (changed) {
+                logsService.favoritesAddLog(
+                        fileId,
+                        EntityType.FILE
+                );
+            }
         }
 
         for (Long folderId : safeIds(request.getFolderIds())) {
             resourceAccessService.requireFolderView(folderId);
 
-            addOrRestore(
+            boolean changed = addOrRestore(
                     currentUser,
                     EntityType.FOLDER,
                     folderId
             );
+
+            if (changed) {
+                logsService.favoritesAddLog(
+                        folderId,
+                        EntityType.FOLDER
+                );
+            }
         }
     }
 
-    private void addOrRestore(
+    private boolean addOrRestore(
             User user,
             EntityType entityType,
             Long entityId
     ) {
-        favoritesRepository
+        return favoritesRepository
                 .findByUserAndEntityTypeAndEntityId(
                         user,
                         entityType,
                         entityId
                 )
-                .ifPresentOrElse(
-                        favorite -> {
-                            if (!favorite.isActive()) {
-                                favorite.restore();
-                            }
-                        },
-                        () -> favoritesRepository.save(
-                                new Favorites(user, entityType, entityId)
-                        )
-                );
+                .map(favorite -> {
+                    if (favorite.isActive()) {
+                        return false;
+                    }
+
+                    favorite.restore();
+                    return true;
+                })
+                .orElseGet(() -> {
+                    favoritesRepository.save(
+                            new Favorites(user, entityType, entityId)
+                    );
+
+                    return true;
+                });
     }
 
     private List<Long> safeIds(List<Long> ids) {
@@ -120,6 +142,15 @@ public class FavoritesService {
                         new RuntimeException("Favorite not found")
                 );
 
+        if (!favorite.isActive()) {
+            return;
+        }
+
         favorite.remove();
+
+        logsService.favoritesRemoveLog(
+                favorite.getEntityId(),
+                favorite.getEntityType()
+        );
     }
 }

@@ -2,6 +2,7 @@ package kakha.kudava.filedrivespring.services;
 
 import kakha.kudava.filedrivespring.enums.ActionType;
 import kakha.kudava.filedrivespring.enums.EntityType;
+import kakha.kudava.filedrivespring.enums.SharingRole;
 import kakha.kudava.filedrivespring.model.ActionLogs;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.ActionLogsRepository;
@@ -231,5 +232,122 @@ public class LogsService {
         actionLogsRepository.save(actionLogs);
 
         log.info("Logging the update of {}", fileName);
+    }
+
+    public void favoritesAddLog(
+            Long entityId,
+            EntityType entityType
+    ) {
+        ActionLogs actionLogs = logAction(
+                ActionType.FAVORITES_ADD.name(),
+                entityId,
+                entityType.name(),
+                null
+        );
+
+        actionLogsRepository.save(actionLogs);
+
+        log.info(
+                "Added to favorites: entityId={}, entityType={}",
+                entityId,
+                entityType
+        );
+    }
+
+    public void favoritesRemoveLog(
+            Long entityId,
+            EntityType entityType
+    ) {
+        ActionLogs actionLogs = logAction(
+                ActionType.FAVORITES_REMOVE.name(),
+                entityId,
+                entityType.name(),
+                null
+        );
+
+        actionLogsRepository.save(actionLogs);
+
+        log.info(
+                "Removed from favorites: entityId={}, entityType={}",
+                entityId,
+                entityType
+        );
+    }
+
+    public void shareLog(
+            Long entityId,
+            EntityType entityType,
+            Long shareId,
+            Long sharedWithUserId,
+            SharingRole role
+    ) {
+        String detailsJson = sharingDetails(
+                shareId,
+                sharedWithUserId,
+                role
+        );
+
+        ActionLogs actionLogs = logAction(
+                ActionType.SHARE.name(),
+                entityId,
+                entityType.name(),
+                detailsJson
+        );
+
+        actionLogsRepository.save(actionLogs);
+
+        log.info(
+                "Shared resource: entityId={}, entityType={}, shareId={}, sharedWithUserId={}, role={}",
+                entityId,
+                entityType,
+                shareId,
+                sharedWithUserId,
+                role
+        );
+    }
+
+    public void shareRevokeLog(
+            Long entityId,
+            EntityType entityType,
+            Long shareId,
+            Long sharedWithUserId,
+            SharingRole role
+    ) {
+        String detailsJson = sharingDetails(
+                shareId,
+                sharedWithUserId,
+                role
+        );
+
+        ActionLogs actionLogs = logAction(
+                ActionType.SHARE_REVOKE.name(),
+                entityId,
+                entityType.name(),
+                detailsJson
+        );
+
+        actionLogsRepository.save(actionLogs);
+
+        log.info(
+                "Revoked share: entityId={}, entityType={}, shareId={}, sharedWithUserId={}, role={}",
+                entityId,
+                entityType,
+                shareId,
+                sharedWithUserId,
+                role
+        );
+    }
+
+    private String sharingDetails(
+            Long shareId,
+            Long sharedWithUserId,
+            SharingRole role
+    ) {
+        return String.format(
+                "{\"shareId\":%d,\"sharedWithUserId\":%d,\"role\":\"%s\"}",
+                shareId,
+                sharedWithUserId,
+                role.name()
+        );
     }
 }
