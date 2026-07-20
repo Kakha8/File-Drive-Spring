@@ -1,7 +1,8 @@
 package kakha.kudava.filedrivespring.services;
 
-import jakarta.transaction.Transactional;
+import kakha.kudava.filedrivespring.dto.ShareRequestDTO;
 import kakha.kudava.filedrivespring.dto.SharedItemDTO;
+import kakha.kudava.filedrivespring.enums.EntityType;
 import kakha.kudava.filedrivespring.enums.SharingRole;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
@@ -14,6 +15,7 @@ import kakha.kudava.filedrivespring.repository.UserRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -27,49 +29,146 @@ public class SharingService {
     private final FileMetaDataRepository fileMetaDataRepository;
     private final FolderRepository folderRepository;
     private final UserRepository userRepository;
+    private final LogsService logsService;
 
     public SharingService(
             SharingPermissionRepository sharingPermissionRepository,
             FileMetaDataRepository fileMetaDataRepository,
             FolderRepository folderRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            LogsService logsService
     ) {
         this.sharingPermissionRepository = sharingPermissionRepository;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
         this.userRepository = userRepository;
+        this.logsService = logsService;
+    }
+
+    private record ShareResult(
+            SharingPermission permission,
+            boolean changed
+    ) {
     }
 
     private User currentUser() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        Authentication auth =
+                SecurityContextHolder.getContext().getAuthentication();
 
-        if (auth == null || auth.getName() == null) {
+        if (auth == null
+                || !auth.isAuthenticated()
+                || auth.getName() == null) {
             throw new RuntimeException("Not authenticated");
         }
 
         return userRepository.findByUsername(auth.getName())
-                .orElseThrow(() -> new RuntimeException("Authenticated user not found: " + auth.getName()));
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "Authenticated user not found: "
+                                        + auth.getName()
+                        )
+                );
     }
 
     @Transactional
-    public List<SharedItemDTO> shareFiles(List<Long> fileIds, String targetUsername, SharingRole role) {
+    public List<SharedItemDTO> share(ShareRequestDTO request) {
+        if (request == null) {
+            throw new RuntimeException("Share request cannot be null");
+        }
+
+        boolean hasFiles =
+                request.getFileIds() != null
+                        && !request.getFileIds().isEmpty();
+
+        boolean hasFolders =
+                request.getFolderIds() != null
+                        && !request.getFolderIds().isEmpty();
+
+        if (!hasFiles && !hasFolders) {
+            throw new RuntimeException("No files or folders selected");
+        }
+
+        if (request.getTargetUsername() == null
+                || request.getTargetUsername().isBlank()) {
+            throw new RuntimeException("Target username is required");
+        }
+
+        List<SharedItemDTO> results = new ArrayList<>();
+
+        if (hasFiles) {
+            results.addAll(
+                    shareFiles(
+                            request.getFileIds(),
+                            request.getTargetUsername(),
+                            request.getRole()
+                    )
+            );
+        }
+
+        if (hasFolders) {
+            results.addAll(
+                    shareFolders(
+                            request.getFolderIds(),
+                            request.getTargetUsername(),
+                            request.getRole()
+                    )
+            );
+        }
+
+        return results;
+    }
+
+    @Transactional
+    public List<SharedItemDTO> shareFiles(
+            List<Long> fileIds,
+            String targetUsername,
+            SharingRole role
+    ) {
         User owner = currentUser();
 
         if (fileIds == null || fileIds.isEmpty()) {
             throw new RuntimeException("No files selected");
         }
 
-        User sharedWith = userRepository.findByUsername(targetUsername)
-                .orElseThrow(() -> new RuntimeException("User not found: " + targetUsername));
+        User sharedWith = userRepository
+                .findByUsername(targetUsername)
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "User not found: " + targetUsername
+                        )
+                );
 
         validateNotSharingWithSelf(owner, sharedWith);
 
+        SharingRole normalizedRole = normalizeRole(role);
         List<SharedItemDTO> sharedItems = new ArrayList<>();
 
-        for (Long fileId : fileIds) {
+        for (Long fileId : fileIds.stream()
+                .filter(id -> id != null)
+                .distinct()
+                .toList()) {
+
             FileMetaData file = requireOwnedFile(fileId, owner);
 
-            SharingPermission permission = upsertFileShare(file, owner, sharedWith, normalizeRole(role));
+            ShareResult result = upsertFileShare(
+                    file,
+                    owner,
+                    sharedWith,
+                    normalizedRole
+            );
+
+            SharingPermission permission = result.permission();
+
+            if (result.changed()) {
+                logsService.shareLog(
+                        file.getId(),
+                        EntityType.FILE,
+                        permission.getId(),
+                        sharedWith.getId(),
+                        permission.getRole()
+                );
+            }
+
             sharedItems.add(toDto(permission));
         }
 
@@ -77,28 +176,64 @@ public class SharingService {
     }
 
     @Transactional
-    public List<SharedItemDTO> shareFolders(List<Long> folderIds, String targetUsername, SharingRole role) {
+    public List<SharedItemDTO> shareFolders(
+            List<Long> folderIds,
+            String targetUsername,
+            SharingRole role
+    ) {
         User owner = currentUser();
 
         if (folderIds == null || folderIds.isEmpty()) {
             throw new RuntimeException("No folders selected");
         }
 
-        User sharedWith = userRepository.findByUsername(targetUsername)
-                .orElseThrow(() -> new RuntimeException("User not found: " + targetUsername));
+        User sharedWith = userRepository
+                .findByUsername(targetUsername)
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "User not found: " + targetUsername
+                        )
+                );
 
         validateNotSharingWithSelf(owner, sharedWith);
 
+        SharingRole normalizedRole = normalizeRole(role);
         List<SharedItemDTO> sharedItems = new ArrayList<>();
 
-        for (Long folderId : folderIds) {
+        for (Long folderId : folderIds.stream()
+                .filter(id -> id != null)
+                .distinct()
+                .toList()) {
+
             Folders folder = requireOwnedFolder(folderId, owner);
 
             if (folder.getParent() == null) {
-                throw new RuntimeException("Sharing the root folder is not allowed. Invalid folder id: " + folderId);
+                throw new RuntimeException(
+                        "Sharing the root folder is not allowed. "
+                                + "Invalid folder id: "
+                                + folderId
+                );
             }
 
-            SharingPermission permission = upsertFolderShare(folder, owner, sharedWith, normalizeRole(role));
+            ShareResult result = upsertFolderShare(
+                    folder,
+                    owner,
+                    sharedWith,
+                    normalizedRole
+            );
+
+            SharingPermission permission = result.permission();
+
+            if (result.changed()) {
+                logsService.shareLog(
+                        folder.getId(),
+                        EntityType.FOLDER,
+                        permission.getId(),
+                        sharedWith.getId(),
+                        permission.getRole()
+                );
+            }
+
             sharedItems.add(toDto(permission));
         }
 
@@ -109,21 +244,35 @@ public class SharingService {
     public void revokeShare(Long shareId) {
         User owner = currentUser();
 
-        SharingPermission permission = sharingPermissionRepository.findById(shareId)
-                .orElseThrow(() -> new RuntimeException("Share not found"));
+        SharingPermission permission =
+                sharingPermissionRepository.findById(shareId)
+                        .orElseThrow(() ->
+                                new RuntimeException("Share not found")
+                        );
 
         if (!permission.isActive()) {
             throw new RuntimeException("Share not found");
         }
 
+        Long entityId;
+        EntityType entityType;
+
         if (permission.getFile() != null) {
             if (!ownsFile(permission.getFile(), owner)) {
                 throw new RuntimeException("Share not found");
             }
+
+            entityId = permission.getFile().getId();
+            entityType = EntityType.FILE;
+
         } else if (permission.getFolder() != null) {
             if (!ownsFolder(permission.getFolder(), owner)) {
                 throw new RuntimeException("Share not found");
             }
+
+            entityId = permission.getFolder().getId();
+            entityType = EntityType.FOLDER;
+
         } else {
             throw new RuntimeException("Invalid share");
         }
@@ -133,41 +282,57 @@ public class SharingService {
         permission.setUpdatedAt(Instant.now());
 
         sharingPermissionRepository.save(permission);
+
+        logsService.shareRevokeLog(
+                entityId,
+                entityType,
+                permission.getId(),
+                permission.getSharedWith().getId(),
+                permission.getRole()
+        );
     }
 
+    @Transactional(readOnly = true)
     public List<SharedItemDTO> getSharedWithMe() {
         User user = currentUser();
 
-        return sharingPermissionRepository.findBySharedWithAndActiveTrue(user)
+        return sharingPermissionRepository
+                .findBySharedWithAndActiveTrue(user)
                 .stream()
                 .map(this::toDto)
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public List<SharedItemDTO> getSharedByMe() {
         User owner = currentUser();
 
-        return sharingPermissionRepository.findByOwnerAndActiveTrue(owner)
+        return sharingPermissionRepository
+                .findByOwnerAndActiveTrue(owner)
                 .stream()
                 .map(this::toDto)
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public List<SharedItemDTO> getFileShares(Long fileId) {
         User owner = currentUser();
         FileMetaData file = requireOwnedFile(fileId, owner);
 
-        return sharingPermissionRepository.findByFileAndActiveTrue(file)
+        return sharingPermissionRepository
+                .findByFileAndActiveTrue(file)
                 .stream()
                 .map(this::toDto)
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public List<SharedItemDTO> getFolderShares(Long folderId) {
         User owner = currentUser();
         Folders folder = requireOwnedFolder(folderId, owner);
 
-        return sharingPermissionRepository.findByFolderAndActiveTrue(folder)
+        return sharingPermissionRepository
+                .findByFolderAndActiveTrue(folder)
                 .stream()
                 .map(this::toDto)
                 .toList();
@@ -178,11 +343,20 @@ public class SharingService {
             return true;
         }
 
-        if (hasDirectFileRole(file, user, SharingRole.VIEWER)) {
+        if (hasDirectFileRole(
+                file,
+                user,
+                SharingRole.VIEWER
+        )) {
             return true;
         }
 
-        return file.getParent() != null && canAccessFolder(file.getParent(), user, SharingRole.VIEWER);
+        return file.getParent() != null
+                && canAccessFolder(
+                file.getParent(),
+                user,
+                SharingRole.VIEWER
+        );
     }
 
     public boolean canEditFile(FileMetaData file, User user) {
@@ -190,22 +364,42 @@ public class SharingService {
             return true;
         }
 
-        if (hasDirectFileRole(file, user, SharingRole.EDITOR)) {
+        if (hasDirectFileRole(
+                file,
+                user,
+                SharingRole.EDITOR
+        )) {
             return true;
         }
 
-        return file.getParent() != null && canAccessFolder(file.getParent(), user, SharingRole.EDITOR);
+        return file.getParent() != null
+                && canAccessFolder(
+                file.getParent(),
+                user,
+                SharingRole.EDITOR
+        );
     }
 
     public boolean canViewFolder(Folders folder, User user) {
-        return canAccessFolder(folder, user, SharingRole.VIEWER);
+        return canAccessFolder(
+                folder,
+                user,
+                SharingRole.VIEWER
+        );
     }
 
     public boolean canEditFolder(Folders folder, User user) {
-        return canAccessFolder(folder, user, SharingRole.EDITOR);
+        return canAccessFolder(
+                folder,
+                user,
+                SharingRole.EDITOR
+        );
     }
 
-    public boolean showsSharedIndicator(FileMetaData file, User viewer) {
+    public boolean showsSharedIndicator(
+            FileMetaData file,
+            User viewer
+    ) {
         if (file == null || viewer == null) {
             return false;
         }
@@ -214,14 +408,21 @@ public class SharingService {
             return true;
         }
 
-        if (sharingPermissionRepository.existsByFileAndActiveTrue(file)) {
+        if (sharingPermissionRepository
+                .existsByFileAndActiveTrue(file)) {
             return true;
         }
 
-        return file.getParent() != null && hasActiveFolderShareInChain(file.getParent());
+        return file.getParent() != null
+                && hasActiveFolderShareInChain(
+                file.getParent()
+        );
     }
 
-    public boolean showsSharedIndicator(Folders folder, User viewer) {
+    public boolean showsSharedIndicator(
+            Folders folder,
+            User viewer
+    ) {
         if (folder == null || viewer == null) {
             return false;
         }
@@ -233,78 +434,51 @@ public class SharingService {
         return hasActiveFolderShareInChain(folder);
     }
 
-    private FileMetaData requireOwnedFile(Long fileId, User owner) {
-        FileMetaData file = fileMetaDataRepository.findById(fileId)
-                .orElseThrow(() -> new RuntimeException("File not found"));
-
-        if (!ownsFile(file, owner)) {
-            throw new RuntimeException("File not found");
-        }
-
-        return file;
-    }
-
-    private Folders requireOwnedFolder(Long folderId, User owner) {
-        Folders folder = folderRepository.findById(folderId)
-                .orElseThrow(() -> new RuntimeException("Folder not found"));
-
-        if (!ownsFolder(folder, owner)) {
-            throw new RuntimeException("Folder not found");
-        }
-
-        return folder;
-    }
-
-    private boolean hasActiveFolderShareInChain(Folders folder) {
-        Folders current = folder;
-
-        while (current != null) {
-            if (sharingPermissionRepository.existsByFolderAndActiveTrue(current)) {
-                return true;
-            }
-
-            current = current.getParent();
-        }
-
-        return false;
-    }
-
-    private boolean canAccessFolder(Folders folder, User user, SharingRole requiredRole) {
-        Folders current = folder;
-
-        while (current != null) {
-            if (ownsFolder(current, user)) {
-                return true;
-            }
-
-            Optional<SharingPermission> permission =
-                    sharingPermissionRepository.findByFolderAndSharedWithAndActiveTrue(current, user);
-
-            if (permission.isPresent() && roleIncludes(permission.get().getRole(), requiredRole)) {
-                return true;
-            }
-
-            current = current.getParent();
-        }
-
-        return false;
-    }
-
-    private boolean hasDirectFileRole(FileMetaData file, User user, SharingRole requiredRole) {
-        return sharingPermissionRepository.findByFileAndSharedWithAndActiveTrue(file, user)
-                .map(permission -> roleIncludes(permission.getRole(), requiredRole))
-                .orElse(false);
-    }
-
-    private SharingPermission upsertFileShare(
+    private ShareResult upsertFileShare(
             FileMetaData file,
             User owner,
             User sharedWith,
             SharingRole role
     ) {
-        SharingPermission permission = sharingPermissionRepository
-                .findByFileAndSharedWith(file, sharedWith)
-                .orElseGet(SharingPermission::new);
+        Optional<SharingPermission> existing =
+                sharingPermissionRepository
+                        .findByFileAndSharedWith(
+                                file,
+                                sharedWith
+                        );
+
+        if (existing.isPresent()) {
+            SharingPermission permission = existing.get();
+
+            boolean changed =
+                    !permission.isActive()
+                            || permission.getRole() != role;
+
+            if (!changed) {
+                return new ShareResult(
+                        permission,
+                        false
+                );
+            }
+
+            permission.setFile(file);
+            permission.setFolder(null);
+            permission.setOwner(owner);
+            permission.setSharedBy(owner);
+            permission.setSharedWith(sharedWith);
+            permission.setRole(role);
+            permission.setActive(true);
+            permission.setRevokedAt(null);
+            permission.setUpdatedAt(Instant.now());
+
+            SharingPermission saved =
+                    sharingPermissionRepository.save(permission);
+
+            return new ShareResult(saved, true);
+        }
+
+        SharingPermission permission =
+                new SharingPermission();
 
         permission.setFile(file);
         permission.setFolder(null);
@@ -316,18 +490,57 @@ public class SharingService {
         permission.setRevokedAt(null);
         permission.setUpdatedAt(Instant.now());
 
-        return sharingPermissionRepository.save(permission);
+        SharingPermission saved =
+                sharingPermissionRepository.save(permission);
+
+        return new ShareResult(saved, true);
     }
 
-    private SharingPermission upsertFolderShare(
+    private ShareResult upsertFolderShare(
             Folders folder,
             User owner,
             User sharedWith,
             SharingRole role
     ) {
-        SharingPermission permission = sharingPermissionRepository
-                .findByFolderAndSharedWith(folder, sharedWith)
-                .orElseGet(SharingPermission::new);
+        Optional<SharingPermission> existing =
+                sharingPermissionRepository
+                        .findByFolderAndSharedWith(
+                                folder,
+                                sharedWith
+                        );
+
+        if (existing.isPresent()) {
+            SharingPermission permission = existing.get();
+
+            boolean changed =
+                    !permission.isActive()
+                            || permission.getRole() != role;
+
+            if (!changed) {
+                return new ShareResult(
+                        permission,
+                        false
+                );
+            }
+
+            permission.setFolder(folder);
+            permission.setFile(null);
+            permission.setOwner(owner);
+            permission.setSharedBy(owner);
+            permission.setSharedWith(sharedWith);
+            permission.setRole(role);
+            permission.setActive(true);
+            permission.setRevokedAt(null);
+            permission.setUpdatedAt(Instant.now());
+
+            SharingPermission saved =
+                    sharingPermissionRepository.save(permission);
+
+            return new ShareResult(saved, true);
+        }
+
+        SharingPermission permission =
+                new SharingPermission();
 
         permission.setFolder(folder);
         permission.setFile(null);
@@ -339,16 +552,132 @@ public class SharingService {
         permission.setRevokedAt(null);
         permission.setUpdatedAt(Instant.now());
 
-        return sharingPermissionRepository.save(permission);
+        SharingPermission saved =
+                sharingPermissionRepository.save(permission);
+
+        return new ShareResult(saved, true);
     }
 
-    private boolean ownsFile(FileMetaData file, User user) {
+    private FileMetaData requireOwnedFile(
+            Long fileId,
+            User owner
+    ) {
+        FileMetaData file =
+                fileMetaDataRepository.findById(fileId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "File not found"
+                                )
+                        );
+
+        if (!ownsFile(file, owner)) {
+            throw new RuntimeException("File not found");
+        }
+
+        return file;
+    }
+
+    private Folders requireOwnedFolder(
+            Long folderId,
+            User owner
+    ) {
+        Folders folder =
+                folderRepository.findById(folderId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Folder not found"
+                                )
+                        );
+
+        if (!ownsFolder(folder, owner)) {
+            throw new RuntimeException("Folder not found");
+        }
+
+        return folder;
+    }
+
+    private boolean hasActiveFolderShareInChain(
+            Folders folder
+    ) {
+        Folders current = folder;
+
+        while (current != null) {
+            if (sharingPermissionRepository
+                    .existsByFolderAndActiveTrue(current)) {
+                return true;
+            }
+
+            current = current.getParent();
+        }
+
+        return false;
+    }
+
+    private boolean canAccessFolder(
+            Folders folder,
+            User user,
+            SharingRole requiredRole
+    ) {
+        Folders current = folder;
+
+        while (current != null) {
+            if (ownsFolder(current, user)) {
+                return true;
+            }
+
+            Optional<SharingPermission> permission =
+                    sharingPermissionRepository
+                            .findByFolderAndSharedWithAndActiveTrue(
+                                    current,
+                                    user
+                            );
+
+            if (permission.isPresent()
+                    && roleIncludes(
+                    permission.get().getRole(),
+                    requiredRole
+            )) {
+                return true;
+            }
+
+            current = current.getParent();
+        }
+
+        return false;
+    }
+
+    private boolean hasDirectFileRole(
+            FileMetaData file,
+            User user,
+            SharingRole requiredRole
+    ) {
+        return sharingPermissionRepository
+                .findByFileAndSharedWithAndActiveTrue(
+                        file,
+                        user
+                )
+                .map(permission ->
+                        roleIncludes(
+                                permission.getRole(),
+                                requiredRole
+                        )
+                )
+                .orElse(false);
+    }
+
+    private boolean ownsFile(
+            FileMetaData file,
+            User user
+    ) {
         return file != null
                 && file.getOwner() != null
                 && sameUser(file.getOwner(), user);
     }
 
-    private boolean ownsFolder(Folders folder, User user) {
+    private boolean ownsFolder(
+            Folders folder,
+            User user
+    ) {
         return folder != null
                 && folder.getOwner() != null
                 && sameUser(folder.getOwner(), user);
@@ -361,41 +690,69 @@ public class SharingService {
                 && a.getId().equals(b.getId());
     }
 
-    private void validateNotSharingWithSelf(User owner, User sharedWith) {
+    private void validateNotSharingWithSelf(
+            User owner,
+            User sharedWith
+    ) {
         if (sameUser(owner, sharedWith)) {
-            throw new RuntimeException("You cannot share a resource with yourself");
+            throw new RuntimeException(
+                    "You cannot share a resource with yourself"
+            );
         }
     }
 
     private SharingRole normalizeRole(SharingRole role) {
-        return role == null ? SharingRole.VIEWER : role;
+        return role == null
+                ? SharingRole.VIEWER
+                : role;
     }
 
-    private boolean roleIncludes(SharingRole actualRole, SharingRole requiredRole) {
+    private boolean roleIncludes(
+            SharingRole actualRole,
+            SharingRole requiredRole
+    ) {
         if (actualRole == SharingRole.EDITOR) {
             return true;
         }
 
-        return actualRole == SharingRole.VIEWER && requiredRole == SharingRole.VIEWER;
+        return actualRole == SharingRole.VIEWER
+                && requiredRole == SharingRole.VIEWER;
     }
 
-    private SharedItemDTO toDto(SharingPermission permission) {
+    private SharedItemDTO toDto(
+            SharingPermission permission
+    ) {
         SharedItemDTO dto = new SharedItemDTO();
 
         dto.setShareId(permission.getId());
-        dto.setOwnerUsername(permission.getOwner().getUsername());
-        dto.setSharedWithUsername(permission.getSharedWith().getUsername());
+        dto.setOwnerUsername(
+                permission.getOwner().getUsername()
+        );
+        dto.setSharedWithUsername(
+                permission.getSharedWith().getUsername()
+        );
         dto.setRole(permission.getRole());
 
         if (permission.getFile() != null) {
             dto.setResourceType("FILE");
-            dto.setResourceId(permission.getFile().getId());
-            dto.setName(permission.getFile().getFileName());
-            dto.setSize(permission.getFile().getSize());
+            dto.setResourceId(
+                    permission.getFile().getId()
+            );
+            dto.setName(
+                    permission.getFile().getFileName()
+            );
+            dto.setSize(
+                    permission.getFile().getSize()
+            );
+
         } else if (permission.getFolder() != null) {
             dto.setResourceType("FOLDER");
-            dto.setResourceId(permission.getFolder().getId());
-            dto.setName(permission.getFolder().getName());
+            dto.setResourceId(
+                    permission.getFolder().getId()
+            );
+            dto.setName(
+                    permission.getFolder().getName()
+            );
             dto.setSize(null);
         }
 

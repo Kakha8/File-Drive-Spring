@@ -82,6 +82,16 @@ export default function ShareModal({
                 setExistingLoading(true);
                 setActiveIndex(0);
 
+                if (target.multiple) {
+                    setExistingLoading(false);
+
+                    setTimeout(() => {
+                        inputRef.current?.focus();
+                    }, 0);
+
+                    return;
+                }
+
                 const shares = await getResourceShares(
                     target.resourceType,
                     target.resourceId
@@ -316,10 +326,10 @@ export default function ShareModal({
         setError("");
 
         await onSubmit?.({
-            resourceType: target.resourceType,
-            resourceId: target.resourceId,
+            fileIds: target.fileIds || [],
+            folderIds: target.folderIds || [],
             shares,
-            removedShareIds,
+            removedShareIds: target.multiple ? [] : removedShareIds,
         });
     }
 
@@ -341,6 +351,11 @@ export default function ShareModal({
                     <div>
                         <p className="share-modal-eyebrow">Share</p>
                         <h2>{target.name}</h2>
+                        {target.multiple && (
+                            <p className="share-search-status">
+                                Access will be added to every selected item.
+                            </p>
+                        )}
                     </div>
 
                     <button
@@ -439,7 +454,9 @@ export default function ShareModal({
                                 </div>
                             ) : selectedUsers.length === 0 ? (
                                 <div className="share-search-status">
-                                    Only you have access.
+                                    {target.multiple
+                                        ? "Choose people to share all selected items with."
+                                        : "Only you have access."}
                                 </div>
                             ) : (
                                 selectedUsers.map((user) => {

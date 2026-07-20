@@ -1,9 +1,6 @@
 package kakha.kudava.filedrivespring.controller;
 
-import kakha.kudava.filedrivespring.dto.ShareFilesRequest;
-import kakha.kudava.filedrivespring.dto.ShareFoldersRequest;
-import kakha.kudava.filedrivespring.dto.ShareRequest;
-import kakha.kudava.filedrivespring.dto.SharedItemDTO;
+import kakha.kudava.filedrivespring.dto.*;
 import kakha.kudava.filedrivespring.services.SharingService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -30,30 +27,15 @@ public class SharingRestController {
         return ResponseEntity.ok(sharingService.getFolderShares(folderId));
     }
 
-    @PostMapping("/files")
-    public ResponseEntity<List<SharedItemDTO>> shareFiles(
-            @RequestBody ShareFilesRequest request
+
+
+    @PostMapping
+    public ResponseEntity<List<SharedItemDTO>> share(
+            @RequestBody ShareRequestDTO request
     ) {
-        List<SharedItemDTO> sharedItems = sharingService.shareFiles(
-                request.getFileIds(),
-                request.getUsername(),
-                request.getRole()
+        return ResponseEntity.ok(
+                sharingService.share(request)
         );
-
-        return ResponseEntity.ok(sharedItems);
-    }
-
-    @PostMapping("/folders")
-    public ResponseEntity<List<SharedItemDTO>> shareFolders(
-            @RequestBody ShareFoldersRequest request
-    ) {
-        List<SharedItemDTO> sharedItems = sharingService.shareFolders(
-                request.getFolderIds(),
-                request.getUsername(),
-                request.getRole()
-        );
-
-        return ResponseEntity.ok(sharedItems);
     }
 
     @DeleteMapping("/{shareId}")

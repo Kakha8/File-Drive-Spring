@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { logout as apiLogout } from "../api/auth";
 
-const SIDEBAR_STORAGE_KEY = "drive-sidebar-open";
 
 function Icon({ children, className = "" }) {
     return (
@@ -80,44 +79,30 @@ const navItems = [
     { key: "my", label: "My files", icon: Icons.File, path: "/main" },
     { key: "shared", label: "Shared", icon: Icons.Shared, path: "/shared" },
     { key: "recent", label: "Recent", icon: Icons.Clock, path: null },
-    { key: "favorites", label: "Favorites", icon: Icons.Star, path: null },
+    { key: "favorites", label: "Favorites", icon: Icons.Star, path: "/favorites",},
     { key: "archived", label: "Archived", icon: Icons.Archive, path: null },
     { key: "trash", label: "Trash", icon: Icons.Trash, path: "/trashcan" },
 ];
 
-function getSavedSidebarOpen(defaultOpen) {
-    const saved = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
-
-    if (saved === "true") return true;
-    if (saved === "false") return false;
-
-    return defaultOpen;
-}
 
 export default function DriveSidebar({
                                          active = "my",
                                          sidebarOpen,
                                          onToggleSidebar,
                                          defaultOpen = false,
-                                         username = "admin",
+                                         username = "My workspace",
                                          locationLabel = "admin",
                                          deletedCount = null,
                                          onLogoutComplete,
                                      }) {
     const navigate = useNavigate();
 
-    const [internalOpen, setInternalOpen] = useState(() =>
-        getSavedSidebarOpen(defaultOpen)
-    );
+    const [internalOpen, setInternalOpen] = useState(defaultOpen);
     const [logoutConfirm, setLogoutConfirm] = useState(false);
     const [loggingOut, setLoggingOut] = useState(false);
 
     const isControlled = typeof sidebarOpen === "boolean";
     const isOpen = isControlled ? sidebarOpen : internalOpen;
-
-    useEffect(() => {
-        window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(isOpen));
-    }, [isOpen]);
 
     function toggleSidebar() {
         if (onToggleSidebar) {
@@ -177,9 +162,9 @@ export default function DriveSidebar({
 
                 {isOpen && (
                     <>
-                        <div className="workspace-mark">FS</div>
+                        <div className="workspace-mark">FD</div>
                         <div className="workspace-text">
-                            <strong>File-Drive-Spring</strong>
+                            <strong>File Drive</strong>
                             <span>{username}</span>
                         </div>
                     </>
