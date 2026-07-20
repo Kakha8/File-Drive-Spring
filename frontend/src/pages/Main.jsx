@@ -18,6 +18,7 @@ import {
     moveToTrash,
 } from "../api/drive";
 import { revokeShare, shareResource } from "../api/sharing.js";
+import { apiFetch } from "../api/http";
 function Icon({ children, className = "" }) {
     return (
         <svg
@@ -404,6 +405,107 @@ function normalizeFolderItems(folderData) {
     return [...folders, ...files];
 }
 
+
+async function readFavoritesApiError(response, fallbackMessage) {
+    try {
+        const data = await response.clone().json();
+        return data.message || data.error || fallbackMessage;
+    } catch {
+        try {
+            const text = await response.text();
+            return text || fallbackMessage;
+        } catch {
+            return fallbackMessage;
+        }
+    }
+}
+
+async function getFavorites() {
+    const response = await apiFetch("/api/favorites");
+
+    if (!response.ok) {
+        throw new Error(
+            await readFavoritesApiError(
+                response,
+                "Failed to load favorites"
+            )
+        );
+    }
+
+    return response.json();
+}
+
+async function addToFavorites(entityType, entityId) {
+    const response = await apiFetch("/api/favorites/add", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            fileIds: entityType === "FILE" ? [entityId] : [],
+            folderIds: entityType === "FOLDER" ? [entityId] : [],
+        }),
+    });
+
+    if (!response.ok) {
+        throw new Error(
+            await readFavoritesApiError(
+                response,
+                "Failed to add favorite"
+            )
+        );
+    }
+}
+
+async function removeFromFavorites(favoriteId) {
+    const response = await apiFetch(`/api/favorites/${favoriteId}`, {
+        method: "DELETE",
+    });
+
+    if (!response.ok) {
+        throw new Error(
+            await readFavoritesApiError(
+                response,
+                "Failed to remove favorite"
+            )
+        );
+    }
+}
+
+function favoriteKey(entityType, entityId) {
+    return `${entityType}:${entityId}`;
+}
+
+function getItemEntityType(item) {
+    return item.type === "folder" ? "FOLDER" : "FILE";
+}
+
+function getItemFavoriteKey(item) {
+    if (!item || item.rawId == null) {
+        return null;
+    }
+
+    return favoriteKey(getItemEntityType(item), item.rawId);
+}
+
+function indexFavorites(favorites) {
+    return (favorites || []).reduce((result, favorite) => {
+        if (
+            !favorite ||
+            favorite.entityType == null ||
+            favorite.entityId == null
+        ) {
+            return result;
+        }
+
+        result[
+            favoriteKey(favorite.entityType, favorite.entityId)
+            ] = favorite;
+
+        return result;
+    }, {});
+}
+
 function Main({ onLogout }) {
     const navigate = useNavigate();
 
@@ -449,6 +551,11 @@ function Main({ onLogout }) {
     const [trashRequest, setTrashRequest] = useState(null);
     const [trashMoving, setTrashMoving] = useState(false);
 
+    const [favoritesByKey, setFavoritesByKey] = useState({});
+    const [favoritePendingKeys, setFavoritePendingKeys] = useState(
+        () => new Set()
+    );
+
     const currentFolderId =
         path.length > 0 ? path[path.length - 1].id : currentFolder?.id;
 
@@ -491,6 +598,32 @@ function Main({ onLogout }) {
             cancelled = true;
         };
     }, [onLogout]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadFavorites() {
+            try {
+                const favorites = await getFavorites();
+
+                if (!cancelled) {
+                    setFavoritesByKey(indexFavorites(favorites));
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(
+                        err.message || "Failed to load favorites"
+                    );
+                }
+            }
+        }
+
+        loadFavorites();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     useEffect(() => {
         return () => {
@@ -1047,6 +1180,112 @@ function Main({ onLogout }) {
         }
     }
 
+    function setFavoritePending(key, pending) {
+        setFavoritePendingKeys((current) => {
+            const next = new Set(current);
+
+            if (pending) {
+                next.add(key);
+            } else {
+                next.delete(key);
+            }
+
+            return next;
+        });
+    }
+
+    async function refreshFavorites() {
+        const favorites = await getFavorites();
+        const indexed = indexFavorites(favorites);
+        setFavoritesByKey(indexed);
+        return indexed;
+    }
+
+    async function handleToggleFavorite(item) {
+        if (!item || item.isDraft || item.rawId == null) {
+            return;
+        }
+
+        const entityType = getItemEntityType(item);
+        const key = favoriteKey(entityType, item.rawId);
+
+        if (favoritePendingKeys.has(key)) {
+            return;
+        }
+
+        let existingFavorite = favoritesByKey[key];
+
+        setError("");
+        setFavoritePending(key, true);
+
+        try {
+            if (existingFavorite) {
+                if (existingFavorite.id == null) {
+                    const refreshed = await refreshFavorites();
+                    existingFavorite = refreshed[key];
+
+                    if (!existingFavorite?.id) {
+                        throw new Error(
+                            "Could not find the saved favorite"
+                        );
+                    }
+                }
+
+                setFavoritesByKey((current) => {
+                    const next = { ...current };
+                    delete next[key];
+                    return next;
+                });
+
+                try {
+                    await removeFromFavorites(existingFavorite.id);
+                } catch (err) {
+                    setFavoritesByKey((current) => ({
+                        ...current,
+                        [key]: existingFavorite,
+                    }));
+                    throw err;
+                }
+
+                return;
+            }
+
+            setFavoritesByKey((current) => ({
+                ...current,
+                [key]: {
+                    id: null,
+                    entityType,
+                    entityId: item.rawId,
+                    optimistic: true,
+                },
+            }));
+
+            try {
+                await addToFavorites(entityType, item.rawId);
+            } catch (err) {
+                setFavoritesByKey((current) => {
+                    const next = { ...current };
+                    delete next[key];
+                    return next;
+                });
+                throw err;
+            }
+
+            try {
+                await refreshFavorites();
+            } catch {
+                // The favorite was added successfully. Keep the filled
+                // optimistic star; a later page load will obtain its row ID.
+            }
+        } catch (err) {
+            setError(
+                err.message || "Failed to update favorite"
+            );
+        } finally {
+            setFavoritePending(key, false);
+        }
+    }
+
     function handleShare(item) {
         const selectedItems = allItems.filter((currentItem) =>
             selectedIds.includes(currentItem.id)
@@ -1324,6 +1563,73 @@ function Main({ onLogout }) {
 
     return (
         <main className="drive-page">
+            <style>{`
+                .item-title-line > strong {
+                    flex: 1 1 auto;
+                }
+
+                .favorite-toggle {
+                    width: 24px;
+                    height: 24px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex: 0 0 auto;
+                    border-radius: 6px;
+                    color: #94a3b8;
+                    opacity: 0;
+                    transform: scale(0.9);
+                    cursor: pointer;
+                    transition:
+                        opacity 140ms ease,
+                        transform 140ms ease,
+                        color 140ms ease,
+                        background-color 140ms ease;
+                }
+
+                .file-row:hover .favorite-toggle,
+                .file-row:focus-within .favorite-toggle,
+                .favorite-toggle:focus-visible,
+                .favorite-toggle.is-favorite {
+                    opacity: 1;
+                    transform: scale(1);
+                }
+
+                .favorite-toggle:hover {
+                    color: #f4c152;
+                    background: rgba(244, 193, 82, 0.12);
+                }
+
+                .favorite-toggle:focus-visible {
+                    outline: 2px solid currentColor;
+                    outline-offset: 1px;
+                }
+
+                .favorite-star-icon {
+                    width: 17px;
+                    height: 17px;
+                    fill: transparent;
+                    transition: fill 140ms ease, transform 140ms ease;
+                }
+
+                .favorite-toggle.is-favorite {
+                    color: #f4c152;
+                }
+
+                .favorite-toggle.is-favorite .favorite-star-icon {
+                    fill: currentColor;
+                }
+
+                .favorite-toggle.is-favorite:hover .favorite-star-icon {
+                    transform: scale(1.08);
+                }
+
+                .favorite-toggle.is-pending {
+                    opacity: 0.55;
+                    cursor: wait;
+                    pointer-events: none;
+                }
+            `}</style>
             <aside className={`drive-sidebar ${sidebarOpen ? "open" : "closed"}`}>
                 <div className="sidebar-top">
                     <button
@@ -1369,6 +1675,11 @@ function Main({ onLogout }) {
 
                                             return;
 
+                                        }
+
+                                        if (item.key === "favorites") {
+                                            navigate("/favorites");
+                                            return;
                                         }
 
                                         setNav(item.key);
@@ -1586,44 +1897,60 @@ function Main({ onLogout }) {
                             )}
 
                             {!error &&
-                                visibleFiles.map((item) => (
-                                    <FileRow
-                                        key={item.id}
-                                        item={item}
-                                        selected={selectedIds.includes(item.id)}
-                                        isDraft={item.isDraft}
-                                        draftInputRef={newFolderInputRef}
-                                        creatingFolder={creatingFolder}
-                                        openMenuId={openMenuId}
-                                        setOpenMenuId={setOpenMenuId}
-                                        renamingItem={renamingItem}
-                                        renameInputRef={renameInputRef}
-                                        onRenameCommit={commitRename}
-                                        onRenameCancel={cancelRename}
-                                        onDraftCommit={commitNewFolderName}
-                                        onDraftCancel={cancelCreateFolder}
-                                        onDownload={handleDownload}
-                                        onRename={handleRename}
-                                        onEdit={handleEdit}
-                                        onShare={handleShare}
-                                        onCopy={handleCopy}
-                                        onCut={handleCut}
-                                        onDelete={handleDelete}
-                                        onProperties={handleProperties}
-                                        onSelect={(event) =>
-                                            handleFileSelect(event, item.id)
-                                        }
-                                        onOpen={() => {
-                                            if (item.isDraft || renamingItem?.id === item.id) return;
+                                visibleFiles.map((item) => {
+                                    const itemFavoriteKey =
+                                        getItemFavoriteKey(item);
+                                    const favorite = itemFavoriteKey
+                                        ? favoritesByKey[itemFavoriteKey]
+                                        : null;
+                                    const favoritePending = itemFavoriteKey
+                                        ? favoritePendingKeys.has(
+                                            itemFavoriteKey
+                                        )
+                                        : false;
 
-                                            if (item.type === "folder") {
-                                                openFolder(item.folder);
-                                            } else {
-                                                openFile(item);
+                                    return (
+                                        <FileRow
+                                            key={item.id}
+                                            item={item}
+                                            selected={selectedIds.includes(item.id)}
+                                            isDraft={item.isDraft}
+                                            draftInputRef={newFolderInputRef}
+                                            creatingFolder={creatingFolder}
+                                            openMenuId={openMenuId}
+                                            setOpenMenuId={setOpenMenuId}
+                                            renamingItem={renamingItem}
+                                            renameInputRef={renameInputRef}
+                                            onRenameCommit={commitRename}
+                                            onRenameCancel={cancelRename}
+                                            onDraftCommit={commitNewFolderName}
+                                            onDraftCancel={cancelCreateFolder}
+                                            onDownload={handleDownload}
+                                            onRename={handleRename}
+                                            onEdit={handleEdit}
+                                            onShare={handleShare}
+                                            onCopy={handleCopy}
+                                            onCut={handleCut}
+                                            onDelete={handleDelete}
+                                            onProperties={handleProperties}
+                                            favorite={favorite}
+                                            favoritePending={favoritePending}
+                                            onToggleFavorite={handleToggleFavorite}
+                                            onSelect={(event) =>
+                                                handleFileSelect(event, item.id)
                                             }
-                                        }}
-                                    />
-                                ))}
+                                            onOpen={() => {
+                                                if (item.isDraft || renamingItem?.id === item.id) return;
+
+                                                if (item.type === "folder") {
+                                                    openFolder(item.folder);
+                                                } else {
+                                                    openFile(item);
+                                                }
+                                            }}
+                                        />
+                                    );
+                                })}
 
                             {!loading && !error && visibleFiles.length === 0 && (
                                 <div className="empty-state">This folder is empty.</div>
@@ -1711,6 +2038,9 @@ function FileRow({
                      onCut,
                      onDelete,
                      onProperties,
+                     favorite,
+                     favoritePending,
+                     onToggleFavorite,
                  }) {
     const FileIcon = getFileIcon(item.type);
     const menuOpen = openMenuId === item.id;
@@ -1721,29 +2051,6 @@ function FileRow({
         setOpenMenuId(menuOpen ? null : item.id);
     }
 
-    async function handleSubmit(event) {
-        event.preventDefault();
-
-        if (selectedUsers.length === 0) {
-            setError("Select at least one user");
-            inputRef.current?.focus();
-            return;
-        }
-
-        const shares = selectedUsers.map((user) => ({
-            userId: user.id,
-            username: getUsername(user),
-            role: user.role || "VIEWER",
-        }));
-
-        setError("");
-
-        await onSubmit?.({
-            resourceType: target.resourceType,
-            resourceId: target.resourceId,
-            shares,
-        });
-    }
 
     function runAction(event, action) {
         event.stopPropagation();
@@ -1828,6 +2135,58 @@ function FileRow({
                     <Icons.Shared className="shared-indicator-icon" />
                 </span>
             )}
+
+            <span
+                className={[
+                    "favorite-toggle",
+                    favorite ? "is-favorite" : "",
+                    favoritePending ? "is-pending" : "",
+                ]
+                    .filter(Boolean)
+                    .join(" ")}
+                role="button"
+                tabIndex={0}
+                aria-label={
+                    favorite
+                        ? `Remove ${item.name} from favorites`
+                        : `Add ${item.name} to favorites`
+                }
+                aria-pressed={Boolean(favorite)}
+                title={
+                    favorite
+                        ? "Remove from favorites"
+                        : "Add to favorites"
+                }
+                onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    if (!favoritePending) {
+                        onToggleFavorite?.(item);
+                    }
+                }}
+                onDoubleClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }}
+                onKeyDown={(event) => {
+                    if (
+                        event.key !== "Enter" &&
+                        event.key !== " "
+                    ) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    if (!favoritePending) {
+                        onToggleFavorite?.(item);
+                    }
+                }}
+            >
+                <Icons.Star className="favorite-star-icon" />
+            </span>
         </span>
     )}
 

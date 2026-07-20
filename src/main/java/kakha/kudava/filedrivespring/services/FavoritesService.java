@@ -1,13 +1,17 @@
 package kakha.kudava.filedrivespring.services;
 
-import org.springframework.transaction.annotation.Transactional;
 import kakha.kudava.filedrivespring.dto.FavoritesDTO;
 import kakha.kudava.filedrivespring.dto.FavoritesRequestDTO;
 import kakha.kudava.filedrivespring.enums.EntityType;
+import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Favorites;
+import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.User;
+import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FavoritesRepository;
+import kakha.kudava.filedrivespring.repository.FolderRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.List;
@@ -19,16 +23,22 @@ public class FavoritesService {
     private final FavoritesRepository favoritesRepository;
     private final ResourceAccessService resourceAccessService;
     private final LogsService logsService;
+    private final FileMetaDataRepository fileMetaDataRepository;
+    private final FolderRepository folderRepository;
 
     public FavoritesService(
             FavoritesRepository favoritesRepository,
-            ResourceAccessService resourceAccessService, LogsService logsService
+            ResourceAccessService resourceAccessService,
+            LogsService logsService,
+            FileMetaDataRepository fileMetaDataRepository,
+            FolderRepository folderRepository
     ) {
         this.favoritesRepository = favoritesRepository;
         this.resourceAccessService = resourceAccessService;
         this.logsService = logsService;
+        this.fileMetaDataRepository = fileMetaDataRepository;
+        this.folderRepository = folderRepository;
     }
-
 
     @Transactional
     public void add(FavoritesRequestDTO request) {
@@ -118,10 +128,75 @@ public class FavoritesService {
                 .findAllByUserAndRemovedAtIsNullOrderByCreatedAtDesc(currentUser)
                 .stream()
                 .map(this::toDto)
+                .filter(Objects::nonNull)
                 .toList();
     }
 
     private FavoritesDTO toDto(Favorites favorite) {
+        Long entityId = favorite.getEntityId();
+
+        if (favorite.getEntityType() == EntityType.FILE) {
+            try {
+                resourceAccessService.requireFileView(entityId);
+            } catch (RuntimeException ignored) {
+                return null;
+            }
+
+            FileMetaData file = fileMetaDataRepository
+                    .findById(entityId)
+                    .orElse(null);
+
+            if (file == null
+                    || file.isDeleted()
+                    || file.isPermanentlyDeleted()) {
+                return null;
+            }
+
+            FavoritesDTO dto = baseDto(favorite);
+            dto.setName(file.getFileName());
+            dto.setObjectType(file.getObjectType());
+            dto.setSize(file.getSize());
+
+            if (file.getOwner() != null) {
+                dto.setOwnerUsername(file.getOwner().getUsername());
+            }
+
+            return dto;
+        }
+
+        if (favorite.getEntityType() == EntityType.FOLDER) {
+            try {
+                resourceAccessService.requireFolderView(entityId);
+            } catch (RuntimeException ignored) {
+                return null;
+            }
+
+            Folders folder = folderRepository
+                    .findById(entityId)
+                    .orElse(null);
+
+            if (folder == null
+                    || folder.isDeleted()
+                    || folder.isPermanentlyDeleted()) {
+                return null;
+            }
+
+            FavoritesDTO dto = baseDto(favorite);
+            dto.setName(folder.getName());
+            dto.setObjectType("folder");
+            dto.setSize(null);
+
+            if (folder.getOwner() != null) {
+                dto.setOwnerUsername(folder.getOwner().getUsername());
+            }
+
+            return dto;
+        }
+
+        return null;
+    }
+
+    private FavoritesDTO baseDto(Favorites favorite) {
         FavoritesDTO dto = new FavoritesDTO();
 
         dto.setId(favorite.getId());

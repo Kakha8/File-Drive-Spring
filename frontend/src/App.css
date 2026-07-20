@@ -2517,3 +2517,66 @@ body,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.favorite-toggle {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #98a2b3;
+  opacity: 0;
+  transform: scale(0.92);
+  cursor: pointer;
+  transition:
+          opacity 140ms ease,
+          transform 140ms ease,
+          color 140ms ease,
+          background-color 140ms ease;
+}
+
+.file-row:hover .favorite-toggle,
+.file-row:focus-within .favorite-toggle,
+.favorite-toggle:focus-visible,
+.favorite-toggle.is-favorite {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.favorite-toggle:hover {
+  color: #f4c152;
+  background: rgba(244, 193, 82, 0.1);
+}
+
+.favorite-toggle:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.favorite-star-icon {
+  width: 18px;
+  height: 18px;
+  fill: transparent;
+  transition:
+          fill 140ms ease,
+          transform 140ms ease;
+}
+
+.favorite-toggle.is-favorite {
+  color: #f4c152;
+}
+
+.favorite-toggle.is-favorite .favorite-star-icon {
+  fill: currentColor;
+}
+
+.favorite-toggle.is-favorite:hover .favorite-star-icon {
+  transform: scale(1.08);
+}
+
+.favorite-toggle.is-pending {
+  cursor: wait;
+  opacity: 0.55;
+  pointer-events: none;
+}

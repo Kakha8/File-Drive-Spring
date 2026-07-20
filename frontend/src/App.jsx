@@ -6,6 +6,7 @@ import Main from "./pages/Main";
 import Trashcan from "./pages/Trashcan";
 import "./App.css";
 import SharedWithMe from "./pages/SharedWithMe.jsx";
+import Favorites from "./pages/Favorites";
 
 const SIDEBAR_STORAGE_KEY = "drive-sidebar-open";
 
@@ -98,6 +99,21 @@ function App() {
                             <Trashcan
                                 sidebarOpen={sidebarOpen}
                                 onToggleSidebar={toggleSidebar}
+                            />
+                        ) : (
+                            <Navigate to="/login" replace />
+                        )
+                    }
+                />
+
+                <Route
+                    path="/favorites"
+                    element={
+                        loggedIn ? (
+                            <Favorites
+                                sidebarOpen={sidebarOpen}
+                                onToggleSidebar={toggleSidebar}
+                                onLogout={() => setLoggedIn(false)}
                             />
                         ) : (
                             <Navigate to="/login" replace />
