@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.model;
 
 import jakarta.persistence.*;
+import kakha.kudava.filedrivespring.enums.FolderSpace;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -44,5 +45,13 @@ public class Folders {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id")
     private User owner;
+
+    @Enumerated(EnumType.STRING)
+    @Column(
+            name = "folder_space",
+            nullable = false,
+            length = 20
+    )
+    private FolderSpace folderSpace = FolderSpace.DRIVE;
 
 }

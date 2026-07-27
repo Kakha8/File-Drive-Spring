@@ -1,0 +1,14 @@
+package kakha.kudava.filedrivespring.repository;
+
+import kakha.kudava.filedrivespring.model.LockboxFile;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface LockboxFileRepository
+        extends JpaRepository<LockboxFile, Long> {
+
+    Optional<LockboxFile> findByFileId(Long fileId);
+
+    boolean existsByFileId(Long fileId);
+}
