@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.model;
 
 import jakarta.persistence.*;
+import kakha.kudava.filedrivespring.enums.DriveSpace;
 import kakha.kudava.filedrivespring.enums.FolderSpace;
 import lombok.Getter;
 import lombok.Setter;
@@ -48,10 +49,9 @@ public class Folders {
 
     @Enumerated(EnumType.STRING)
     @Column(
-            name = "folder_space",
+            name = "drive_space",
             nullable = false,
             length = 20
     )
-    private FolderSpace folderSpace = FolderSpace.DRIVE;
-
+    private DriveSpace driveSpace = DriveSpace.DRIVE;
 }

@@ -13,7 +13,7 @@ services:
         -Djavax.net.ssl.trustStore=/certs/truststore.p12
         -Djavax.net.ssl.trustStorePassword=changeit
         -Djavax.net.ssl.trustStoreType=PKCS12
-        
+      
 
       SPRING_DATASOURCE_URL: jdbc:h2:file:/app/data/mydb;AUTO_SERVER=TRUE
 
@@ -22,6 +22,7 @@ services:
       S3_SECRET_KEY: ${MINIO_APP_PASSWORD}
       S3_BUCKET: file-drive-bucket
       S3_QUARANTINE_BUCKET: file-drive-quarantine
+      S3_LOCKBOX_BUCKET: ${S3_LOCKBOX_BUCKET}
 
     volumes:
       - ./data:/app/data
@@ -115,16 +116,19 @@ services:
         mc mb -p local/file-drive-bucket --insecure || true
         mc mb -p local/file-drive-quarantine --insecure || true
         mc mb -p local/file-drive-trash --insecure || true
+        mc mb -p local/file-drive-lockbox --insecure || true
 
         echo "Configuring encryption..."
         mc admin kms key create local file-drive-master-key --insecure || true
         mc encrypt set sse-s3 local/file-drive-bucket --insecure || true
         mc encrypt set sse-s3 local/file-drive-trash --insecure || true
+        mc encrypt set sse-s3 local/file-drive-lockbox --insecure || true
 
         echo "Disabling anonymous access..."
         mc anonymous set none local/file-drive-bucket --insecure || true
         mc anonymous set none local/file-drive-quarantine --insecure || true
         mc anonymous set none local/file-drive-trash --insecure || true
+        mc anonymous set none local/file-drive-lockbox --insecure || true
 
         echo "Creating limited app policy..."
         cat > /tmp/filedrive-app-policy.json <<'EOF'
@@ -141,7 +145,8 @@ services:
               "Resource": [
                 "arn:aws:s3:::file-drive-bucket",
                 "arn:aws:s3:::file-drive-quarantine",
-                "arn:aws:s3:::file-drive-trash"
+                "arn:aws:s3:::file-drive-trash",
+                "arn:aws:s3:::file-drive-lockbox"
               ]
             },
             {
@@ -156,7 +161,8 @@ services:
               "Resource": [
                 "arn:aws:s3:::file-drive-bucket/*",
                 "arn:aws:s3:::file-drive-quarantine/*",
-                "arn:aws:s3:::file-drive-trash/*"
+                "arn:aws:s3:::file-drive-trash/*",
+                "arn:aws:s3:::file-drive-lockbox/*"
               ]
             }
           ]

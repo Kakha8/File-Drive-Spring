@@ -1,17 +1,30 @@
 package kakha.kudava.filedrivespring.model;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Basic;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
+import jakarta.persistence.MapsId;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.time.Instant;
 import java.util.Objects;
 
 @Entity
 @Getter
-@Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(
         name = "lockbox_files",
@@ -29,10 +42,10 @@ import java.util.Objects;
 public class LockboxFile {
 
     /*
-     * The Lockbox record uses the same primary key as FileMetaData.
+     * Shared primary key with FileMetaData.
      *
-     * This guarantees that one normal file record can have at most
-     * one Lockbox metadata record.
+     * The LockboxFile ID is copied from the associated FileMetaData
+     * record by @MapsId.
      */
     @Id
     @Column(name = "file_id")
@@ -54,20 +67,21 @@ public class LockboxFile {
     private FileMetaData file;
 
     /*
-     * Version of .cseml/.fdcse container format.
+     * Version of the encrypted container layout.
      *
-     * This is separate from the encryption algorithm version so
-     * that the container layout can evolve independently.
+     * For your current CSEMLK02 container, this will be 2.
+     * The value should come from LockboxContainerValidator.
      */
     @Column(
             name = "format_version",
             nullable = false
     )
-    private int formatVersion = 1;
+    private int formatVersion;
 
     /*
-     * Identifies the complete cryptographic construction used by
-     * the client. The server uses this only as metadata.
+     * Cryptographic construction used by the client.
+     *
+     * This is separate from the container format version.
      */
     @Enumerated(EnumType.STRING)
     @Column(
@@ -75,14 +89,10 @@ public class LockboxFile {
             nullable = false,
             length = 80
     )
-    private AlgorithmSuite algorithmSuite =
-            AlgorithmSuite.ML_KEM_1024_AES_256_GCM_V1;
+    private AlgorithmSuite algorithmSuite;
 
     /*
-     * Plaintext chunk size used by the encrypted container.
-     *
-     * This can help future clients understand the format without
-     * relying only on hard-coded defaults.
+     * Plaintext chunk size declared by the encrypted container.
      */
     @Column(
             name = "chunk_size",
@@ -91,10 +101,10 @@ public class LockboxFile {
     private int chunkSize;
 
     /*
-     * Public identifier or fingerprint of the client encryption key.
+     * Public identifier or fingerprint of the encryption key.
      *
-     * This must not contain the private key, recovery secret,
-     * plaintext DEK, or any other secret.
+     * Must never contain private-key material, the plaintext DEK,
+     * recovery secrets, or other sensitive key material.
      */
     @Column(
             name = "key_id",
@@ -103,13 +113,12 @@ public class LockboxFile {
     private String keyId;
 
     /*
-     * Optional client-encrypted metadata.
+     * Optional metadata encrypted by the client.
      *
-     * This could eventually contain the encrypted original filename,
-     * MIME type, plaintext size, or other private metadata.
-     *
-     * The server stores this blob but cannot decrypt it.
+     * Lombok does not generate a getter for this field because byte
+     * arrays are mutable. The custom getter returns a defensive copy.
      */
+    @Getter(AccessLevel.NONE)
     @Lob
     @Basic(fetch = FetchType.LAZY)
     @Column(name = "encrypted_metadata")
@@ -128,6 +137,10 @@ public class LockboxFile {
     )
     private Instant updatedAt;
 
+    /**
+     * Creates Lockbox metadata without a separate encrypted metadata
+     * blob.
+     */
     public LockboxFile(
             FileMetaData file,
             int formatVersion,
@@ -135,34 +148,64 @@ public class LockboxFile {
             int chunkSize,
             String keyId
     ) {
-        this.file = Objects.requireNonNull(
+        this(
                 file,
-                "file"
+                formatVersion,
+                algorithmSuite,
+                chunkSize,
+                keyId,
+                null
         );
+    }
 
-        if (formatVersion < 1) {
-            throw new IllegalArgumentException(
-                    "Format version must be at least 1."
-            );
-        }
-
-        if (chunkSize < 1) {
-            throw new IllegalArgumentException(
-                    "Chunk size must be positive."
-            );
-        }
-
-        this.formatVersion = formatVersion;
+    /**
+     * Creates a complete Lockbox metadata record.
+     */
+    public LockboxFile(
+            FileMetaData file,
+            int formatVersion,
+            AlgorithmSuite algorithmSuite,
+            int chunkSize,
+            String keyId,
+            byte[] encryptedMetadata
+    ) {
+        this.file = Objects.requireNonNull(file, "file");
+        this.formatVersion = requireValidFormatVersion(formatVersion);
         this.algorithmSuite = Objects.requireNonNull(
                 algorithmSuite,
                 "algorithmSuite"
         );
-        this.chunkSize = chunkSize;
-        this.keyId = keyId;
+        this.chunkSize = requireValidChunkSize(chunkSize);
+        this.keyId = requireValidKeyId(keyId);
+        this.encryptedMetadata = copy(encryptedMetadata);
+    }
+
+    /**
+     * Returns a copy so callers cannot modify the entity's internal
+     * byte array directly.
+     */
+    public byte[] getEncryptedMetadata() {
+        return copy(encryptedMetadata);
+    }
+
+    /**
+     * Replaces the optional client-encrypted metadata.
+     */
+    public void updateEncryptedMetadata(byte[] encryptedMetadata) {
+        this.encryptedMetadata = copy(encryptedMetadata);
+    }
+
+    /**
+     * Removes the optional client-encrypted metadata.
+     */
+    public void clearEncryptedMetadata() {
+        this.encryptedMetadata = null;
     }
 
     @PrePersist
     private void onCreate() {
+        validateState();
+
         Instant now = Instant.now();
 
         if (createdAt == null) {
@@ -174,7 +217,51 @@ public class LockboxFile {
 
     @PreUpdate
     private void onUpdate() {
+        validateState();
         updatedAt = Instant.now();
+    }
+
+    private void validateState() {
+        Objects.requireNonNull(file, "file");
+        Objects.requireNonNull(algorithmSuite, "algorithmSuite");
+
+        requireValidFormatVersion(formatVersion);
+        requireValidChunkSize(chunkSize);
+        requireValidKeyId(keyId);
+    }
+
+    private static int requireValidFormatVersion(int formatVersion) {
+        if (formatVersion < 1) {
+            throw new IllegalArgumentException(
+                    "Format version must be at least 1."
+            );
+        }
+
+        return formatVersion;
+    }
+
+    private static int requireValidChunkSize(int chunkSize) {
+        if (chunkSize < 1) {
+            throw new IllegalArgumentException(
+                    "Chunk size must be positive."
+            );
+        }
+
+        return chunkSize;
+    }
+
+    private static String requireValidKeyId(String keyId) {
+        if (keyId != null && keyId.length() > 128) {
+            throw new IllegalArgumentException(
+                    "Key ID must not exceed 128 characters."
+            );
+        }
+
+        return keyId;
+    }
+
+    private static byte[] copy(byte[] value) {
+        return value == null ? null : value.clone();
     }
 
     public enum AlgorithmSuite {

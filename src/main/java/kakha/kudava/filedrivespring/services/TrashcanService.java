@@ -13,6 +13,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import kakha.kudava.filedrivespring.enums.DriveSpace;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -452,7 +453,12 @@ public class TrashcanService {
                 throw new RuntimeException("Trashed file has no original object key: " + fileId);
             }
 
-            Folders restoreParent = resolveExistingRestoreParent(originalObjectKey, user);
+            Folders restoreParent =
+                    resolveExistingRestoreParent(
+                            originalObjectKey,
+                            user,
+                            file.getDriveSpace()
+                    );
             String restoredObjectKey = normalizePrefix(restoreParent.getPrefix()) + file.getFileName();
 
             if (fileMetaDataRepository.existsByObjectKeyAndDeletedFalseAndPermanentlyDeletedFalse(restoredObjectKey)) {
@@ -535,7 +541,12 @@ public class TrashcanService {
             throw new RuntimeException("Trashed folder has no original prefix: " + folder.getId());
         }
 
-        Folders restoreParent = resolveExistingRestoreParent(oldRootPrefix, user);
+        Folders restoreParent =
+                resolveExistingRestoreParent(
+                        oldRootPrefix,
+                        user,
+                        folder.getDriveSpace()
+                );
         String newRootPrefix = normalizePrefix(restoreParent.getPrefix()) + folder.getName() + "/";
 
         folderRepository
@@ -705,12 +716,23 @@ public class TrashcanService {
         return restoredFileIds;
     }
 
-    private Folders resolveExistingRestoreParent(String originalPath, User user) {
+    private Folders resolveExistingRestoreParent(
+            String originalPath,
+            User user,
+            DriveSpace driveSpace
+    ) {
+        Objects.requireNonNull(user, "user");
+        Objects.requireNonNull(driveSpace, "driveSpace");
+
         String parentPrefix = parentPrefixOf(originalPath);
 
         while (parentPrefix != null && !parentPrefix.isBlank()) {
             Optional<Folders> folder = folderRepository
-                    .findByPrefixAndOwnerAndDeletedFalseAndPermanentlyDeletedFalse(parentPrefix, user);
+                    .findByPrefixAndOwnerAndDriveSpaceAndDeletedFalseAndPermanentlyDeletedFalse(
+                            parentPrefix,
+                            user,
+                            driveSpace
+                    );
 
             if (folder.isPresent()) {
                 return folder.get();
@@ -720,8 +742,13 @@ public class TrashcanService {
         }
 
         return folderRepository
-                .findByOwnerAndParentIsNullAndDeletedFalseAndPermanentlyDeletedFalse(user)
-                .orElseThrow(() -> new RuntimeException("Root folder not found"));
+                .findByOwnerAndParentIsNullAndDriveSpaceAndDeletedFalseAndPermanentlyDeletedFalse(
+                        user,
+                        driveSpace
+                )
+                .orElseThrow(() -> new RuntimeException(
+                        driveSpace + " root folder not found"
+                ));
     }
 
     private List<Folders> getTopLevelFolders(List<Folders> folders) {

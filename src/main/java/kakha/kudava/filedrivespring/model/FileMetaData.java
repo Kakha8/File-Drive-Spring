@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.model;
 
 import jakarta.persistence.*;
+import kakha.kudava.filedrivespring.enums.DriveSpace;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -56,4 +57,11 @@ public class FileMetaData {
     @ManyToOne(fetch = FetchType.EAGER)
     private Folders parent;
 
+    @Enumerated(EnumType.STRING)
+    @Column(
+            name = "drive_space",
+            nullable = false,
+            length = 20
+    )
+    private DriveSpace driveSpace = DriveSpace.DRIVE;
 }
