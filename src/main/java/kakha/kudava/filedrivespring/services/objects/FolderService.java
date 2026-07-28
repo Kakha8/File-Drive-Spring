@@ -6,6 +6,7 @@ import io.minio.PutObjectArgs;
 import io.minio.errors.*;
 import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.dto.*;
+import kakha.kudava.filedrivespring.enums.DriveSpace;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.User;
@@ -88,9 +89,13 @@ public class FolderService {
         Folders parent;
 
         if (req.getParentId() == null) {
-            parent = rootFolderService.ensureRootFolder(user);
+            parent = requireDriveFolder(
+                    rootFolderService.ensureRootFolder(user)
+            );
         } else {
-            parent = access.requireFolderEdit(req.getParentId());
+            parent = requireDriveFolder(
+                    access.requireFolderEdit(req.getParentId())
+            );
         }
 
         String cleanName = req.getName()
@@ -119,9 +124,10 @@ public class FolderService {
         String fullPrefix = parentPrefix + cleanName + "/";
 
         folderRepository
-                .findByPrefixAndOwnerAndDeletedFalseAndPermanentlyDeletedFalse(
+                .findByPrefixAndOwnerAndDriveSpaceAndDeletedFalseAndPermanentlyDeletedFalse(
                         fullPrefix,
-                        parent.getOwner()
+                        parent.getOwner(),
+                        DriveSpace.DRIVE
                 )
                 .ifPresent(existing -> {
                     throw new RuntimeException("Folder already exists: " + cleanName);
@@ -137,6 +143,7 @@ public class FolderService {
          * Editors are contributors, not owners.
          */
         entity.setOwner(parent.getOwner());
+        entity.setDriveSpace(parent.getDriveSpace());
 
         entity.setDeleted(false);
         entity.setPermanentlyDeleted(false);
@@ -151,7 +158,9 @@ public class FolderService {
 
         if (parentId == null) {
             User user = access.currentUser();
-            Folders root = rootFolderService.ensureRootFolder(user);
+            Folders root = requireDriveFolder(
+                    rootFolderService.ensureRootFolder(user)
+            );
 
             String rootPrefix = root.getPrefix();
             if (!rootPrefix.endsWith("/")) {
@@ -161,7 +170,9 @@ public class FolderService {
             return rootPrefix + normalizedName + "/";
         }
 
-        Folders parent = access.requireFolderEdit(parentId);
+        Folders parent = requireDriveFolder(
+                access.requireFolderEdit(parentId)
+        );
 
         String parentPrefix = parent.getPrefix();
         if (!parentPrefix.endsWith("/")) {
@@ -173,7 +184,9 @@ public class FolderService {
 
     @Transactional
     public void delete(Long id) throws Exception {
-        Folders folder = access.requireFolderOwner(id);
+        Folders folder = requireDriveFolder(
+                access.requireFolderOwner(id)
+        );
 
         if (folder.getParent() == null) {
             throw new RuntimeException("Root folder cannot be deleted");
@@ -211,12 +224,15 @@ public class FolderService {
     }
 
     public List<FolderItemDTO> viewFolders(Long id) {
-        Folders parent = access.requireFolderView(id);
+        Folders parent = requireDriveFolder(
+                access.requireFolderView(id)
+        );
         User user = access.currentUser();
 
         List<Folders> folders =
                 folderRepository.findFoldersByParent_Id(parent.getId())
                         .stream()
+                        .filter(folder -> folder.getDriveSpace() == DriveSpace.DRIVE)
                         .filter(folder -> !folder.isDeleted())
                         .filter(folder -> !folder.isPermanentlyDeleted())
                         .filter(folder -> sharingService.canViewFolder(folder, user))
@@ -233,12 +249,15 @@ public class FolderService {
     }
 
     public List<FileItemDTO> viewFiles(Long id) {
-        Folders folder = access.requireFolderView(id);
+        Folders folder = requireDriveFolder(
+                access.requireFolderView(id)
+        );
         User user = access.currentUser();
 
         List<FileMetaData> files =
                 fileMetaDataRepository.findByParent_IdAndDeletedFalse(folder.getId())
                         .stream()
+                        .filter(file -> file.getDriveSpace() == DriveSpace.DRIVE)
                         .filter(file -> !file.isPermanentlyDeleted())
                         .filter(file -> sharingService.canViewFile(file, user))
                         .toList();
@@ -266,7 +285,9 @@ public class FolderService {
     public FolderViewDTO viewCurrentUserRoot() throws Exception {
         User user = access.currentUser();
 
-        Folders root = rootFolderService.ensureRootFolder(user);
+        Folders root = requireDriveFolder(
+                rootFolderService.ensureRootFolder(user)
+        );
 
         return viewFolder(root.getId());
     }
@@ -274,7 +295,9 @@ public class FolderService {
     public FolderViewDTO viewFolder(Long id) {
         User user = currentUser();
 
-        Folders folder = access.requireFolderView(id);
+        Folders folder = requireDriveFolder(
+                access.requireFolderView(id)
+        );
 
         FolderViewDTO dto = new FolderViewDTO();
         dto.setId(folder.getId());
@@ -286,7 +309,9 @@ public class FolderService {
     }
 
     public FolderDownloadResult downloadFolderAsZip(Long folderId) throws Exception {
-        Folders rootFolder = access.requireFolderView(folderId);
+        Folders rootFolder = requireDriveFolder(
+                access.requireFolderView(folderId)
+        );
 
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         Set<String> usedZipNames = new HashSet<>();
@@ -388,6 +413,7 @@ public class FolderService {
 
         List<FileMetaData> files = fileMetaDataRepository.findByParentId(folder.getId())
                 .stream()
+                .filter(file -> file.getDriveSpace() == DriveSpace.DRIVE)
                 .filter(file -> !file.isDeleted())
                 .filter(file -> !file.isPermanentlyDeleted())
                 .filter(file -> sharingService.canViewFile(file, user))
@@ -400,6 +426,7 @@ public class FolderService {
 
         List<Folders> childFolders = folderRepository.findByParentId(folder.getId())
                 .stream()
+                .filter(child -> child.getDriveSpace() == DriveSpace.DRIVE)
                 .filter(child -> !child.isDeleted())
                 .filter(child -> !child.isPermanentlyDeleted())
                 .filter(child -> sharingService.canViewFolder(child, user))
@@ -472,6 +499,24 @@ public class FolderService {
                 .replace(">", "_")
                 .replace("|", "_")
                 .trim();
+    }
+
+    /**
+     * This service handles only normal Drive folders.
+     *
+     * Lockbox folders use separate storage and service behavior, so they
+     * must never reach normal delete, download, ZIP, or folder-creation paths.
+     */
+    private Folders requireDriveFolder(Folders folder) {
+        Objects.requireNonNull(folder, "folder");
+
+        if (folder.getDriveSpace() != DriveSpace.DRIVE) {
+            throw new IllegalArgumentException(
+                    "This operation is only available for normal Drive folders."
+            );
+        }
+
+        return folder;
     }
 
     @Transactional

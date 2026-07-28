@@ -1,86 +1,111 @@
 package kakha.kudava.filedrivespring.services.objects;
 
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
+
 import jakarta.transaction.Transactional;
+import kakha.kudava.filedrivespring.enums.DriveSpace;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
-import lombok.extern.slf4j.Slf4j;
-import lombok.extern.slf4j.XSlf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.ByteArrayInputStream;
+import java.util.Objects;
 
-@Slf4j
 @Service
 public class RootFolderService {
 
     private final FolderRepository folderRepository;
-    private final MinioClient minioClient;
-    private final String bucket;
-    private final String trashBucket;
 
-    public RootFolderService(
-            FolderRepository folderRepository,
-            MinioClient minioClient,
-            @Value("${s3.bucket}") String bucket,
-            @Value("${s3.trash-bucket}") String trashBucket
-    ) {
+    public RootFolderService(FolderRepository folderRepository) {
         this.folderRepository = folderRepository;
-        this.minioClient = minioClient;
-        this.bucket = bucket;
-        this.trashBucket = trashBucket;
     }
 
+    /**
+     * Compatibility method for all existing normal Drive callers.
+     *
+     * Existing code that calls ensureRootFolder(user) continues to
+     * resolve the user's normal DRIVE root.
+     */
     @Transactional
     public Folders ensureRootFolder(User user) {
-        return folderRepository
-                .findByOwnerAndParentIsNullAndDeletedFalseAndPermanentlyDeletedFalse(user)
-                .orElseGet(() -> {
-                    Folders root = new Folders();
-                    root.setName("My Drive");
-                    root.setPrefix("users/" + user.getId() + "/");
-                    root.setOwner(user);
-                    root.setParent(null);
-                    root.setDeleted(false);
-                    root.setPermanentlyDeleted(false);
-
-                    return folderRepository.save(root);
-                });
+        return ensureRootFolder(user, DriveSpace.DRIVE);
     }
 
-    private Folders createRootFolder(User user) {
-        String rootPrefix = "users/" + user.getId() + "/";
+    /**
+     * Finds or creates the root folder for the requested Drive space.
+     */
+    @Transactional
+    public Folders ensureRootFolder(
+            User user,
+            DriveSpace driveSpace
+    ) {
+        Objects.requireNonNull(user, "user");
+        Objects.requireNonNull(driveSpace, "driveSpace");
 
-        Folders root = new Folders();
-        root.setName("root");
-        root.setPrefix(rootPrefix);
-        root.setOwner(user);
-        root.setParent(null);
-        root.setDeleted(false);
-        root.setPermanentlyDeleted(false);
-
-        Folders saved = folderRepository.save(root);
-
-        try {
-            minioClient.putObject(
-                    PutObjectArgs.builder()
-                            .bucket(bucket)
-                            .object(rootPrefix)
-                            .stream(new ByteArrayInputStream(new byte[0]), 0, -1)
-                            .contentType("application/x-directory")
-                            .build()
+        if (user.getId() == null) {
+            throw new IllegalArgumentException(
+                    "User must be persisted before creating a root folder."
             );
-        } catch (Exception e) {
-            log.warn("Root folder DB row was created, but MinIO prefix placeholder failed: {}", rootPrefix, e);
         }
 
-        return saved;
+        return folderRepository
+                .findByOwnerAndParentIsNullAndDriveSpaceAndDeletedFalseAndPermanentlyDeletedFalse(
+                        user,
+                        driveSpace
+                )
+                .orElseGet(() -> createRootFolder(user, driveSpace));
     }
 
-    private String rootPrefix(User user) {
-        return "users/" + user.getId() + "/";
+    /**
+     * Convenience method for Lockbox services and controllers.
+     */
+    @Transactional
+    public Folders ensureLockboxRootFolder(User user) {
+        return ensureRootFolder(user, DriveSpace.LOCKBOX);
+    }
+
+    private Folders createRootFolder(
+            User user,
+            DriveSpace driveSpace
+    ) {
+        Folders root = new Folders();
+
+        root.setName(rootName(driveSpace));
+        root.setPrefix(rootPrefix(user, driveSpace));
+        root.setOwner(user);
+        root.setParent(null);
+        root.setDriveSpace(driveSpace);
+        root.setDeleted(false);
+        root.setDeletedAt(null);
+        root.setPermanentlyDeleted(false);
+        root.setPermanentlyDeletedAt(null);
+
+        return folderRepository.save(root);
+    }
+
+    private String rootName(DriveSpace driveSpace) {
+        return switch (driveSpace) {
+            case DRIVE -> "My Drive";
+            case LOCKBOX -> "Lockbox";
+        };
+    }
+
+    private String rootPrefix(
+            User user,
+            DriveSpace driveSpace
+    ) {
+        return switch (driveSpace) {
+            /*
+             * Preserve the existing normal Drive prefix so current object
+             * keys and existing normal Drive behavior are not changed.
+             */
+            case DRIVE -> "users/" + user.getId() + "/";
+
+            /*
+             * Keep the Lockbox hierarchy outside the normal Drive prefix.
+             * This prevents prefix-based Drive operations from accidentally
+             * matching Lockbox folders.
+             */
+            case LOCKBOX -> "lockbox/users/" + user.getId() + "/";
+        };
     }
 }
