@@ -1596,8 +1596,8 @@ function Main({ onLogout }) {
                 }
 
                 .favorite-toggle:hover {
-                    color: #f4c152;
-                    background: rgba(244, 193, 82, 0.12);
+                    color: var(--old-accent, #3b82f6);
+                    background: var(--old-accent-soft, rgba(59, 130, 246, 0.18));
                 }
 
                 .favorite-toggle:focus-visible {
@@ -1613,7 +1613,7 @@ function Main({ onLogout }) {
                 }
 
                 .favorite-toggle.is-favorite {
-                    color: #f4c152;
+                    color: var(--old-accent, #3b82f6);
                 }
 
                 .favorite-toggle.is-favorite .favorite-star-icon {
