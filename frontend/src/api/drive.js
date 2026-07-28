@@ -1,6 +1,6 @@
 import { apiFetch } from "./http";
 import { refresh } from "./auth";
-import { getAccessToken } from "./tokenStore";
+import { getAccessToken } from "./tokenstore";
 
 const API_BASE_URL = "https://localhost:8443";
 export async function getRootFolder() {

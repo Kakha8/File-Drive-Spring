@@ -1,50 +1,99 @@
-import { useEffect, useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+    useCallback,
+    useEffect,
+    useState,
+} from "react";
+import {
+    BrowserRouter,
+    Navigate,
+    Route,
+    Routes,
+} from "react-router-dom";
+
 import { refresh } from "./api/auth";
 import Login from "./pages/Login";
 import Main from "./pages/Main";
 import Trashcan from "./pages/Trashcan";
-import "./App.css";
 import SharedWithMe from "./pages/SharedWithMe.jsx";
 import Favorites from "./pages/Favorites";
+import Settings from "./pages/Settings";
+import "./App.css";
 
 const SIDEBAR_STORAGE_KEY = "drive-sidebar-open";
 
 function getSavedSidebarOpen() {
-    const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    const saved = localStorage.getItem(
+        SIDEBAR_STORAGE_KEY
+    );
 
-    if (saved === "true") return true;
-    if (saved === "false") return false;
+    if (saved === "true") {
+        return true;
+    }
+
+    if (saved === "false") {
+        return false;
+    }
 
     return false;
 }
 
 function App() {
-    const [authChecked, setAuthChecked] = useState(false);
-    const [loggedIn, setLoggedIn] = useState(false);
-    const [sidebarOpen, setSidebarOpen] = useState(getSavedSidebarOpen);
+    const [authChecked, setAuthChecked] =
+        useState(false);
 
-    function toggleSidebar() {
+    const [loggedIn, setLoggedIn] =
+        useState(false);
+
+    const [sidebarOpen, setSidebarOpen] =
+        useState(getSavedSidebarOpen);
+
+    const handleLogin = useCallback(() => {
+        setLoggedIn(true);
+    }, []);
+
+    const handleLogout = useCallback(() => {
+        setLoggedIn(false);
+    }, []);
+
+    const toggleSidebar = useCallback(() => {
         setSidebarOpen((current) => {
             const next = !current;
-            localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+
+            localStorage.setItem(
+                SIDEBAR_STORAGE_KEY,
+                String(next)
+            );
+
             return next;
         });
-    }
+    }, []);
 
     useEffect(() => {
+        let cancelled = false;
+
         async function checkAuth() {
             try {
                 await refresh();
-                setLoggedIn(true);
+
+                if (!cancelled) {
+                    setLoggedIn(true);
+                }
             } catch {
-                setLoggedIn(false);
+                if (!cancelled) {
+                    setLoggedIn(false);
+                }
             } finally {
-                setAuthChecked(true);
+                if (!cancelled) {
+                    setAuthChecked(true);
+                }
             }
         }
 
         checkAuth();
+
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     if (!authChecked) {
@@ -58,9 +107,14 @@ function App() {
                     path="/login"
                     element={
                         loggedIn ? (
-                            <Navigate to="/main" replace />
+                            <Navigate
+                                to="/main"
+                                replace
+                            />
                         ) : (
-                            <Login onLogin={() => setLoggedIn(true)} />
+                            <Login
+                                onLogin={handleLogin}
+                            />
                         )
                     }
                 />
@@ -70,12 +124,17 @@ function App() {
                     element={
                         loggedIn ? (
                             <Main
-                                onLogout={() => setLoggedIn(false)}
+                                onLogout={handleLogout}
                                 sidebarOpen={sidebarOpen}
-                                onToggleSidebar={toggleSidebar}
+                                onToggleSidebar={
+                                    toggleSidebar
+                                }
                             />
                         ) : (
-                            <Navigate to="/login" replace />
+                            <Navigate
+                                to="/login"
+                                replace
+                            />
                         )
                     }
                 />
@@ -85,23 +144,37 @@ function App() {
                     element={
                         loggedIn ? (
                             <SharedWithMe
-                                onLogout={() => setLoggedIn(false)}
+                                onLogout={handleLogout}
+                                sidebarOpen={sidebarOpen}
+                                onToggleSidebar={
+                                    toggleSidebar
+                                }
                             />
                         ) : (
-                            <Navigate to="/login" replace />
+                            <Navigate
+                                to="/login"
+                                replace
+                            />
                         )
                     }
                 />
+
                 <Route
                     path="/trashcan"
                     element={
                         loggedIn ? (
                             <Trashcan
+                                onLogout={handleLogout}
                                 sidebarOpen={sidebarOpen}
-                                onToggleSidebar={toggleSidebar}
+                                onToggleSidebar={
+                                    toggleSidebar
+                                }
                             />
                         ) : (
-                            <Navigate to="/login" replace />
+                            <Navigate
+                                to="/login"
+                                replace
+                            />
                         )
                     }
                 />
@@ -111,24 +184,63 @@ function App() {
                     element={
                         loggedIn ? (
                             <Favorites
+                                onLogout={handleLogout}
                                 sidebarOpen={sidebarOpen}
-                                onToggleSidebar={toggleSidebar}
-                                onLogout={() => setLoggedIn(false)}
+                                onToggleSidebar={
+                                    toggleSidebar
+                                }
                             />
                         ) : (
-                            <Navigate to="/login" replace />
+                            <Navigate
+                                to="/login"
+                                replace
+                            />
+                        )
+                    }
+                />
+
+                <Route
+                    path="/settings"
+                    element={
+                        loggedIn ? (
+                            <Settings
+                                onLogout={handleLogout}
+                            />
+                        ) : (
+                            <Navigate
+                                to="/login"
+                                replace
+                            />
                         )
                     }
                 />
 
                 <Route
                     path="/"
-                    element={<Navigate to={loggedIn ? "/main" : "/login"} replace />}
+                    element={
+                        <Navigate
+                            to={
+                                loggedIn
+                                    ? "/main"
+                                    : "/login"
+                            }
+                            replace
+                        />
+                    }
                 />
 
                 <Route
                     path="*"
-                    element={<Navigate to={loggedIn ? "/main" : "/login"} replace />}
+                    element={
+                        <Navigate
+                            to={
+                                loggedIn
+                                    ? "/main"
+                                    : "/login"
+                            }
+                            replace
+                        />
+                    }
                 />
             </Routes>
         </BrowserRouter>

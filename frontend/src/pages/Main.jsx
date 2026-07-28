@@ -4,6 +4,7 @@ import { logout as apiLogout } from "../api/auth";
 import ConfirmTrashModal from "../components/ConfirmTrashModal";
 import ShareModal from "../components/ShareModal";
 import TextEditorModal from "../components/TextEditorModal";
+import UserMenu from "../components/UserMenu";
 import {
     createFolder,
     getFileBlob,
@@ -580,10 +581,13 @@ function Main({ onLogout }) {
             } catch (err) {
                 if (cancelled) return;
 
-                setError(err.message || "Failed to load folder");
+                setError(err?.message || "Failed to load folder");
 
-                if (onLogout) {
-                    onLogout();
+                // Only redirect when authentication actually expired.
+                // Network, CORS, server, and folder-loading errors remain
+                // visible on this page instead of falsely logging the user out.
+                if (err?.name === "AuthError") {
+                    onLogout?.();
                 }
             } finally {
                 if (!cancelled) {
@@ -1797,9 +1801,13 @@ function Main({ onLogout }) {
                         </div>
                     </div>
 
-                    <button className="invite-button" type="button">
-                        Invite
-                    </button>
+                    <div className="drive-header-actions">
+                        <button className="invite-button" type="button">
+                            Invite
+                        </button>
+
+                        <UserMenu onLogout={onLogout} />
+                    </div>
                 </header>
 
                 <div className="toolbar">

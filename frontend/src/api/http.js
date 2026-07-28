@@ -1,7 +1,18 @@
 import { refresh } from "./auth";
-import { clearAccessToken, getAccessToken } from "./tokenStore";
+import {
+    clearAccessToken,
+    getAccessToken,
+} from "./tokenstore";
 
 const API_BASE = "https://localhost:8443";
+
+function createAuthError(
+    message = "Session expired. Please log in again."
+) {
+    const error = new Error(message);
+    error.name = "AuthError";
+    return error;
+}
 
 export async function apiFetch(path, options = {}) {
     const doFetch = (token) =>
@@ -10,7 +21,11 @@ export async function apiFetch(path, options = {}) {
             credentials: "include",
             headers: {
                 ...(options.headers || {}),
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                ...(token
+                    ? {
+                        Authorization: `Bearer ${token}`,
+                    }
+                    : {}),
             },
         });
 
@@ -20,12 +35,20 @@ export async function apiFetch(path, options = {}) {
         return response;
     }
 
-    const result = await refresh();
-    response = await doFetch(result.accessToken);
+    let refreshResult;
+
+    try {
+        refreshResult = await refresh();
+    } catch {
+        clearAccessToken();
+        throw createAuthError();
+    }
+
+    response = await doFetch(refreshResult.accessToken);
 
     if (response.status === 401) {
         clearAccessToken();
-        throw new Error("Session expired. Please log in again.");
+        throw createAuthError();
     }
 
     return response;
