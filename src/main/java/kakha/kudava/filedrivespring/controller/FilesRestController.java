@@ -4,6 +4,7 @@ import kakha.kudava.filedrivespring.dto.*;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.services.*;
 import kakha.kudava.filedrivespring.services.objects.FileService;
+import kakha.kudava.filedrivespring.services.objects.ObjectStorageService;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -13,7 +14,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.net.URLConnection;
-import java.util.List;
 
 @RestController
 @RequestMapping("api/files")

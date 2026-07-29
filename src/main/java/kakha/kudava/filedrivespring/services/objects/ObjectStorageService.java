@@ -1,14 +1,11 @@
-package kakha.kudava.filedrivespring.services;
+package kakha.kudava.filedrivespring.services.objects;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.minio.*;
 import io.minio.messages.DeleteError;
 import io.minio.messages.DeleteObject;
 import io.minio.messages.Item;
 import jakarta.transaction.Transactional;
-import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
-import kakha.kudava.filedrivespring.dto.UserDTO;
 import kakha.kudava.filedrivespring.enums.EntityType;
 import kakha.kudava.filedrivespring.exceptions.MalwareDetectedException;
 import kakha.kudava.filedrivespring.exceptions.UploadCanceledException;
@@ -20,29 +17,21 @@ import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.repository.QuarantinedFilesRepository;
 import kakha.kudava.filedrivespring.repository.UserRepository;
-import kakha.kudava.filedrivespring.services.objects.RootFolderService;
+import kakha.kudava.filedrivespring.services.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.io.InputStream;
-import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static org.apache.sshd.common.util.buffer.BufferUtils.toHex;
 
@@ -66,6 +55,7 @@ public class ObjectStorageService {
     private final UploadCancellationService uploadCancellationService;
     private final String trashBucket;
     private final ResourceAccessService access;
+    private final NotificationService notificationService;
 
 
     public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
@@ -74,7 +64,7 @@ public class ObjectStorageService {
                                 QuarantinedFilesRepository quarantinedFilesRepository, @Value("${s3.quarantine-bucket}") String quarantineBucket,
                                 UserRepository userRepository, QuarantineService quarantineService,
                                 RootFolderService rootFolderService, UploadCancellationService uploadCancellationService,
-                                @Value("${s3.trash-bucket}") String trashBucket, ResourceAccessService access) {
+                                @Value("${s3.trash-bucket}") String trashBucket, ResourceAccessService access, NotificationService notificationService) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
@@ -90,6 +80,7 @@ public class ObjectStorageService {
         this.uploadCancellationService = uploadCancellationService;
         this.trashBucket = trashBucket;
         this.access = access;
+        this.notificationService = notificationService;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId, String uploadId) throws Exception {
@@ -185,6 +176,10 @@ public class ObjectStorageService {
                         quarantineKey,
                         scanResult.response()
                 );
+                notificationService.notifyMalwareDetected(
+                        user,
+                        safeName
+                );
 
                 throw new MalwareDetectedException("Upload rejected: malware detected");
             }
@@ -222,10 +217,18 @@ public class ObjectStorageService {
 
                 throwIfUploadCanceled(uploadId);
 
+                FileMetaData savedFile =
+                        fileMetaDataRepository.save(entity);
+
                 log.info("File uploaded successfully {}", objectKey);
                 logsService.uploadLog(safeName, folder.getId(), "FILE");
 
-                return fileMetaDataRepository.save(entity);
+                notificationService.notifyUploadCompleted(
+                        user,
+                        savedFile
+                );
+
+                return savedFile;
             }
         } catch (UploadCanceledException ex) {
             log.warn("Upload canceled: uploadId={}, fileName={}", uploadId, safeName, ex);

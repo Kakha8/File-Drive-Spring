@@ -30,19 +30,21 @@ public class SharingService {
     private final FolderRepository folderRepository;
     private final UserRepository userRepository;
     private final LogsService logsService;
+    private final NotificationService notificationService;
 
     public SharingService(
             SharingPermissionRepository sharingPermissionRepository,
             FileMetaDataRepository fileMetaDataRepository,
             FolderRepository folderRepository,
             UserRepository userRepository,
-            LogsService logsService
+            LogsService logsService, NotificationService notificationService
     ) {
         this.sharingPermissionRepository = sharingPermissionRepository;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
         this.userRepository = userRepository;
         this.logsService = logsService;
+        this.notificationService = notificationService;
     }
 
     private record ShareResult(
@@ -167,6 +169,12 @@ public class SharingService {
                         sharedWith.getId(),
                         permission.getRole()
                 );
+                notificationService.notifyFileShared(
+                        sharedWith,
+                        owner,
+                        file,
+                        permission.getRole()
+                );
             }
 
             sharedItems.add(toDto(permission));
@@ -232,6 +240,12 @@ public class SharingService {
                         sharedWith.getId(),
                         permission.getRole()
                 );
+                notificationService.notifyFolderShared(
+                        sharedWith,
+                        owner,
+                        folder,
+                        permission.getRole()
+                );
             }
 
             sharedItems.add(toDto(permission));
@@ -254,24 +268,33 @@ public class SharingService {
             throw new RuntimeException("Share not found");
         }
 
+        User recipient = permission.getSharedWith();
+
         Long entityId;
         EntityType entityType;
+        String entityName;
 
         if (permission.getFile() != null) {
-            if (!ownsFile(permission.getFile(), owner)) {
+            FileMetaData file = permission.getFile();
+
+            if (!ownsFile(file, owner)) {
                 throw new RuntimeException("Share not found");
             }
 
-            entityId = permission.getFile().getId();
+            entityId = file.getId();
             entityType = EntityType.FILE;
+            entityName = file.getFileName();
 
         } else if (permission.getFolder() != null) {
-            if (!ownsFolder(permission.getFolder(), owner)) {
+            Folders folder = permission.getFolder();
+
+            if (!ownsFolder(folder, owner)) {
                 throw new RuntimeException("Share not found");
             }
 
-            entityId = permission.getFolder().getId();
+            entityId = folder.getId();
             entityType = EntityType.FOLDER;
+            entityName = folder.getName();
 
         } else {
             throw new RuntimeException("Invalid share");
@@ -287,11 +310,18 @@ public class SharingService {
                 entityId,
                 entityType,
                 permission.getId(),
-                permission.getSharedWith().getId(),
+                recipient.getId(),
                 permission.getRole()
         );
-    }
 
+        notificationService.notifyAccessRevoked(
+                recipient,
+                owner,
+                entityType,
+                entityId,
+                entityName
+        );
+    }
     @Transactional(readOnly = true)
     public List<SharedItemDTO> getSharedWithMe() {
         User user = currentUser();
