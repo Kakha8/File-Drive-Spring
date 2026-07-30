@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import DriveSidebar from "../components/DriveSidebar";
+import NotificationMenu from "../components/NotificationMenu";
+import UserMenu from "../components/UserMenu";
 import { getFolder } from "../api/drive";
 import {
     addToFavorites,
@@ -557,6 +559,11 @@ export default function Favorites({
                                 </span>
                             ))}
                         </div>
+                    </div>
+
+                    <div className="drive-header-actions">
+                        <NotificationMenu onLogout={onLogout} />
+                        <UserMenu onLogout={onLogout} />
                     </div>
                 </header>
 

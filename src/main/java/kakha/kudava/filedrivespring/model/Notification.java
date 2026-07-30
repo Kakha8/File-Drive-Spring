@@ -36,20 +36,20 @@ public class Notification {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /**
-     * The user who receives and owns this notification.
-     */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "recipient_id", nullable = false)
     private User recipient;
 
-    /**
-     * The user whose action caused the notification.
-     * Null for system-generated notifications such as storage warnings.
-     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "actor_id")
     private User actor;
+
+    /**
+     * Snapshot of the actor's username so old notifications remain useful
+     * even if the account is later renamed or removed.
+     */
+    @Column(name = "actor_username", length = 100)
+    private String actorUsername;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "notification_type", nullable = false, length = 50)
@@ -61,9 +61,6 @@ public class Notification {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String message;
 
-    /**
-     * Optional reference to the related file, folder, or bulk operation.
-     */
     @Enumerated(EnumType.STRING)
     @Column(name = "entity_type", length = 20)
     private EntityType entityType;
@@ -71,15 +68,43 @@ public class Notification {
     @Column(name = "entity_id")
     private Long entityId;
 
+    /*
+     * User-facing context snapshots.
+     *
+     * These fields intentionally duplicate selected resource information.
+     * A notification should still explain what happened after a file is
+     * renamed, deleted, or the recipient loses access.
+     */
+    @Column(name = "resource_name", length = 255)
+    private String resourceName;
+
+    @Column(name = "resource_mime_type", length = 255)
+    private String resourceMimeType;
+
+    @Column(name = "resource_size")
+    private Long resourceSize;
+
+    @Column(name = "resource_path", length = 1000)
+    private String resourcePath;
+
+    @Column(name = "permission_role", length = 30)
+    private String permissionRole;
+
+    @Column(name = "security_status", length = 30)
+    private String securityStatus;
+
+    @Column(name = "security_threat", length = 500)
+    private String securityThreat;
+
+    @Column(name = "failure_reason", length = 500)
+    private String failureReason;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "read_at")
     private Instant readAt;
 
-    /**
-     * Soft deletion keeps notification history available for auditing.
-     */
     @Column(name = "removed_at")
     private Instant removedAt;
 
@@ -98,24 +123,18 @@ public class Notification {
         );
 
         this.actor = actor;
+        this.actorUsername =
+                actor == null
+                        ? null
+                        : normalizeOptional(actor.getUsername(), 100);
 
         this.type = Objects.requireNonNull(
                 type,
                 "type is required"
         );
 
-        this.title = requireText(
-                title,
-                "title",
-                160
-        );
-
-        this.message = requireText(
-                message,
-                "message",
-                null
-        );
-
+        this.title = requireText(title, "title", 160);
+        this.message = requireText(message, "message", null);
         this.entityType = entityType;
         this.entityId = entityId;
 
@@ -131,6 +150,48 @@ public class Notification {
         if (createdAt == null) {
             createdAt = Instant.now();
         }
+    }
+
+    public void setResourceDetails(
+            String resourceName,
+            String resourceMimeType,
+            Long resourceSize,
+            String resourcePath
+    ) {
+        this.resourceName =
+                normalizeOptional(resourceName, 255);
+
+        this.resourceMimeType =
+                normalizeOptional(resourceMimeType, 255);
+
+        this.resourceSize =
+                resourceSize != null && resourceSize >= 0
+                        ? resourceSize
+                        : null;
+
+        this.resourcePath =
+                normalizeOptional(resourcePath, 1000);
+    }
+
+    public void setPermissionRole(String permissionRole) {
+        this.permissionRole =
+                normalizeOptional(permissionRole, 30);
+    }
+
+    public void setSecurityDetails(
+            String securityStatus,
+            String securityThreat
+    ) {
+        this.securityStatus =
+                normalizeOptional(securityStatus, 30);
+
+        this.securityThreat =
+                normalizeOptional(securityThreat, 500);
+    }
+
+    public void setFailureReason(String failureReason) {
+        this.failureReason =
+                normalizeOptional(failureReason, 500);
     }
 
     public boolean isRead() {
@@ -187,5 +248,22 @@ public class Notification {
         }
 
         return trimmed;
+    }
+
+    private static String normalizeOptional(
+            String value,
+            int maximumLength
+    ) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+
+        if (trimmed.length() <= maximumLength) {
+            return trimmed;
+        }
+
+        return trimmed.substring(0, maximumLength);
     }
 }

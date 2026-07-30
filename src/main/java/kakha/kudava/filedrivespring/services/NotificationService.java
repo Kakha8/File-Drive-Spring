@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Locale;
 
 @Service
@@ -76,7 +78,7 @@ public class NotificationService {
             User recipient,
             FileMetaData file
     ) {
-        return createNotification(
+        Notification notification = createNotification(
                 recipient,
                 null,
                 NotificationType.UPLOAD_COMPLETED,
@@ -86,20 +88,68 @@ public class NotificationService {
                 EntityType.FILE,
                 file.getId()
         );
+
+        notification.setResourceDetails(
+                file.getFileName(),
+                file.getObjectType(),
+                file.getSize(),
+                buildFolderPath(file.getParent())
+        );
+
+        notification.setSecurityDetails(
+                "CLEAN",
+                null
+        );
+
+        return notification;
     }
 
+    /**
+     * Preferred malware helper. Pass the ClamAV response so the modal can
+     * display the detected signature or scan result.
+     */
+    @Transactional
+    public Notification notifyMalwareDetected(
+            User recipient,
+            String fileName,
+            String threat
+    ) {
+        Notification notification = createNotification(
+                recipient,
+                null,
+                NotificationType.MALWARE_DETECTED,
+                "Upload blocked",
+                quote(fileName)
+                        + " was blocked because a security threat was detected."
+        );
+
+        notification.setResourceDetails(
+                fileName,
+                null,
+                null,
+                null
+        );
+
+        notification.setSecurityDetails(
+                "BLOCKED",
+                threat
+        );
+
+        return notification;
+    }
+
+    /**
+     * Compatibility overload for existing callers.
+     */
     @Transactional
     public Notification notifyMalwareDetected(
             User recipient,
             String fileName
     ) {
-        return createNotification(
+        return notifyMalwareDetected(
                 recipient,
-                null,
-                NotificationType.MALWARE_DETECTED,
-                "Malware detected",
-                quote(fileName)
-                        + " was blocked because malware was detected."
+                fileName,
+                null
         );
     }
 
@@ -110,7 +160,9 @@ public class NotificationService {
             FileMetaData file,
             SharingRole role
     ) {
-        return createNotification(
+        SharingRole safeRole = normalizeRole(role);
+
+        Notification notification = createNotification(
                 recipient,
                 actor,
                 NotificationType.FILE_SHARED,
@@ -119,11 +171,24 @@ public class NotificationService {
                         + " shared "
                         + quote(file.getFileName())
                         + " with you as "
-                        + roleLabel(role)
+                        + roleLabel(safeRole)
                         + ".",
                 EntityType.FILE,
                 file.getId()
         );
+
+        notification.setResourceDetails(
+                file.getFileName(),
+                file.getObjectType(),
+                file.getSize(),
+                buildFolderPath(file.getParent())
+        );
+
+        notification.setPermissionRole(
+                safeRole.name()
+        );
+
+        return notification;
     }
 
     @Transactional
@@ -133,7 +198,9 @@ public class NotificationService {
             Folders folder,
             SharingRole role
     ) {
-        return createNotification(
+        SharingRole safeRole = normalizeRole(role);
+
+        Notification notification = createNotification(
                 recipient,
                 actor,
                 NotificationType.FOLDER_SHARED,
@@ -142,11 +209,24 @@ public class NotificationService {
                         + " shared "
                         + quote(folder.getName())
                         + " with you as "
-                        + roleLabel(role)
+                        + roleLabel(safeRole)
                         + ".",
                 EntityType.FOLDER,
                 folder.getId()
         );
+
+        notification.setResourceDetails(
+                folder.getName(),
+                "inode/directory",
+                null,
+                buildFolderPath(folder.getParent())
+        );
+
+        notification.setPermissionRole(
+                safeRole.name()
+        );
+
+        return notification;
     }
 
     @Transactional
@@ -155,26 +235,65 @@ public class NotificationService {
             User actor,
             EntityType entityType,
             Long entityId,
-            String entityName
+            String entityName,
+            SharingRole previousRole
     ) {
         String resourceLabel =
                 entityType == EntityType.FOLDER
                         ? "folder"
                         : "file";
 
-        return createNotification(
+        Notification notification = createNotification(
                 recipient,
                 actor,
                 NotificationType.ACCESS_REVOKED,
-                "Access revoked",
+                "Access removed",
                 actor.getUsername()
-                        + " revoked your access to the "
+                        + " removed your access to the "
                         + resourceLabel
                         + " "
                         + quote(entityName)
                         + ".",
                 entityType,
                 entityId
+        );
+
+        notification.setResourceDetails(
+                entityName,
+                entityType == EntityType.FOLDER
+                        ? "inode/directory"
+                        : null,
+                null,
+                null
+        );
+
+        if (previousRole != null) {
+            notification.setPermissionRole(
+                    previousRole.name()
+            );
+        }
+
+        return notification;
+    }
+
+    /**
+     * Compatibility overload for callers that do not yet pass the old role.
+     */
+    @Transactional
+    public Notification notifyAccessRevoked(
+            User recipient,
+            User actor,
+            EntityType entityType,
+            Long entityId,
+            String entityName
+    ) {
+        return notifyAccessRevoked(
+                recipient,
+                actor,
+                entityType,
+                entityId,
+                entityName,
+                null
         );
     }
 
@@ -266,13 +385,38 @@ public class NotificationService {
                 );
     }
 
-    private String roleLabel(SharingRole role) {
-        SharingRole safeRole =
-                role == null
-                        ? SharingRole.VIEWER
-                        : role;
+    private String buildFolderPath(Folders folder) {
+        if (folder == null) {
+            return "My Drive";
+        }
 
-        return safeRole
+        Deque<String> names = new ArrayDeque<>();
+        Folders current = folder;
+
+        while (current != null) {
+            if (
+                    current.getName() != null &&
+                            !current.getName().isBlank()
+            ) {
+                names.addFirst(current.getName().trim());
+            }
+
+            current = current.getParent();
+        }
+
+        return names.isEmpty()
+                ? "My Drive"
+                : String.join(" / ", names);
+    }
+
+    private SharingRole normalizeRole(SharingRole role) {
+        return role == null
+                ? SharingRole.VIEWER
+                : role;
+    }
+
+    private String roleLabel(SharingRole role) {
+        return normalizeRole(role)
                 .name()
                 .toLowerCase(Locale.ROOT);
     }

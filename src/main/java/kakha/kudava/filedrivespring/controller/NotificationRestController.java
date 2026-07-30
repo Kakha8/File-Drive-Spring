@@ -34,9 +34,6 @@ public class NotificationRestController {
         this.resourceAccessService = resourceAccessService;
     }
 
-    /**
-     * GET /api/notifications?page=0&size=10
-     */
     @GetMapping
     public ResponseEntity<NotificationPageResponse> getNotifications(
             @RequestParam(defaultValue = "0") int page,
@@ -74,24 +71,19 @@ public class NotificationRestController {
         );
     }
 
-    /**
-     * GET /api/notifications/unread-count
-     */
     @GetMapping("/unread-count")
     public ResponseEntity<UnreadCountResponse> getUnreadCount() {
         User recipient = resourceAccessService.currentUser();
 
-        long unreadCount =
-                notificationService.getUnreadCount(recipient);
-
         return ResponseEntity.ok(
-                new UnreadCountResponse(unreadCount)
+                new UnreadCountResponse(
+                        notificationService.getUnreadCount(
+                                recipient
+                        )
+                )
         );
     }
 
-    /**
-     * POST /api/notifications/{notificationId}/read
-     */
     @PostMapping("/{notificationId}/read")
     public ResponseEntity<NotificationResponse> markRead(
             @PathVariable Long notificationId
@@ -109,18 +101,16 @@ public class NotificationRestController {
         );
     }
 
-    /**
-     * POST /api/notifications/read-all
-     */
     @PostMapping("/read-all")
     public ResponseEntity<MarkAllReadResponse> markAllRead() {
         User recipient = resourceAccessService.currentUser();
 
-        int updated =
-                notificationService.markAllRead(recipient);
-
         return ResponseEntity.ok(
-                new MarkAllReadResponse(updated)
+                new MarkAllReadResponse(
+                        notificationService.markAllRead(
+                                recipient
+                        )
+                )
         );
     }
 
@@ -147,7 +137,17 @@ public class NotificationRestController {
             Long entityId,
             boolean read,
             Instant createdAt,
-            Instant readAt
+            Instant readAt,
+
+            String actorUsername,
+            String resourceName,
+            String resourceMimeType,
+            Long resourceSize,
+            String resourcePath,
+            String permissionRole,
+            String securityStatus,
+            String securityThreat,
+            String failureReason
     ) {
         public static NotificationResponse from(
                 Notification notification
@@ -161,7 +161,17 @@ public class NotificationRestController {
                     notification.getEntityId(),
                     notification.isRead(),
                     notification.getCreatedAt(),
-                    notification.getReadAt()
+                    notification.getReadAt(),
+
+                    notification.getActorUsername(),
+                    notification.getResourceName(),
+                    notification.getResourceMimeType(),
+                    notification.getResourceSize(),
+                    notification.getResourcePath(),
+                    notification.getPermissionRole(),
+                    notification.getSecurityStatus(),
+                    notification.getSecurityThreat(),
+                    notification.getFailureReason()
             );
         }
     }

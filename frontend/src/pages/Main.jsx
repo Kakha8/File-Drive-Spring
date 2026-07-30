@@ -5,6 +5,7 @@ import ConfirmTrashModal from "../components/ConfirmTrashModal";
 import ShareModal from "../components/ShareModal";
 import TextEditorModal from "../components/TextEditorModal";
 import UserMenu from "../components/UserMenu";
+import NotificationMenu from "../components/NotificationMenu";
 import {
     createFolder,
     getFileBlob,
@@ -20,6 +21,16 @@ import {
 } from "../api/drive";
 import { revokeShare, shareResource } from "../api/sharing.js";
 import { apiFetch } from "../api/http";
+
+const NOTIFICATIONS_CHANGED_EVENT =
+    "file-drive:notifications-changed";
+
+function announceNotificationsChanged() {
+    window.dispatchEvent(
+        new Event(NOTIFICATIONS_CHANGED_EVENT)
+    );
+}
+
 function Icon({ children, className = "" }) {
     return (
         <svg
@@ -802,6 +813,12 @@ function Main({ onLogout }) {
                                 : item
                         )
                     );
+
+                    /*
+                     * The backend creates UPLOAD_COMPLETED before the upload
+                     * request resolves. Tell the bell to refresh immediately.
+                     */
+                    announceNotificationsChanged();
                 } catch (err) {
                     const wasCanceled =
                         cancelUploadsRef.current ||
@@ -829,6 +846,14 @@ function Main({ onLogout }) {
                                 : item
                         )
                     );
+
+                    /*
+                     * Malware notifications are created even though the
+                     * upload request returns an error response.
+                     */
+                    if (wasMalware && !wasCanceled) {
+                        announceNotificationsChanged();
+                    }
 
                     if (cancelUploadsRef.current) break;
                 } finally {
@@ -1802,10 +1827,9 @@ function Main({ onLogout }) {
                     </div>
 
                     <div className="drive-header-actions">
-                        <button className="invite-button" type="button">
-                            Invite
-                        </button>
 
+
+                        <NotificationMenu onLogout={onLogout} />
                         <UserMenu onLogout={onLogout} />
                     </div>
                 </header>
