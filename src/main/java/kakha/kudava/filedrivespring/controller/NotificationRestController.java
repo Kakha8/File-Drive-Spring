@@ -5,7 +5,7 @@ import kakha.kudava.filedrivespring.enums.EntityType;
 import kakha.kudava.filedrivespring.enums.NotificationType;
 import kakha.kudava.filedrivespring.model.Notification;
 import kakha.kudava.filedrivespring.model.User;
-import kakha.kudava.filedrivespring.services.NotificationService;
+import kakha.kudava.filedrivespring.services.notifications.NotificationService;
 import kakha.kudava.filedrivespring.services.ResourceAccessService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;

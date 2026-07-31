@@ -13,6 +13,7 @@ import {
     markAllNotificationsRead,
     markNotificationRead,
 } from "../api/notifications";
+import { getRecentActivity } from "../api/activity";
 
 const NOTIFICATIONS_CHANGED_EVENT = "file-drive:notifications-changed";
 
@@ -38,6 +39,63 @@ function BellIcon({ className }) {
         <Icon className={className}>
             <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
             <path d="M10 21h4" />
+        </Icon>
+    );
+}
+
+function ActivityIcon({ className }) {
+    return (
+        <Icon className={className}>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v3" />
+            <path d="M6.5 14h2.2l1.5-2.7 2.3 5.2 1.5-2.5h3.5" />
+        </Icon>
+    );
+}
+
+function RestoreIcon({ className }) {
+    return (
+        <Icon className={className}>
+            <path d="M3 7v5h5" />
+            <path d="M5.7 17.3a8 8 0 1 0-.7-9.6L3 12" />
+            <path d="M12 8v4l2.5 1.5" />
+        </Icon>
+    );
+}
+
+function TrashIcon({ className }) {
+    return (
+        <Icon className={className}>
+            <path d="M3 6h18" />
+            <path d="M8 6V4h8v2" />
+            <path d="M6 6l1 15h10l1-15" />
+        </Icon>
+    );
+}
+
+function FolderPlusIcon({ className }) {
+    return (
+        <Icon className={className}>
+            <path d="M3 7h6l2 2h10v8.5A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z" />
+            <path d="M12 12v5" />
+            <path d="M9.5 14.5h5" />
+        </Icon>
+    );
+}
+
+function EditIcon({ className }) {
+    return (
+        <Icon className={className}>
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+        </Icon>
+    );
+}
+
+function StarIcon({ className }) {
+    return (
+        <Icon className={className}>
+            <path d="M12 3.5 14.7 9l6 .9-4.35 4.25 1.05 6L12 17.3l-5.4 2.85 1.05-6L3.3 9.9l6-.9z" />
         </Icon>
     );
 }
@@ -152,6 +210,104 @@ function getTypeLabel(type) {
     };
 
     return labels[type] || "Notification";
+}
+
+function formatActivityType(type) {
+    if (!type) {
+        return "Activity";
+    }
+
+    return String(type)
+        .toLowerCase()
+        .replaceAll("_", " ")
+        .replace(/\b\w/g, (letter) =>
+            letter.toUpperCase()
+        );
+}
+
+function ActivityTypeIcon({
+                              type,
+                              className = "notification-activity-item-svg",
+                          }) {
+    const value = String(type || "").toUpperCase();
+
+    if (value.includes("RESTORE")) {
+        return <RestoreIcon className={className} />;
+    }
+
+    if (
+        value.includes("PERMANENT") &&
+        value.includes("DELETE")
+    ) {
+        return <TrashIcon className={className} />;
+    }
+
+    if (
+        value.includes("TRASH") ||
+        value === "DELETE"
+    ) {
+        return <TrashIcon className={className} />;
+    }
+
+    if (value.includes("UPLOAD")) {
+        return <UploadIcon className={className} />;
+    }
+
+    if (
+        value.includes("CREATE") &&
+        value.includes("FOLDER")
+    ) {
+        return <FolderPlusIcon className={className} />;
+    }
+
+    if (value.includes("RENAME")) {
+        return <EditIcon className={className} />;
+    }
+
+    if (value.includes("FAVORITE")) {
+        return <StarIcon className={className} />;
+    }
+
+    return <ActivityIcon className={className} />;
+}
+
+function getActivityTypeClass(type) {
+    return `activity-${String(type || "activity")
+        .toLowerCase()
+        .replaceAll("_", "-")}`;
+}
+
+function getActivityModalDetails(activity) {
+    const details = [
+        {
+            label: "Item",
+            value: activity.resourceName,
+        },
+        {
+            label: "Item type",
+            value: activity.entityType
+                ? formatActivityType(activity.entityType)
+                : null,
+        },
+        ...(Array.isArray(activity.details)
+            ? activity.details
+            : []),
+        {
+            label: "Occurred",
+            value: formatFullDate(activity.createdAt),
+        },
+        {
+            label: "Performed by",
+            value: "You",
+        },
+    ];
+
+    return details.filter(
+        (detail) =>
+            detail?.value !== null &&
+            detail?.value !== undefined &&
+            detail?.value !== ""
+    );
 }
 
 function parseDate(value) {
@@ -721,14 +877,181 @@ function NotificationDetailsModal({
     );
 }
 
+function ActivityDetailsModal({
+                                  activity,
+                                  onClose,
+                              }) {
+    const closeButtonRef = useRef(null);
+    const typeClass =
+        getActivityTypeClass(activity.type);
+    const details =
+        getActivityModalDetails(activity);
+
+    useEffect(() => {
+        const previousOverflow =
+            document.body.style.overflow;
+
+        document.body.style.overflow = "hidden";
+        closeButtonRef.current?.focus();
+
+        function handleKeyDown(event) {
+            if (event.key === "Escape") {
+                onClose();
+            }
+        }
+
+        document.addEventListener(
+            "keydown",
+            handleKeyDown
+        );
+
+        return () => {
+            document.body.style.overflow =
+                previousOverflow;
+
+            document.removeEventListener(
+                "keydown",
+                handleKeyDown
+            );
+        };
+    }, [onClose]);
+
+    return createPortal(
+        <div
+            className="notification-modal-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+                if (event.target === event.currentTarget) {
+                    onClose();
+                }
+            }}
+        >
+            <section
+                className={`notification-modal activity-details-modal ${typeClass}`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="activity-modal-title"
+                aria-describedby="activity-modal-summary"
+            >
+                <div className="notification-modal-glow" />
+
+                <button
+                    ref={closeButtonRef}
+                    type="button"
+                    className="notification-modal-close"
+                    aria-label="Close activity details"
+                    onClick={onClose}
+                >
+                    <CloseIcon className="notification-modal-close-icon" />
+                </button>
+
+                <header className="notification-modal-hero">
+                    <div
+                        className={`notification-modal-icon ${typeClass}`}
+                    >
+                        <ActivityTypeIcon
+                            type={activity.type}
+                            className="notification-modal-type-svg"
+                        />
+                    </div>
+
+                    <div className="notification-modal-heading">
+                        <span className="notification-modal-kicker">
+                            Recent activity
+                        </span>
+
+                        <h2 id="activity-modal-title">
+                            {activity.title ||
+                                formatActivityType(
+                                    activity.type
+                                )}
+                        </h2>
+
+                        <p className="notification-modal-time">
+                            {formatRelativeTime(
+                                activity.createdAt
+                            )}
+                        </p>
+                    </div>
+                </header>
+
+                <div className="notification-modal-body">
+                    <div
+                        id="activity-modal-summary"
+                        className="notification-modal-message-card"
+                    >
+                        <span>What happened</span>
+                        <p>
+                            {activity.summary ||
+                                activity.title ||
+                                formatActivityType(
+                                    activity.type
+                                )}
+                        </p>
+                    </div>
+
+                    {details.length > 0 && (
+                        <section className="notification-modal-context">
+                            <h3>Activity details</h3>
+
+                            <dl className="notification-modal-details-list">
+                                {details.map((detail) => (
+                                    <div key={detail.label}>
+                                        <dt>{detail.label}</dt>
+                                        <dd>
+                                            {detail.label
+                                                .toLowerCase()
+                                                .includes("deleted") ||
+                                            detail.label
+                                                .toLowerCase()
+                                                .includes("restored") ||
+                                            detail.label
+                                                .toLowerCase()
+                                                .includes("uploaded") ||
+                                            detail.label === "Occurred"
+                                                ? formatFullDate(
+                                                    detail.value
+                                                )
+                                                : detail.value}
+                                        </dd>
+                                    </div>
+                                ))}
+                            </dl>
+                        </section>
+                    )}
+                </div>
+
+                <footer className="notification-modal-footer">
+                    <button
+                        type="button"
+                        className="notification-modal-secondary"
+                        onClick={onClose}
+                    >
+                        Close
+                    </button>
+                </footer>
+            </section>
+        </div>,
+        document.body
+    );
+}
+
 export default function NotificationMenu({ onLogout }) {
     const navigate = useNavigate();
     const menuId = useId();
     const menuRef = useRef(null);
 
     const [open, setOpen] = useState(false);
+    const [activeTab, setActiveTab] =
+        useState("notifications");
     const [notifications, setNotifications] = useState([]);
+    const [activities, setActivities] = useState([]);
+    const [activityTotal, setActivityTotal] = useState(0);
+    const [activityLoading, setActivityLoading] = useState(false);
+    const [activityError, setActivityError] = useState("");
     const [selectedNotification, setSelectedNotification] =
+        useState(null);
+    const [selectedActivity, setSelectedActivity] =
         useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
     const [loading, setLoading] = useState(false);
@@ -790,6 +1113,40 @@ export default function NotificationMenu({ onLogout }) {
             setLoading(false);
         }
     }, [handleRequestError]);
+
+    const loadActivities = useCallback(async () => {
+        try {
+            setActivityLoading(true);
+            setActivityError("");
+
+            const response = await getRecentActivity({
+                page: 0,
+                size: 20,
+            });
+
+            setActivities(
+                Array.isArray(response?.activities)
+                    ? response.activities
+                    : []
+            );
+
+            setActivityTotal(
+                Number(response?.totalElements || 0)
+            );
+        } catch (requestError) {
+            if (requestError?.name === "AuthError") {
+                onLogout?.();
+                return;
+            }
+
+            setActivityError(
+                requestError?.message ||
+                "Failed to load recent activity"
+            );
+        } finally {
+            setActivityLoading(false);
+        }
+    }, [onLogout]);
 
     useEffect(() => {
         /*
@@ -877,6 +1234,30 @@ export default function NotificationMenu({ onLogout }) {
         loadNotifications,
         open,
         refreshUnreadCount,
+    ]);
+
+    useEffect(() => {
+        if (
+            !open ||
+            activeTab !== "activity"
+        ) {
+            return undefined;
+        }
+
+        void loadActivities();
+
+        const intervalId = window.setInterval(
+            loadActivities,
+            10_000
+        );
+
+        return () => {
+            window.clearInterval(intervalId);
+        };
+    }, [
+        activeTab,
+        loadActivities,
+        open,
     ]);
 
     useEffect(() => {
@@ -1075,130 +1456,336 @@ export default function NotificationMenu({ onLogout }) {
                     <section
                         id={menuId}
                         className="notification-menu-dropdown"
-                        aria-label="Notifications"
+                        aria-label="Notifications and recent activity"
                     >
                         <header className="notification-menu-header">
                             <div>
-                                <strong>Notifications</strong>
+                                <strong>
+                                    {activeTab === "notifications"
+                                        ? "Notifications"
+                                        : "Recent activity"}
+                                </strong>
                                 <span>
-                                    {unreadCount > 0
-                                        ? `${unreadCount} unread`
-                                        : "You're all caught up"}
+                                    {activeTab === "notifications"
+                                        ? unreadCount > 0
+                                            ? `${unreadCount} unread`
+                                            : "You're all caught up"
+                                        : activityTotal > 0
+                                            ? `${activityTotal} recorded actions`
+                                            : "Routine actions from your drive"}
                                 </span>
                             </div>
 
-                            <button
-                                type="button"
-                                className="notification-mark-all"
-                                onClick={handleMarkAllRead}
-                                disabled={
-                                    markingAll ||
-                                    unreadCount === 0
-                                }
-                            >
-                                {markingAll
-                                    ? "Marking..."
-                                    : "Mark all read"}
-                            </button>
+                            {activeTab === "notifications" ? (
+                                <button
+                                    type="button"
+                                    className="notification-mark-all"
+                                    onClick={handleMarkAllRead}
+                                    disabled={
+                                        markingAll ||
+                                        unreadCount === 0
+                                    }
+                                >
+                                    {markingAll
+                                        ? "Marking..."
+                                        : "Mark all read"}
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className="notification-mark-all"
+                                    onClick={() => void loadActivities()}
+                                    disabled={activityLoading}
+                                >
+                                    {activityLoading
+                                        ? "Refreshing..."
+                                        : "Refresh"}
+                                </button>
+                            )}
                         </header>
 
-                        {error && (
-                            <div
-                                className="notification-menu-error"
-                                role="alert"
+                        <div
+                            className="notification-menu-tabs"
+                            role="tablist"
+                            aria-label="Notification views"
+                        >
+                            <button
+                                type="button"
+                                role="tab"
+                                aria-selected={
+                                    activeTab === "notifications"
+                                }
+                                className={
+                                    "notification-menu-tab" +
+                                    (
+                                        activeTab === "notifications"
+                                            ? " is-active"
+                                            : ""
+                                    )
+                                }
+                                onClick={() =>
+                                    setActiveTab("notifications")
+                                }
                             >
-                                {error}
-                            </div>
-                        )}
+                                <BellIcon className="notification-menu-tab-icon" />
+                                <span>Notifications</span>
 
-                        <div className="notification-menu-list">
-                            {loading && (
-                                <div className="notification-menu-state">
-                                    Loading notifications...
-                                </div>
-                            )}
+                                {unreadCount > 0 && (
+                                    <span className="notification-tab-count">
+                                        {badgeText}
+                                    </span>
+                                )}
+                            </button>
 
-                            {!loading &&
-                                notifications.length === 0 && (
-                                    <div className="notification-menu-state">
-                                        No notifications yet.
+                            <button
+                                type="button"
+                                role="tab"
+                                aria-selected={
+                                    activeTab === "activity"
+                                }
+                                className={
+                                    "notification-menu-tab" +
+                                    (
+                                        activeTab === "activity"
+                                            ? " is-active"
+                                            : ""
+                                    )
+                                }
+                                onClick={() =>
+                                    setActiveTab("activity")
+                                }
+                            >
+                                <ActivityIcon className="notification-menu-tab-icon" />
+                                <span>Activity</span>
+                            </button>
+                        </div>
+
+                        {activeTab === "notifications" ? (
+                            <div
+                                role="tabpanel"
+                                className="notification-menu-panel"
+                            >
+                                {error && (
+                                    <div
+                                        className="notification-menu-error"
+                                        role="alert"
+                                    >
+                                        {error}
                                     </div>
                                 )}
 
-                            {!loading &&
-                                notifications.map(
-                                    (notification) => (
-                                        <button
-                                            key={notification.id}
-                                            type="button"
-                                            className={
-                                                "notification-menu-item" +
-                                                (
-                                                    notification.read
-                                                        ? ""
-                                                        : " is-unread"
-                                                )
-                                            }
-                                            disabled={pendingIds.has(
-                                                notification.id
-                                            )}
-                                            onClick={() =>
-                                                openNotification(
-                                                    notification
-                                                )
-                                            }
-                                        >
-                                            <span
-                                                className={
-                                                    "notification-type-icon " +
-                                                    getTypeClass(
-                                                        notification.type
-                                                    )
-                                                }
-                                            >
-                                                <NotificationTypeIcon
-                                                    type={
-                                                        notification.type
+                                <div className="notification-menu-list">
+                                    {loading && (
+                                        <div className="notification-menu-state">
+                                            Loading notifications...
+                                        </div>
+                                    )}
+
+                                    {!loading &&
+                                        notifications.length === 0 && (
+                                            <div className="notification-menu-state">
+                                                No notifications yet.
+                                            </div>
+                                        )}
+
+                                    {!loading &&
+                                        notifications.map(
+                                            (notification) => (
+                                                <button
+                                                    key={notification.id}
+                                                    type="button"
+                                                    className={
+                                                        "notification-menu-item" +
+                                                        (
+                                                            notification.read
+                                                                ? ""
+                                                                : " is-unread"
+                                                        )
                                                     }
-                                                />
-                                            </span>
-
-                                            <span className="notification-menu-copy">
-                                                <span className="notification-menu-title-row">
-                                                    <strong>
-                                                        {
-                                                            notification.title
-                                                        }
-                                                    </strong>
-
-                                                    {!notification.read && (
-                                                        <span
-                                                            className="notification-unread-dot"
-                                                            aria-label="Unread"
-                                                        />
+                                                    disabled={pendingIds.has(
+                                                        notification.id
                                                     )}
-                                                </span>
-
-                                                <span className="notification-menu-message">
-                                                    {
-                                                        notification.message
-                                                    }
-                                                </span>
-
-                                                <time
-                                                    dateTime={
-                                                        notification.createdAt
+                                                    onClick={() =>
+                                                        openNotification(
+                                                            notification
+                                                        )
                                                     }
                                                 >
-                                                    {formatRelativeTime(
-                                                        notification.createdAt
-                                                    )}
-                                                </time>
-                                            </span>
-                                        </button>
-                                    )
+                                                    <span
+                                                        className={
+                                                            "notification-type-icon " +
+                                                            getTypeClass(
+                                                                notification.type
+                                                            )
+                                                        }
+                                                    >
+                                                        <NotificationTypeIcon
+                                                            type={
+                                                                notification.type
+                                                            }
+                                                        />
+                                                    </span>
+
+                                                    <span className="notification-menu-copy">
+                                                        <span className="notification-menu-title-row">
+                                                            <strong>
+                                                                {
+                                                                    notification.title
+                                                                }
+                                                            </strong>
+
+                                                            {!notification.read && (
+                                                                <span
+                                                                    className="notification-unread-dot"
+                                                                    aria-label="Unread"
+                                                                />
+                                                            )}
+                                                        </span>
+
+                                                        <span className="notification-menu-message">
+                                                            {
+                                                                notification.message
+                                                            }
+                                                        </span>
+
+                                                        <time
+                                                            dateTime={
+                                                                notification.createdAt
+                                                            }
+                                                        >
+                                                            {formatRelativeTime(
+                                                                notification.createdAt
+                                                            )}
+                                                        </time>
+                                                    </span>
+                                                </button>
+                                            )
+                                        )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div
+                                role="tabpanel"
+                                className="notification-menu-panel notification-activity-panel"
+                            >
+                                {activityError && (
+                                    <div
+                                        className="notification-menu-error"
+                                        role="alert"
+                                    >
+                                        {activityError}
+                                    </div>
                                 )}
-                        </div>
+
+                                {activityLoading &&
+                                    activities.length === 0 && (
+                                        <div className="notification-menu-state">
+                                            Loading recent activity...
+                                        </div>
+                                    )}
+
+                                {!activityLoading &&
+                                    !activityError &&
+                                    activities.length === 0 && (
+                                        <div className="notification-activity-empty">
+                                            <span className="notification-activity-empty-icon">
+                                                <ActivityIcon className="notification-activity-empty-svg" />
+                                            </span>
+
+                                            <strong>No recent activity</strong>
+
+                                            <p>
+                                                Actions recorded in your
+                                                activity log will appear here.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                {activities.length > 0 && (
+                                    <div className="notification-activity-list">
+                                        {activities.map(
+                                            (activity, index) => (
+                                                <button
+                                                    key={
+                                                        activity.id ??
+                                                        `${activity.type}-${activity.createdAt}-${index}`
+                                                    }
+                                                    type="button"
+                                                    className={
+                                                        "notification-activity-item " +
+                                                        getActivityTypeClass(
+                                                            activity.type
+                                                        )
+                                                    }
+                                                    onClick={() => {
+                                                        setSelectedActivity(
+                                                            activity
+                                                        );
+                                                        setOpen(false);
+                                                    }}
+                                                >
+                                                    <span className="notification-activity-item-icon">
+                                                        <ActivityTypeIcon
+                                                            type={
+                                                                activity.type
+                                                            }
+                                                        />
+                                                    </span>
+
+                                                    <span className="notification-activity-copy">
+                                                        <span className="notification-activity-title-row">
+                                                            <strong>
+                                                                {activity.title ||
+                                                                    formatActivityType(
+                                                                        activity.type
+                                                                    )}
+                                                            </strong>
+
+                                                            {activity.entityType && (
+                                                                <span className="notification-activity-entity">
+                                                                    {formatActivityType(
+                                                                        activity.entityType
+                                                                    )}
+                                                                </span>
+                                                            )}
+                                                        </span>
+
+                                                        {activity.resourceName && (
+                                                            <span className="notification-activity-resource-name">
+                                                                {
+                                                                    activity.resourceName
+                                                                }
+                                                            </span>
+                                                        )}
+
+                                                        <span className="notification-activity-summary">
+                                                            {activity.summary ||
+                                                                activity.title ||
+                                                                formatActivityType(
+                                                                    activity.type
+                                                                )}
+                                                        </span>
+
+                                                        <time
+                                                            dateTime={
+                                                                activity.createdAt
+                                                            }
+                                                            title={formatFullDate(
+                                                                activity.createdAt
+                                                            )}
+                                                        >
+                                                            {formatRelativeTime(
+                                                                activity.createdAt
+                                                            )}
+                                                        </time>
+                                                    </span>
+                                                </button>
+                                            )
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </section>
                 )}
             </div>
@@ -1210,6 +1797,15 @@ export default function NotificationMenu({ onLogout }) {
                         setSelectedNotification(null)
                     }
                     onNavigate={handleModalNavigate}
+                />
+            )}
+
+            {selectedActivity && (
+                <ActivityDetailsModal
+                    activity={selectedActivity}
+                    onClose={() =>
+                        setSelectedActivity(null)
+                    }
                 />
             )}
         </>

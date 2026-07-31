@@ -18,6 +18,7 @@ import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.repository.QuarantinedFilesRepository;
 import kakha.kudava.filedrivespring.repository.UserRepository;
 import kakha.kudava.filedrivespring.services.*;
+import kakha.kudava.filedrivespring.services.notifications.NotificationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
@@ -223,10 +224,10 @@ public class ObjectStorageService {
                 log.info("File uploaded successfully {}", objectKey);
                 logsService.uploadLog(safeName, folder.getId(), "FILE");
 
-                notificationService.notifyUploadCompleted(
+/*                notificationService.notifyUploadCompleted(
                         user,
                         savedFile
-                );
+                );*/
 
                 return savedFile;
             }

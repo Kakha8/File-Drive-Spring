@@ -18,6 +18,7 @@ import SharedWithMe from "./pages/SharedWithMe.jsx";
 import Favorites from "./pages/Favorites";
 import Settings from "./pages/Settings";
 import "./App.css";
+import "./components/recent-activity.css";
 
 const SIDEBAR_STORAGE_KEY = "drive-sidebar-open";
 

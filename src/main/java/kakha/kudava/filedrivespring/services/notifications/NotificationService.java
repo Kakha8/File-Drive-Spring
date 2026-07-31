@@ -1,4 +1,4 @@
-package kakha.kudava.filedrivespring.services;
+package kakha.kudava.filedrivespring.services.notifications;
 
 import jakarta.persistence.EntityNotFoundException;
 import kakha.kudava.filedrivespring.enums.EntityType;
