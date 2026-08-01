@@ -294,7 +294,7 @@ function getActivityModalDetails(activity) {
             : []),
         {
             label: "Occurred",
-            value: formatFullDate(activity.createdAt),
+            value: activity.createdAt,
         },
         {
             label: "Performed by",
@@ -320,6 +320,43 @@ function parseDate(value) {
     return Number.isNaN(date.getTime())
         ? null
         : date;
+}
+
+function formatActivityDetailValue(detail) {
+    const value = detail?.value;
+
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+        return "";
+    }
+
+    const label = String(
+        detail?.label || ""
+    ).toLowerCase();
+
+    const looksLikeIsoTimestamp =
+        typeof value === "string" &&
+        /^\d{4}-\d{2}-\d{2}T/.test(value);
+
+    const isDateDetail =
+        looksLikeIsoTimestamp ||
+        label.includes("date") ||
+        label.includes("time") ||
+        label.includes("occurred") ||
+        label.includes("deleted") ||
+        label.includes("restored") ||
+        label.includes("uploaded") ||
+        label.includes("moved to trash") ||
+        label.includes("created");
+
+    if (isDateDetail && parseDate(value)) {
+        return formatFullDate(value);
+    }
+
+    return value;
 }
 
 function formatRelativeTime(value) {
@@ -999,20 +1036,9 @@ function ActivityDetailsModal({
                                     <div key={detail.label}>
                                         <dt>{detail.label}</dt>
                                         <dd>
-                                            {detail.label
-                                                .toLowerCase()
-                                                .includes("deleted") ||
-                                            detail.label
-                                                .toLowerCase()
-                                                .includes("restored") ||
-                                            detail.label
-                                                .toLowerCase()
-                                                .includes("uploaded") ||
-                                            detail.label === "Occurred"
-                                                ? formatFullDate(
-                                                    detail.value
-                                                )
-                                                : detail.value}
+                                            {formatActivityDetailValue(
+                                                detail
+                                            )}
                                         </dd>
                                     </div>
                                 ))}

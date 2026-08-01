@@ -222,8 +222,21 @@ public class ObjectStorageService {
                         fileMetaDataRepository.save(entity);
 
                 log.info("File uploaded successfully {}", objectKey);
-                logsService.uploadLog(safeName, folder.getId(), "FILE");
+                Map<String, Object> uploadDetails = new LinkedHashMap<>();
+                uploadDetails.put("name", savedFile.getFileName());
+                uploadDetails.put("objectKey", savedFile.getObjectKey());
+                uploadDetails.put("uploadedAt", Instant.now());
+                uploadDetails.put("folderId", folder.getId());
 
+                String uploadDetailsJson =
+                        objectMapper.writeValueAsString(uploadDetails);
+
+                logsService.uploadLog(
+                        savedFile.getFileName(),
+                        savedFile.getId(),
+                        EntityType.FILE.name(),
+                        uploadDetailsJson
+                );
 /*                notificationService.notifyUploadCompleted(
                         user,
                         savedFile
@@ -346,11 +359,20 @@ public class ObjectStorageService {
             metaData.setDeletedAt(Instant.now());
 
             fileMetaDataRepository.save(metaData);
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("name", metaData.getFileName());
+            details.put("originalObjectKey", originalObjectKey);
+            details.put("trashObjectKey", trashObjectKey);
+            details.put("deletedAt", Instant.now());
 
-            logsService.deleteLog(
+            String detailsJson =
+                    objectMapper.writeValueAsString(details);
+
+            logsService.moveToTrashLog(
                     metaData.getFileName(),
                     metaData.getId(),
-                    "FILE"
+                    EntityType.FILE.name(),
+                    detailsJson
             );
 
         } catch (Exception e) {
