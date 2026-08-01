@@ -2,6 +2,7 @@ package kakha.kudava.filedrivespring.services.notifications;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import kakha.kudava.filedrivespring.dto.ActivityItem;
+import kakha.kudava.filedrivespring.dto.ActivityItem.ActivityDetail;
 import kakha.kudava.filedrivespring.enums.ActionType;
 import kakha.kudava.filedrivespring.enums.EntityType;
 import kakha.kudava.filedrivespring.model.ActionLogs;
@@ -9,6 +10,7 @@ import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.ActionLogsRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,13 +22,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 @Service
 @Transactional(readOnly = true)
 public class ActivityService {
 
-    private static final TypeReference<Map<String, Object>> MAP_TYPE =
+    private static final TypeReference<
+            Map<String, Object>
+            > MAP_TYPE =
             new TypeReference<>() {
             };
 
@@ -46,20 +51,106 @@ public class ActivityService {
             ActionLogsRepository actionLogsRepository,
             ObjectMapper objectMapper
     ) {
-        this.actionLogsRepository = actionLogsRepository;
-        this.objectMapper = objectMapper;
+        this.actionLogsRepository =
+                actionLogsRepository;
+
+        this.objectMapper =
+                objectMapper;
     }
 
     public Page<ActivityItem> getRecentActivity(
             User user,
             Pageable pageable
     ) {
-        Objects.requireNonNull(user, "user is required");
-        Objects.requireNonNull(pageable, "pageable is required");
+        return getRecentActivity(
+                user,
+                pageable,
+                null,
+                null,
+                Set.of()
+        );
+    }
+
+    public Page<ActivityItem> getRecentActivity(
+            User user,
+            Pageable pageable,
+            Instant from,
+            Instant toExclusive,
+            Set<ActionType> types
+    ) {
+        Objects.requireNonNull(
+                user,
+                "user is required"
+        );
+
+        Objects.requireNonNull(
+                pageable,
+                "pageable is required"
+        );
+
+        Specification<ActionLogs> specification =
+                (root, query, criteriaBuilder) ->
+                        criteriaBuilder.equal(
+                                root.get("user"),
+                                user
+                        );
+
+        if (from != null) {
+            specification =
+                    specification.and(
+                            (
+                                    root,
+                                    query,
+                                    criteriaBuilder
+                            ) ->
+                                    criteriaBuilder
+                                            .greaterThanOrEqualTo(
+                                                    root.<Instant>get(
+                                                            "timestamp"
+                                                    ),
+                                                    from
+                                            )
+                    );
+        }
+
+        if (toExclusive != null) {
+            specification =
+                    specification.and(
+                            (
+                                    root,
+                                    query,
+                                    criteriaBuilder
+                            ) ->
+                                    criteriaBuilder.lessThan(
+                                            root.<Instant>get(
+                                                    "timestamp"
+                                            ),
+                                            toExclusive
+                                    )
+                    );
+        }
+
+        if (
+                types != null &&
+                        !types.isEmpty()
+        ) {
+            specification =
+                    specification.and(
+                            (
+                                    root,
+                                    query,
+                                    criteriaBuilder
+                            ) ->
+                                    root.<ActionType>get(
+                                                    "action"
+                                            )
+                                            .in(types)
+                    );
+        }
 
         return actionLogsRepository
-                .findAllByUserOrderByTimestampDesc(
-                        user,
+                .findAll(
+                        specification,
                         pageable
                 )
                 .map(this::toActivityItem);
@@ -68,10 +159,15 @@ public class ActivityService {
     public List<ActivityItem> getLast1000Activities(
             User user
     ) {
-        Objects.requireNonNull(user, "user is required");
+        Objects.requireNonNull(
+                user,
+                "user is required"
+        );
 
         return actionLogsRepository
-                .findTop1000ByUserOrderByTimestampDesc(user)
+                .findTop1000ByUserOrderByTimestampDesc(
+                        user
+                )
                 .stream()
                 .map(this::toActivityItem)
                 .toList();
@@ -81,10 +177,14 @@ public class ActivityService {
             ActionLogs log
     ) {
         Map<String, Object> metadata =
-                parseDetails(log.getDetails());
+                parseDetails(
+                        log.getDetails()
+                );
 
         String actionName =
-                actionName(log.getAction());
+                actionName(
+                        log.getAction()
+                );
 
         String resourceName =
                 firstText(
@@ -96,7 +196,8 @@ public class ActivityService {
                         "newName"
                 );
 
-        resourceName = cleanName(resourceName);
+        resourceName =
+                cleanName(resourceName);
 
         String title =
                 buildTitle(actionName);
@@ -128,7 +229,10 @@ public class ActivityService {
     private Map<String, Object> parseDetails(
             String details
     ) {
-        if (details == null || details.isBlank()) {
+        if (
+                details == null ||
+                        details.isBlank()
+        ) {
             return Map.of();
         }
 
@@ -138,11 +242,6 @@ public class ActivityService {
                     MAP_TYPE
             );
         } catch (Exception ignored) {
-            /*
-             * Some old rows may contain plain text rather than JSON.
-             * Preserve it as a safe description instead of exposing a
-             * parsing error to the UI.
-             */
             Map<String, Object> fallback =
                     new LinkedHashMap<>();
 
@@ -158,8 +257,10 @@ public class ActivityService {
     private String buildTitle(
             String action
     ) {
-        if (contains(action, "PERMANENT")
-                && contains(action, "DELETE")) {
+        if (
+                contains(action, "PERMANENT") &&
+                        contains(action, "DELETE")
+        ) {
             return "Permanent delete";
         }
 
@@ -167,8 +268,10 @@ public class ActivityService {
             return "Restored from Trash";
         }
 
-        if (contains(action, "TRASH")
-                || action.equals("DELETE")) {
+        if (
+                contains(action, "TRASH") ||
+                        action.equals("DELETE")
+        ) {
             return "Moved to Trash";
         }
 
@@ -176,8 +279,10 @@ public class ActivityService {
             return "Upload complete";
         }
 
-        if (contains(action, "CREATE")
-                && contains(action, "FOLDER")) {
+        if (
+                contains(action, "CREATE") &&
+                        contains(action, "FOLDER")
+        ) {
             return "Folder created";
         }
 
@@ -185,19 +290,23 @@ public class ActivityService {
             return "Item renamed";
         }
 
-        if (contains(action, "FAVORITE")
-                && (
-                contains(action, "ADD")
-                        || contains(action, "ADDED")
-        )) {
+        if (
+                contains(action, "FAVORITE") &&
+                        (
+                                contains(action, "ADD") ||
+                                        contains(action, "ADDED")
+                        )
+        ) {
             return "Added to Favorites";
         }
 
-        if (contains(action, "FAVORITE")
-                && (
-                contains(action, "REMOVE")
-                        || contains(action, "REMOVED")
-        )) {
+        if (
+                contains(action, "FAVORITE") &&
+                        (
+                                contains(action, "REMOVE") ||
+                                        contains(action, "REMOVED")
+                        )
+        ) {
             return "Removed from Favorites";
         }
 
@@ -220,8 +329,10 @@ public class ActivityService {
                         : "The item"
                         : quote(resourceName);
 
-        if (contains(action, "PERMANENT")
-                && contains(action, "DELETE")) {
+        if (
+                contains(action, "PERMANENT") &&
+                        contains(action, "DELETE")
+        ) {
             return item
                     + " was permanently removed from Trash.";
         }
@@ -231,8 +342,10 @@ public class ActivityService {
                     + " was restored successfully.";
         }
 
-        if (contains(action, "TRASH")
-                || action.equals("DELETE")) {
+        if (
+                contains(action, "TRASH") ||
+                        action.equals("DELETE")
+        ) {
             return item
                     + " was moved to Trash.";
         }
@@ -242,8 +355,10 @@ public class ActivityService {
                     + " was uploaded successfully.";
         }
 
-        if (contains(action, "CREATE")
-                && contains(action, "FOLDER")) {
+        if (
+                contains(action, "CREATE") &&
+                        contains(action, "FOLDER")
+        ) {
             return item
                     + " was created.";
         }
@@ -253,33 +368,38 @@ public class ActivityService {
                     + " was renamed.";
         }
 
-        if (contains(action, "FAVORITE")
-                && (
-                contains(action, "ADD")
-                        || contains(action, "ADDED")
-        )) {
+        if (
+                contains(action, "FAVORITE") &&
+                        (
+                                contains(action, "ADD") ||
+                                        contains(action, "ADDED")
+                        )
+        ) {
             return item
                     + " was added to Favorites.";
         }
 
-        if (contains(action, "FAVORITE")
-                && (
-                contains(action, "REMOVE")
-                        || contains(action, "REMOVED")
-        )) {
+        if (
+                contains(action, "FAVORITE") &&
+                        (
+                                contains(action, "REMOVE") ||
+                                        contains(action, "REMOVED")
+                        )
+        ) {
             return item
                     + " was removed from Favorites.";
         }
 
-        return item + " was updated.";
+        return item
+                + " was updated.";
     }
 
-    private List<ActivityItem.ActivityDetail> buildDetails(
+    private List<ActivityDetail> buildDetails(
             ActionLogs log,
             String action,
             Map<String, Object> metadata
     ) {
-        List<ActivityItem.ActivityDetail> details =
+        List<ActivityDetail> details =
                 new ArrayList<>();
 
         String oldName =
@@ -305,8 +425,8 @@ public class ActivityService {
                 );
 
         if (
-                contains(action, "RENAME")
-                        && oldName != null
+                contains(action, "RENAME") &&
+                        oldName != null
         ) {
             addDetail(
                     details,
@@ -316,8 +436,8 @@ public class ActivityService {
         }
 
         if (
-                contains(action, "RENAME")
-                        && newName != null
+                contains(action, "RENAME") &&
+                        newName != null
         ) {
             addDetail(
                     details,
@@ -421,8 +541,8 @@ public class ActivityService {
                 );
 
         if (
-                description != null
-                        && !looksLikeJson(description)
+                description != null &&
+                        !looksLikeJson(description)
         ) {
             addDetail(
                     details,
@@ -432,8 +552,8 @@ public class ActivityService {
         }
 
         if (
-                log.getFromFolderId() != null
-                        && log.getToFolderId() != null
+                log.getFromFolderId() != null &&
+                        log.getToFolderId() != null
         ) {
             addDetail(
                     details,
@@ -448,7 +568,10 @@ public class ActivityService {
     private String displayLocation(
             String objectKey
     ) {
-        if (objectKey == null || objectKey.isBlank()) {
+        if (
+                objectKey == null ||
+                        objectKey.isBlank()
+        ) {
             return null;
         }
 
@@ -464,43 +587,50 @@ public class ActivityService {
                 new ArrayList<>();
 
         for (String rawPart : rawParts) {
-            if (rawPart == null || rawPart.isBlank()) {
+            if (
+                    rawPart == null ||
+                            rawPart.isBlank()
+            ) {
                 continue;
             }
 
-            parts.add(cleanName(rawPart));
-        }
-
-        /*
-         * Remove "users/{userId}" from stored object keys.
-         */
-        if (
-                parts.size() >= 2
-                        && parts.get(0).equalsIgnoreCase("users")
-        ) {
-            parts = new ArrayList<>(
-                    parts.subList(2, parts.size())
+            parts.add(
+                    cleanName(rawPart)
             );
         }
 
-        /*
-         * Trash keys often contain "files/{entityId}".
-         */
         if (
-                parts.size() >= 2
-                        && parts.get(0).equalsIgnoreCase("files")
+                parts.size() >= 2 &&
+                        parts.get(0)
+                                .equalsIgnoreCase("users")
         ) {
-            parts = new ArrayList<>(
-                    parts.subList(2, parts.size())
-            );
+            parts =
+                    new ArrayList<>(
+                            parts.subList(
+                                    2,
+                                    parts.size()
+                            )
+                    );
         }
 
-        /*
-         * The last part is normally the file/folder name. The modal already
-         * displays it separately, so the location should contain only folders.
-         */
+        if (
+                parts.size() >= 2 &&
+                        parts.get(0)
+                                .equalsIgnoreCase("files")
+        ) {
+            parts =
+                    new ArrayList<>(
+                            parts.subList(
+                                    2,
+                                    parts.size()
+                            )
+                    );
+        }
+
         if (!parts.isEmpty()) {
-            parts.remove(parts.size() - 1);
+            parts.remove(
+                    parts.size() - 1
+            );
         }
 
         if (parts.isEmpty()) {
@@ -508,13 +638,19 @@ public class ActivityService {
         }
 
         return "My Drive / "
-                + String.join(" / ", parts);
+                + String.join(
+                " / ",
+                parts
+        );
     }
 
     private String displayInstant(
             String value
     ) {
-        if (value == null || value.isBlank()) {
+        if (
+                value == null ||
+                        value.isBlank()
+        ) {
             return null;
         }
 
@@ -522,7 +658,9 @@ public class ActivityService {
             return Instant
                     .parse(value.trim())
                     .toString();
-        } catch (DateTimeParseException ignored) {
+        } catch (
+                DateTimeParseException ignored
+        ) {
             return value.trim();
         }
     }
@@ -532,14 +670,17 @@ public class ActivityService {
             String... keys
     ) {
         for (String key : keys) {
-            Object value = metadata.get(key);
+            Object value =
+                    metadata.get(key);
 
             if (value == null) {
                 continue;
             }
 
             String text =
-                    value.toString().trim();
+                    value
+                            .toString()
+                            .trim();
 
             if (!text.isBlank()) {
                 return text;
@@ -550,16 +691,19 @@ public class ActivityService {
     }
 
     private void addDetail(
-            List<ActivityItem.ActivityDetail> details,
+            List<ActivityDetail> details,
             String label,
             String value
     ) {
-        if (value == null || value.isBlank()) {
+        if (
+                value == null ||
+                        value.isBlank()
+        ) {
             return;
         }
 
         details.add(
-                new ActivityItem.ActivityDetail(
+                new ActivityDetail(
                         label,
                         value
                 )
@@ -569,7 +713,10 @@ public class ActivityService {
     private String cleanName(
             String value
     ) {
-        if (value == null || value.isBlank()) {
+        if (
+                value == null ||
+                        value.isBlank()
+        ) {
             return null;
         }
 
@@ -582,11 +729,13 @@ public class ActivityService {
                 cleaned.lastIndexOf('/');
 
         if (
-                slash >= 0
-                        && slash < cleaned.length() - 1
+                slash >= 0 &&
+                        slash < cleaned.length() - 1
         ) {
             cleaned =
-                    cleaned.substring(slash + 1);
+                    cleaned.substring(
+                            slash + 1
+                    );
         }
 
         return UUID_PREFIX
@@ -599,8 +748,11 @@ public class ActivityService {
     ) {
         return action == null
                 ? "ACTIVITY"
-                : action.name()
-                .toUpperCase(Locale.ROOT);
+                : action
+                .name()
+                .toUpperCase(
+                        Locale.ROOT
+                );
     }
 
     private String humanize(
@@ -611,35 +763,39 @@ public class ActivityService {
                         .toLowerCase(Locale.ROOT)
                         .replace('_', ' ');
 
-        return Character.toUpperCase(text.charAt(0))
-                + text.substring(1);
+        return Character.toUpperCase(
+                text.charAt(0)
+        ) + text.substring(1);
     }
 
     private boolean contains(
             String value,
             String token
     ) {
-        return value != null
-                && value.contains(token);
+        return value != null &&
+                value.contains(token);
     }
 
     private boolean looksLikeJson(
             String value
     ) {
-        String trimmed = value.trim();
+        String trimmed =
+                value.trim();
 
         return (
-                trimmed.startsWith("{")
-                        && trimmed.endsWith("}")
+                trimmed.startsWith("{") &&
+                        trimmed.endsWith("}")
         ) || (
-                trimmed.startsWith("[")
-                        && trimmed.endsWith("]")
+                trimmed.startsWith("[") &&
+                        trimmed.endsWith("]")
         );
     }
 
     private String quote(
             String value
     ) {
-        return "\"" + value + "\"";
+        return "\""
+                + value
+                + "\"";
     }
 }

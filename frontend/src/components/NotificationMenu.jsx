@@ -14,6 +14,7 @@ import {
     markNotificationRead,
 } from "../api/notifications";
 import { getRecentActivity } from "../api/activity";
+import ActivityHistoryModal from "./ActivityHistoryModal";
 
 const NOTIFICATIONS_CHANGED_EVENT = "file-drive:notifications-changed";
 
@@ -1079,6 +1080,8 @@ export default function NotificationMenu({ onLogout }) {
         useState(null);
     const [selectedActivity, setSelectedActivity] =
         useState(null);
+    const [activityHistoryOpen, setActivityHistoryOpen] =
+        useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
     const [loading, setLoading] = useState(false);
     const [markingAll, setMarkingAll] = useState(false);
@@ -1810,6 +1813,22 @@ export default function NotificationMenu({ onLogout }) {
                                         )}
                                     </div>
                                 )}
+
+                                {activities.length > 0 && (
+                                    <div className="notification-activity-footer">
+                                        <button
+                                            type="button"
+                                            className="notification-activity-show-all"
+                                            onClick={() => {
+                                                setOpen(false);
+                                                setActivityHistoryOpen(true);
+                                            }}
+                                        >
+                                            <span>Show all activity</span>
+                                            <ArrowRightIcon className="notification-activity-show-all-icon" />
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </section>
@@ -1832,6 +1851,19 @@ export default function NotificationMenu({ onLogout }) {
                     onClose={() =>
                         setSelectedActivity(null)
                     }
+                />
+            )}
+
+            {activityHistoryOpen && (
+                <ActivityHistoryModal
+                    onClose={() =>
+                        setActivityHistoryOpen(false)
+                    }
+                    onSelectActivity={(activity) => {
+                        setActivityHistoryOpen(false);
+                        setSelectedActivity(activity);
+                    }}
+                    onAuthError={onLogout}
                 />
             )}
         </>

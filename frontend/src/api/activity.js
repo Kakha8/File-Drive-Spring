@@ -15,6 +15,7 @@ async function readApiError(
     } catch {
         try {
             const text = await response.text();
+
             return text || fallbackMessage;
         } catch {
             return fallbackMessage;
@@ -25,6 +26,9 @@ async function readApiError(
 export async function getRecentActivity({
                                             page = 0,
                                             size = 20,
+                                            from = null,
+                                            to = null,
+                                            types = [],
                                         } = {}) {
     const params = new URLSearchParams({
         page: String(Math.max(0, page)),
@@ -35,6 +39,20 @@ export async function getRecentActivity({
             )
         ),
     });
+
+    if (from) {
+        params.set("from", from);
+    }
+
+    if (to) {
+        params.set("to", to);
+    }
+
+    for (const type of types) {
+        if (type) {
+            params.append("types", type);
+        }
+    }
 
     const response = await apiFetch(
         `/api/activity?${params.toString()}`
@@ -50,4 +68,25 @@ export async function getRecentActivity({
     }
 
     return response.json();
+}
+
+export async function getActivityTypes() {
+    const response = await apiFetch(
+        "/api/activity/types"
+    );
+
+    if (!response.ok) {
+        throw new Error(
+            await readApiError(
+                response,
+                "Failed to load activity types"
+            )
+        );
+    }
+
+    const data = await response.json();
+
+    return Array.isArray(data)
+        ? data
+        : [];
 }
