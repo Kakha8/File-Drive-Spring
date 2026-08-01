@@ -4,16 +4,9 @@ import kakha.kudava.filedrivespring.dto.FileMetaDataDTO;
 import kakha.kudava.filedrivespring.exceptions.UploadCanceledException;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
-import kakha.kudava.filedrivespring.services.ObjectStorageService;
 import kakha.kudava.filedrivespring.services.UploadCancellationService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.util.List;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 
 @Service

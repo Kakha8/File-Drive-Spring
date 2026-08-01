@@ -6,6 +6,8 @@ import {
     restoreFromTrash,
 } from "../api/drive";
 import DriveSidebar from "../components/DriveSidebar";
+import NotificationMenu from "../components/NotificationMenu";
+import UserMenu from "../components/UserMenu";
 import ConfirmPermanentDeleteModal from "../components/ConfirmPermanentDeleteModal";
 import ConfirmClearTrashModal from "../components/ConfirmClearTrashModal";
 import ConfirmRestoreModal from "../components/ConfirmRestoreModal";
@@ -271,7 +273,11 @@ function getRootPrefixFromTrash(trash) {
     return "";
 }
 
-export default function Trashcan({ sidebarOpen, onToggleSidebar }) {
+export default function Trashcan({
+                                     sidebarOpen,
+                                     onToggleSidebar,
+                                     onLogout,
+                                 }) {
     const [trash, setTrash] = useState({
         files: [],
         folders: [],
@@ -765,6 +771,11 @@ export default function Trashcan({ sidebarOpen, onToggleSidebar }) {
                                 </span>
                             ))}
                         </div>
+                    </div>
+
+                    <div className="drive-header-actions">
+                        <NotificationMenu onLogout={onLogout} />
+                        <UserMenu onLogout={onLogout} />
                     </div>
                 </header>
 

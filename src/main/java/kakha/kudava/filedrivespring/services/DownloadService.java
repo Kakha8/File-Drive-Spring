@@ -10,6 +10,7 @@ import kakha.kudava.filedrivespring.records.ZipCount;
 import kakha.kudava.filedrivespring.records.ZipDownloadResult;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
+import kakha.kudava.filedrivespring.services.objects.ObjectStorageService;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;

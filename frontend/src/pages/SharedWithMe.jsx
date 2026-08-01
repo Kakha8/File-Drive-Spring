@@ -4,6 +4,8 @@ import { logout as apiLogout } from "../api/auth";
 import { getFileBlob, getFolderZipBlob } from "../api/drive";
 import { getSharedWithMe } from "../api/sharing";
 import TextEditorModal from "../components/TextEditorModal";
+import NotificationMenu from "../components/NotificationMenu";
+import UserMenu from "../components/UserMenu";
 
 function Icon({ children, className = "" }) {
     return (
@@ -603,6 +605,11 @@ export default function SharedWithMe({ onLogout }) {
                                 </button>
                             </span>
                         </div>
+                    </div>
+
+                    <div className="drive-header-actions">
+                        <NotificationMenu onLogout={onLogout} />
+                        <UserMenu onLogout={onLogout} />
                     </div>
                 </header>
 

@@ -3,13 +3,11 @@ package kakha.kudava.filedrivespring.controller;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.minio.errors.*;
 import kakha.kudava.filedrivespring.dto.*;
-import kakha.kudava.filedrivespring.model.FileMetaData;
-import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.records.FolderDownloadResult;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.services.MoveService;
-import kakha.kudava.filedrivespring.services.ObjectStorageService;
+import kakha.kudava.filedrivespring.services.objects.ObjectStorageService;
 import kakha.kudava.filedrivespring.services.objects.FolderService;
 import kakha.kudava.filedrivespring.services.RenameService;
 import org.springframework.core.io.InputStreamResource;
@@ -20,12 +18,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URLConnection;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.util.List;
 import java.util.Map;
 
 @RestController

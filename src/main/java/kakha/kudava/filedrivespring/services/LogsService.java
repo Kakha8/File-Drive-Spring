@@ -42,7 +42,7 @@ public class LogsService {
         actionLogs.setDetails(detailsJson);
         return actionLogs;
     }
-    public void uploadLog(String fileName, Long parentId, String entityType){
+    public void uploadLog(String fileName, Long parentId, String entityType, String detailsJson) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         Optional<User> user = userRepository.findByUsername(auth.getName());
 
@@ -52,6 +52,7 @@ public class LogsService {
         actionLogs.setEntityId(parentId);
         actionLogs.setUser(user.get());
         actionLogs.setEntityType(EntityType.valueOf(entityType));
+        actionLogs.setDetails(detailsJson);
         actionLogsRepository.save(actionLogs);
         log.info(String.format("Logging the upload of %s to %s", fileName, parentId));
 

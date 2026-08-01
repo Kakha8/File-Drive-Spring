@@ -2,8 +2,6 @@ package kakha.kudava.filedrivespring.services.objects;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
-import io.minio.errors.*;
 import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.dto.*;
 import kakha.kudava.filedrivespring.enums.DriveSpace;
@@ -16,7 +14,6 @@ import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.repository.UserRepository;
 import kakha.kudava.filedrivespring.services.LogsService;
-import kakha.kudava.filedrivespring.services.ObjectStorageService;
 import kakha.kudava.filedrivespring.services.ResourceAccessService;
 import kakha.kudava.filedrivespring.services.SharingService;
 import lombok.extern.slf4j.Slf4j;
@@ -27,10 +24,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
