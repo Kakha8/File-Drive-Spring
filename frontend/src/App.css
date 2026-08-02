@@ -125,11 +125,44 @@ body {
 
 .sidebar-top {
   height: 72px;
-  padding: 0 12px;
+  min-height: 72px;
+  padding: 10px 14px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: nowrap;
+  gap: 10px;
   flex-shrink: 0;
+}
+
+.sidebar-logo {
+  width: 38px;
+  height: 42px;
+  flex: 0 0 38px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.sidebar-logo img {
+  width: 32px;
+  height: 36px;
+  max-width: 100%;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.sidebar-brand-name {
+  min-width: 0;
+  color: #f3f4f6;
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.drive-sidebar.open .sidebar-top .menu-button {
+  margin-left: auto;
 }
 
 .menu-button {
@@ -1091,10 +1124,18 @@ body {
 
 /* Sidebar menu alignment fix */
 .drive-sidebar.closed .sidebar-top {
-  height: 76px;
-  padding: 16px 12px 8px;
-  align-items: flex-start;
+  height: 116px;
+  min-height: 116px;
+  padding: 10px;
+  align-items: center;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 6px;
   justify-content: center;
+}
+
+.drive-sidebar.closed .sidebar-logo {
+  margin: 0;
 }
 
 .drive-sidebar.closed .menu-button,
@@ -2434,16 +2475,17 @@ body,
 
 /* Fix sidebar hamburger alignment when sidebar is open */
 .drive-sidebar.open .sidebar-top {
-  height: 76px;
-  padding: 16px 14px 8px;
-  align-items: flex-start;
+  height: 72px;
+  min-height: 72px;
+  padding: 10px 14px;
+  align-items: center;
 }
 
 .drive-sidebar.open .menu-button {
-  width: 56px;
-  min-width: 56px;
-  height: 56px;
-  border-radius: 14px;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  border-radius: 11px;
   padding: 0;
   display: flex;
   align-items: center;

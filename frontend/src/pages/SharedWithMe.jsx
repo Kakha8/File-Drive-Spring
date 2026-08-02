@@ -6,6 +6,7 @@ import { getSharedWithMe } from "../api/sharing";
 import TextEditorModal from "../components/TextEditorModal";
 import NotificationMenu from "../components/NotificationMenu";
 import UserMenu from "../components/UserMenu";
+import logo from "../assets/logo.png";
 
 function Icon({ children, className = "" }) {
     return (
@@ -487,6 +488,10 @@ export default function SharedWithMe({ onLogout }) {
         <main className="drive-page">
             <aside className={`drive-sidebar ${sidebarOpen ? "open" : "closed"}`}>
                 <div className="sidebar-top">
+                    <div className="sidebar-logo" aria-label="File Drive">
+                        <img src={logo} alt="" />
+                    </div>
+                    {sidebarOpen && <strong className="sidebar-brand-name">File Drive</strong>}
                     <button
                         className="menu-button"
                         onClick={() => setSidebarOpen((open) => !open)}
@@ -496,16 +501,6 @@ export default function SharedWithMe({ onLogout }) {
                     >
                         <Icons.Menu className="svg-icon" />
                     </button>
-
-                    {sidebarOpen && (
-                        <>
-                            <div className="workspace-mark">W</div>
-                            <div className="workspace-text">
-                                <strong>Workspace</strong>
-                                <span>Shared with me</span>
-                            </div>
-                        </>
-                    )}
                 </div>
 
                 <div className="sidebar-scroll">

@@ -7,6 +7,7 @@ import ShareModal from "../components/ShareModal";
 import TextEditorModal from "../components/TextEditorModal";
 import UserMenu from "../components/UserMenu";
 import NotificationMenu from "../components/NotificationMenu";
+import logo from "../assets/logo.png";
 import {
     createFolder,
     getFileBlob,
@@ -1681,6 +1682,10 @@ function Main({ onLogout }) {
             `}</style>
             <aside className={`drive-sidebar ${sidebarOpen ? "open" : "closed"}`}>
                 <div className="sidebar-top">
+                    <div className="sidebar-logo" aria-label="File Drive">
+                        <img src={logo} alt="" />
+                    </div>
+                    {sidebarOpen && <strong className="sidebar-brand-name">File Drive</strong>}
                     <button
                         className="menu-button"
                         onClick={() => setSidebarOpen((open) => !open)}
@@ -1690,16 +1695,6 @@ function Main({ onLogout }) {
                     >
                         <Icons.Menu className="svg-icon" />
                     </button>
-
-                    {sidebarOpen && (
-                        <>
-                            <div className="workspace-mark">W</div>
-                            <div className="workspace-text">
-                                <strong>Workspace</strong>
-                                <span>{path[0]?.name || "My Drive"}</span>
-                            </div>
-                        </>
-                    )}
                 </div>
 
                 <div className="sidebar-scroll">

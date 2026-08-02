@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { logout as apiLogout } from "../api/auth";
+import logo from "../assets/logo.png";
 
 
 function Icon({ children, className = "" }) {
@@ -90,7 +91,6 @@ export default function DriveSidebar({
                                          sidebarOpen,
                                          onToggleSidebar,
                                          defaultOpen = false,
-                                         username = "My workspace",
                                          locationLabel = "admin",
                                          deletedCount = null,
                                          onLogoutComplete,
@@ -150,6 +150,10 @@ export default function DriveSidebar({
     return (
         <aside className={`drive-sidebar ${isOpen ? "open" : "closed"}`}>
             <div className="sidebar-top">
+                <div className="sidebar-logo" aria-label="File Drive">
+                    <img src={logo} alt="" />
+                </div>
+                {isOpen && <strong className="sidebar-brand-name">File Drive</strong>}
                 <button
                     type="button"
                     className="menu-button"
@@ -159,16 +163,6 @@ export default function DriveSidebar({
                 >
                     <Icons.Menu className="svg-icon" />
                 </button>
-
-                {isOpen && (
-                    <>
-                        <div className="workspace-mark">FD</div>
-                        <div className="workspace-text">
-                            <strong>File Drive</strong>
-                            <span>{username}</span>
-                        </div>
-                    </>
-                )}
             </div>
 
             <div className="sidebar-scroll">
