@@ -93,6 +93,26 @@ function EditIcon({ className }) {
     );
 }
 
+function CopyIcon({ className }) {
+    return (
+        <Icon className={className}>
+            <rect x="8" y="8" width="12" height="12" rx="2" />
+            <path d="M4 16V6a2 2 0 0 1 2-2h10" />
+        </Icon>
+    );
+}
+
+function MoveIcon({ className }) {
+    return (
+        <Icon className={className}>
+            <circle cx="6" cy="6" r="2" />
+            <circle cx="6" cy="18" r="2" />
+            <path d="M20 4 8 16" />
+            <path d="M8 8l12 12" />
+        </Icon>
+    );
+}
+
 function StarIcon({ className }) {
     return (
         <Icon className={className}>
@@ -226,6 +246,30 @@ function formatActivityType(type) {
         );
 }
 
+function getActivityAction(activity) {
+    const candidates = [
+        activity?.type,
+        activity?.action,
+        activity?.title,
+    ]
+        .filter(Boolean)
+        .map((value) => String(value).toUpperCase());
+
+    return candidates.find((value) =>
+        [
+            "RESTORE",
+            "DELETE",
+            "TRASH",
+            "UPLOAD",
+            "CREATE",
+            "RENAME",
+            "COPY",
+            "MOVE",
+            "FAVORITE",
+        ].some((action) => value.includes(action))
+    ) || candidates[0] || "";
+}
+
 function ActivityTypeIcon({
                               type,
                               className = "notification-activity-item-svg",
@@ -263,6 +307,14 @@ function ActivityTypeIcon({
 
     if (value.includes("RENAME")) {
         return <EditIcon className={className} />;
+    }
+
+    if (value.includes("COPY")) {
+        return <CopyIcon className={className} />;
+    }
+
+    if (value.includes("MOVE")) {
+        return <MoveIcon className={className} />;
     }
 
     if (value.includes("FAVORITE")) {
@@ -920,8 +972,9 @@ function ActivityDetailsModal({
                                   onClose,
                               }) {
     const closeButtonRef = useRef(null);
+    const activityAction = getActivityAction(activity);
     const typeClass =
-        getActivityTypeClass(activity.type);
+        getActivityTypeClass(activityAction);
     const details =
         getActivityModalDetails(activity);
 
@@ -988,7 +1041,7 @@ function ActivityDetailsModal({
                         className={`notification-modal-icon ${typeClass}`}
                     >
                         <ActivityTypeIcon
-                            type={activity.type}
+                            type={activityAction}
                             className="notification-modal-type-svg"
                         />
                     </div>
@@ -1756,7 +1809,7 @@ export default function NotificationMenu({ onLogout }) {
                                                     <span className="notification-activity-item-icon">
                                                         <ActivityTypeIcon
                                                             type={
-                                                                activity.type
+                                                                getActivityAction(activity)
                                                             }
                                                         />
                                                     </span>

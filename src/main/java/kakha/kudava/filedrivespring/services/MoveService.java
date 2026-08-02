@@ -91,6 +91,7 @@ public class MoveService {
             FileMetaData savedFile = fileMetaDataRepository.save(newFile);
 
             Map<String, Object> detailsMap = new LinkedHashMap<>();
+            detailsMap.put("fileName", fileMeta.getFileName());
             detailsMap.put("sourceFileId", fileMeta.getId());
             detailsMap.put("newFileId", savedFile.getId());
             detailsMap.put("targetFolder", targetFolder.getPrefix());
@@ -171,6 +172,7 @@ public class MoveService {
             fileMeta.setParent(targetFolder);
 
             Map<String, Object> detailsMap = new LinkedHashMap<>();
+            detailsMap.put("fileName", fileMeta.getFileName());
             detailsMap.put("oldFolder", oldFolder);
             detailsMap.put("oldFolderId", oldFolderId);
             detailsMap.put("targetFolder", targetFolder.getPrefix());
@@ -200,6 +202,9 @@ public class MoveService {
         Folders target = access.requireFolderOwner(targetFolderId);
 
         String oldPrefix = normalize(folder.getPrefix());
+        Long oldFolderId = folder.getParent() != null
+                ? folder.getParent().getId()
+                : null;
         String newPrefix = normalize(target.getPrefix()) + folder.getName() + "/";
 
         folderRepository
@@ -266,6 +271,20 @@ public class MoveService {
             }
 
             updateFolderPrefixes(folder, oldPrefix, newPrefix, target);
+
+            Map<String, Object> detailsMap = new LinkedHashMap<>();
+            detailsMap.put("folderName", folder.getName());
+            detailsMap.put("oldFolder", oldPrefix);
+            detailsMap.put("oldFolderId", oldFolderId);
+            detailsMap.put("targetFolder", target.getPrefix());
+            detailsMap.put("targetFolderId", target.getId());
+
+            logsService.moveLog(
+                    folder.getName(),
+                    folder.getId(),
+                    "FOLDER",
+                    objectMapper.writeValueAsString(detailsMap)
+            );
 
         } catch (Exception e) {
             throw new RuntimeException("Folder move failed", e);
@@ -339,6 +358,7 @@ public class MoveService {
             Folders copiedRoot = copyFolderRecursive(sourceFolder, targetFolder, newRootPrefix);
 
             Map<String, Object> detailsMap = new LinkedHashMap<>();
+            detailsMap.put("folderName", sourceFolder.getName());
             detailsMap.put("targetFolder", targetFolder.getPrefix());
             detailsMap.put("targetFolderId", targetFolder.getId());
 
@@ -414,6 +434,7 @@ public class MoveService {
             FileMetaData savedFile = fileMetaDataRepository.save(copiedFile);
 
             Map<String, Object> fileDetailsMap = new LinkedHashMap<>();
+            fileDetailsMap.put("fileName", sourceFile.getFileName());
             fileDetailsMap.put("sourceFileId", sourceFile.getId());
             fileDetailsMap.put("newFileId", savedFile.getId());
             fileDetailsMap.put("targetFolder", copiedFolder.getPrefix());
