@@ -17,6 +17,7 @@ import Trashcan from "./pages/Trashcan";
 import SharedWithMe from "./pages/SharedWithMe.jsx";
 import Favorites from "./pages/Favorites";
 import Settings from "./pages/Settings";
+import Recent from "./pages/Recent";
 import "./App.css";
 import "./components/recent-activity.css";
 import "./styles/activity-history.css";
@@ -199,6 +200,11 @@ function App() {
                             />
                         )
                     }
+                />
+
+                <Route
+                    path="/recent"
+                    element={loggedIn ? <Recent onLogout={handleLogout} sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} /> : <Navigate to="/login" replace />}
                 />
 
                 <Route

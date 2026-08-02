@@ -400,6 +400,15 @@ export async function restoreFromTrash(fileIds = [], folderIds = []) {
     }
 }
 
+export async function getRecentFiles(limit = 50) {
+    const response = await apiFetch(`/api/files/recent?limit=${limit}`);
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to load recent files");
+    }
+    return response.json();
+}
+
 async function transferItem(itemType, itemId, targetFolderId, operation) {
     const resource = itemType === "folder" ? "folders" : "files";
     const response = await apiFetch(`/api/${resource}/${itemId}/${operation}`, {

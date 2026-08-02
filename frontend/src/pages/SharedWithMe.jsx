@@ -528,6 +528,16 @@ export default function SharedWithMe({ onLogout }) {
                                             navigate("/trashcan");
                                             return;
                                         }
+
+                                        if (item.key === "recent") {
+                                            navigate("/recent");
+                                            return;
+                                        }
+
+                                        if (item.key === "favorites") {
+                                            navigate("/favorites");
+                                            return;
+                                        }
                                     }}
                                     title={!sidebarOpen ? item.label : undefined}
                                     className={`nav-item ${

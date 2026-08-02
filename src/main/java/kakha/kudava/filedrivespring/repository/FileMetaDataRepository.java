@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
@@ -47,6 +48,16 @@ public interface FileMetaDataRepository extends JpaRepository<FileMetaData, Long
             Long id,
             User owner
     );
+
+    @Query("""
+        select f from FileMetaData f
+        where f.owner = :owner
+          and f.deleted = false
+          and f.permanentlyDeleted = false
+          and f.driveSpace = kakha.kudava.filedrivespring.enums.DriveSpace.DRIVE
+        order by coalesce(f.lastModifiedDate, f.creationDate) desc
+    """)
+    List<FileMetaData> findRecentFiles(@Param("owner") User owner, Pageable pageable);
 
     List<FileMetaData> findByOwnerAndDeletedTrueAndPermanentlyDeletedFalseAndOriginalObjectKeyStartingWith(
             User owner,

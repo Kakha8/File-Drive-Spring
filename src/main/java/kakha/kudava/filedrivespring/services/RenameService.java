@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.time.Instant;
 
 @Slf4j
 @Service
@@ -88,6 +89,7 @@ public class RenameService {
 
         meta.setFileName(newName);
         meta.setObjectKey(newKey);
+        meta.setLastModifiedDate(Instant.now());
 
         String oldName = filePart.substring(37);
 

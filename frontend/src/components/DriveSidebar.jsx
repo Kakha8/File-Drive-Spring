@@ -79,7 +79,7 @@ const Icons = {
 const navItems = [
     { key: "my", label: "My files", icon: Icons.File, path: "/main" },
     { key: "shared", label: "Shared", icon: Icons.Shared, path: "/shared" },
-    { key: "recent", label: "Recent", icon: Icons.Clock, path: null },
+    { key: "recent", label: "Recent", icon: Icons.Clock, path: "/recent" },
     { key: "favorites", label: "Favorites", icon: Icons.Star, path: "/favorites",},
     { key: "archived", label: "Archived", icon: Icons.Archive, path: null },
     { key: "trash", label: "Trash", icon: Icons.Trash, path: "/trashcan" },

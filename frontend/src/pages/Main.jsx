@@ -1726,6 +1726,11 @@ function Main({ onLogout }) {
                                             return;
                                         }
 
+                                        if (item.key === "recent") {
+                                            navigate("/recent");
+                                            return;
+                                        }
+
                                         setNav(item.key);
                                     }}
                                     title={!sidebarOpen ? item.label : undefined}

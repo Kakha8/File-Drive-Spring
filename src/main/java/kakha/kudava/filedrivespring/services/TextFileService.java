@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.time.Instant;
 
 @Service
 public class TextFileService {
@@ -144,6 +145,7 @@ public class TextFileService {
         file.setChecksum(newChecksum);
         file.setSize((long) newBytes.length);
         file.setObjectType(contentType);
+        file.setLastModifiedDate(Instant.now());
 
         FileMetaData savedFile = fileMetaDataRepository.save(file);
 

@@ -33,6 +33,9 @@ public class FileMetaData {
     @Column(nullable = false)
     private Instant creationDate = Instant.now();
 
+    @Column
+    private Instant lastModifiedDate = Instant.now();
+
     @Column(nullable = false)
     private Long size;
 

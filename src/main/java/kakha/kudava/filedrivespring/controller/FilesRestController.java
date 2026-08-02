@@ -14,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.net.URLConnection;
+import java.util.List;
 
 @RestController
 @RequestMapping("api/files")
@@ -45,6 +46,13 @@ public class FilesRestController {
     ) throws Exception {
         FileMetaDataDTO dto = fileService.upload(file, parentId, uploadId);
         return ResponseEntity.status(201).body(dto);
+    }
+
+    @GetMapping("/recent")
+    public ResponseEntity<List<FileItemDTO>> recent(
+            @RequestParam(defaultValue = "50") int limit
+    ) {
+        return ResponseEntity.ok(fileService.recent(limit));
     }
 
     @GetMapping("/{id}")
