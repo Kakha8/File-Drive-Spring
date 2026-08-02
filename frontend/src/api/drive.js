@@ -399,3 +399,27 @@ export async function restoreFromTrash(fileIds = [], folderIds = []) {
         throw new Error(message || "Failed to restore selected items");
     }
 }
+
+async function transferItem(itemType, itemId, targetFolderId, operation) {
+    const resource = itemType === "folder" ? "folders" : "files";
+    const response = await apiFetch(`/api/${resource}/${itemId}/${operation}`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ targetFolderId }),
+    });
+
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || `Failed to ${operation} item`);
+    }
+}
+
+export function copyItem(itemType, itemId, targetFolderId) {
+    return transferItem(itemType, itemId, targetFolderId, "copy");
+}
+
+export function moveItem(itemType, itemId, targetFolderId) {
+    return transferItem(itemType, itemId, targetFolderId, "move");
+}

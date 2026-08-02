@@ -1,0 +1,24 @@
+.destination-modal { width: 540px; max-width: calc(100vw - 32px); background: #111827; color: #f3f4f6; border: 1px solid rgba(255,255,255,.1); border-radius: 20px; box-shadow: 0 24px 60px rgba(0,0,0,.45); overflow: hidden; }
+.destination-modal header { padding: 22px 24px 12px; }
+.destination-modal h2 { margin: 0 0 5px; font-size: 21px; }
+.destination-modal header p { margin: 0; color: #9ca3af; font-size: 14px; }
+.destination-breadcrumbs { display: flex; gap: 6px; padding: 10px 24px; overflow-x: auto; border-block: 1px solid rgba(255,255,255,.08); }
+.destination-breadcrumbs button { border: 0; padding: 3px 0; background: transparent; color: #93c5fd; white-space: nowrap; cursor: pointer; }
+.destination-breadcrumbs button:disabled { color: #e5e7eb; cursor: default; }
+.destination-breadcrumbs span { margin-right: 6px; color: #6b7280; }
+.destination-list { min-height: 220px; max-height: 340px; padding: 10px; overflow-y: auto; }
+.destination-list > button { width: 100%; display: grid; grid-template-columns: 30px 1fr 20px; align-items: center; gap: 8px; padding: 12px; border: 0; border-radius: 10px; background: transparent; color: #e5e7eb; text-align: left; cursor: pointer; }
+.destination-list > button:hover:not(:disabled) { background: #1f2937; }
+.destination-list > button:disabled { opacity: .4; cursor: not-allowed; }
+.destination-folder-icon { width: 22px; height: 22px; color: #60a5fa; }
+.destination-chevron { color: #9ca3af; font-size: 24px; }
+.destination-status { display: grid; min-height: 200px; place-items: center; color: #9ca3af; }
+.destination-error { margin: 0 24px; padding: 10px 12px; border-radius: 9px; background: rgba(220,38,38,.14); color: #fca5a5; font-size: 13px; }
+.destination-modal footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px 22px; border-top: 1px solid rgba(255,255,255,.08); color: #9ca3af; font-size: 13px; }
+.destination-modal footer > div { display: flex; gap: 10px; }
+.destination-modal footer button { border: 0; border-radius: 11px; padding: 10px 15px; color: white; font-weight: 600; cursor: pointer; }
+.destination-modal footer button:disabled { opacity: .55; cursor: not-allowed; }
+.destination-cancel { background: #1f2937; }
+.destination-confirm { background: #2563eb; }
+.destination-confirm:hover:not(:disabled) { background: #1d4ed8; }
+@media (max-width: 560px) { .destination-modal footer { align-items: stretch; flex-direction: column; } .destination-modal footer > div { justify-content: flex-end; } }

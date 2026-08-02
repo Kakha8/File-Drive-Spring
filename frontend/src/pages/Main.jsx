@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { logout as apiLogout } from "../api/auth";
 import ConfirmTrashModal from "../components/ConfirmTrashModal";
+import DestinationModal from "../components/DestinationModal";
 import ShareModal from "../components/ShareModal";
 import TextEditorModal from "../components/TextEditorModal";
 import UserMenu from "../components/UserMenu";
@@ -18,6 +19,8 @@ import {
     uploadFile,
     cancelUpload,
     moveToTrash,
+    copyItem,
+    moveItem,
 } from "../api/drive";
 import { revokeShare, shareResource } from "../api/sharing.js";
 import { apiFetch } from "../api/http";
@@ -562,6 +565,7 @@ function Main({ onLogout }) {
 
     const [trashRequest, setTrashRequest] = useState(null);
     const [trashMoving, setTrashMoving] = useState(false);
+    const [destinationRequest, setDestinationRequest] = useState(null);
 
     const [favoritesByKey, setFavoritesByKey] = useState({});
     const [favoritePendingKeys, setFavoritePendingKeys] = useState(
@@ -1366,11 +1370,27 @@ function Main({ onLogout }) {
     }
 
     function handleCopy(item) {
-        setError(`Copy coming soon for ${item.name}`);
+        setError("");
+        setOpenMenuId(null);
+        setDestinationRequest({ operation: "copy", item });
     }
 
     function handleCut(item) {
-        setError(`Cut coming soon for ${item.name}`);
+        setError("");
+        setOpenMenuId(null);
+        setDestinationRequest({ operation: "move", item });
+    }
+
+    async function confirmDestination(targetFolderId) {
+        const request = destinationRequest;
+        if (!request?.item) return;
+
+        const action = request.operation === "copy" ? copyItem : moveItem;
+        await action(request.item.type, request.item.rawId, targetFolderId);
+        setDestinationRequest(null);
+        setSelectedIds([]);
+        announceNotificationsChanged();
+        await reloadCurrentFolder();
     }
 
     function handleDelete(item) {
@@ -2007,6 +2027,14 @@ function Main({ onLogout }) {
                 onCancel={cancelMoveToTrash}
             />
 
+            <DestinationModal
+                open={Boolean(destinationRequest)}
+                operation={destinationRequest?.operation}
+                item={destinationRequest?.item}
+                onConfirm={confirmDestination}
+                onClose={() => setDestinationRequest(null)}
+            />
+
             <ShareModal
                 open={Boolean(shareTarget)}
                 target={shareTarget}
@@ -2305,7 +2333,7 @@ function FileRow({
                                     onClick={(event) => runAction(event, onCut)}
                                 >
                                     <Icons.Cut className="menu-action-icon" />
-                                    Cut
+                                    Move
                                 </button>
 
                                 <button
