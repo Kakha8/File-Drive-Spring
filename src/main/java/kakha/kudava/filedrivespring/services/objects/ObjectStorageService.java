@@ -307,6 +307,16 @@ public class ObjectStorageService {
     public InputStream downloadWithoutLog(Long id) throws Exception {
         FileMetaData fileMetaData = access.requireFileView(id);
 
+        return downloadWithoutLog(fileMetaData);
+    }
+
+    /**
+     * Opens an object that has already passed an access check. This overload is
+     * used by asynchronous ZIP streaming, where the request security context is
+     * no longer available on the worker thread.
+     */
+    public InputStream downloadWithoutLog(FileMetaData fileMetaData) throws Exception {
+
         String objectKey = fileMetaData.getObjectKey();
 
         log.info("Downloading object without action log from {}", objectKey);

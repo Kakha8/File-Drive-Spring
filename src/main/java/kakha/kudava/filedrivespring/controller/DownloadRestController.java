@@ -1,12 +1,11 @@
 package kakha.kudava.filedrivespring.controller;
 
+import jakarta.servlet.http.HttpServletResponse;
 import kakha.kudava.filedrivespring.dto.DownloadZipRequest;
 import kakha.kudava.filedrivespring.records.ZipDownloadResult;
 import kakha.kudava.filedrivespring.services.DownloadService;
-import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -20,17 +19,18 @@ public class DownloadRestController {
     }
 
     @PostMapping("/zip")
-    public ResponseEntity<InputStreamResource> downloadZip(
-            @RequestBody DownloadZipRequest request
+    public void downloadZip(
+            @RequestBody DownloadZipRequest request,
+            HttpServletResponse response
     ) throws Exception {
         ZipDownloadResult result = downloadService.downloadAsZip(request);
 
-        return ResponseEntity.ok()
-                .header(
-                        HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + result.fileName() + "\""
-                )
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(new InputStreamResource(result.inputStream()));
+        response.setStatus(HttpServletResponse.SC_OK);
+        response.setHeader(
+                HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"" + result.fileName() + "\""
+        );
+        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        result.responseBody().writeTo(response.getOutputStream());
     }
 }

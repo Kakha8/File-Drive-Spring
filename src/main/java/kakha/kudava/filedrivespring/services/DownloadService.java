@@ -11,15 +11,18 @@ import kakha.kudava.filedrivespring.records.ZipDownloadResult;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.services.objects.ObjectStorageService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
+import java.io.FilterOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+@Slf4j
 @Service
 public class DownloadService {
 
@@ -53,64 +56,86 @@ public class DownloadService {
             throw new RuntimeException("No items selected");
         }
 
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-        Set<String> usedZipNames = new HashSet<>();
-
-        int fileCount = 0;
-        int folderCount = 0;
-
-        try (ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream)) {
-            for (Long fileId : fileIds) {
-                FileMetaData file = access.requireFileView(fileId);
-
-                addFileToZip(file, "", zipOutputStream, usedZipNames);
-                fileCount++;
-            }
-
-            for (Long folderId : folderIds) {
-                Folders folder = access.requireFolderView(folderId);
-                String folderPath = uniqueZipName(
-                        sanitizeZipName(folder.getName()) + "/",
-                        usedZipNames
-                );
-
-                ZipCount count = addFolderToZip(folder, folderPath, zipOutputStream, usedZipNames);
-
-                fileCount += count.fileCount();
-                folderCount += count.folderCount();
-            }
-        }
-
-        Map<String, Object> details = new LinkedHashMap<>();
-        details.put("downloadName", "download.zip");
-        details.put("selectedFileIds", fileIds);
-        details.put("selectedFolderIds", folderIds);
-        details.put("fileCount", fileCount);
-        details.put("folderCount", folderCount);
-        details.put("zipSizeBytes", byteArrayOutputStream.size());
-
-        String detailsJson = objectMapper.writeValueAsString(details);
-
-        logsService.bulkDownloadLog(detailsJson);
+        // Resolve top-level resources and the user on the request thread. The
+        // StreamingResponseBody itself runs asynchronously, where the security
+        // context is not guaranteed to be available.
+        List<FileMetaData> files = fileIds.stream()
+                .map(access::requireFileView)
+                .toList();
+        List<Folders> folders = folderIds.stream()
+                .map(access::requireFolderView)
+                .toList();
+        User user = access.currentUser();
 
         return new ZipDownloadResult(
                 "download.zip",
-                new ByteArrayInputStream(byteArrayOutputStream.toByteArray())
+                outputStream -> writeZip(files, folders, fileIds, folderIds, user, outputStream)
         );
+    }
+
+    private void writeZip(
+            List<FileMetaData> files,
+            List<Folders> folders,
+            List<Long> selectedFileIds,
+            List<Long> selectedFolderIds,
+            User user,
+            OutputStream outputStream
+    ) throws IOException {
+        CountingOutputStream countingOutputStream = new CountingOutputStream(outputStream);
+        Set<String> usedZipNames = new HashSet<>();
+        int fileCount = 0;
+        int folderCount = 0;
+
+        try {
+            try (ZipOutputStream zipOutputStream = new ZipOutputStream(countingOutputStream)) {
+
+                for (FileMetaData file : files) {
+                    addFileToZip(file, "", zipOutputStream, usedZipNames);
+                    fileCount++;
+                }
+
+                for (Folders folder : folders) {
+                    String folderPath = uniqueZipName(
+                            sanitizeZipName(folder.getName()) + "/",
+                            usedZipNames
+                    );
+                    ZipCount count = addFolderToZip(folder, folderPath, zipOutputStream, usedZipNames, user);
+                    fileCount += count.fileCount();
+                    folderCount += count.folderCount();
+                }
+            }
+
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("downloadName", "download.zip");
+            details.put("selectedFileIds", selectedFileIds);
+            details.put("selectedFolderIds", selectedFolderIds);
+            details.put("fileCount", fileCount);
+            details.put("folderCount", folderCount);
+            details.put("zipSizeBytes", countingOutputStream.getByteCount());
+            try {
+                logsService.bulkDownloadLog(objectMapper.writeValueAsString(details));
+            } catch (Exception e) {
+                log.error("ZIP was streamed, but bulk-download logging failed", e);
+            }
+        } catch (Exception e) {
+            if (e instanceof IOException ioException) {
+                throw ioException;
+            }
+            throw new IOException("Failed to stream ZIP download", e);
+        }
     }
 
     private ZipCount addFolderToZip(
             Folders folder,
             String currentPath,
             ZipOutputStream zipOutputStream,
-            Set<String> usedZipNames
+            Set<String> usedZipNames,
+            User user
     ) throws Exception {
         int fileCount = 0;
         int folderCount = 1;
 
         addDirectoryEntry(currentPath, zipOutputStream, usedZipNames);
-
-        User user = access.currentUser();
 
         List<FileMetaData> files = fileMetaDataRepository.findByParentId(folder.getId())
                 .stream()
@@ -141,7 +166,8 @@ public class DownloadService {
                     childFolder,
                     childPath,
                     zipOutputStream,
-                    usedZipNames
+                    usedZipNames,
+                    user
             );
 
             fileCount += childCount.fileCount();
@@ -160,7 +186,7 @@ public class DownloadService {
         String safeFileName = sanitizeZipName(file.getFileName());
         String zipPath = uniqueZipName(folderPath + safeFileName, usedZipNames);
 
-        try (InputStream fileInputStream = objectStorageService.downloadWithoutLog(file.getId())) {
+        try (InputStream fileInputStream = objectStorageService.downloadWithoutLog(file)) {
             ZipEntry fileEntry = new ZipEntry(zipPath);
             zipOutputStream.putNextEntry(fileEntry);
 
@@ -244,6 +270,35 @@ public class DownloadService {
             }
 
             counter++;
+        }
+    }
+
+    private static final class CountingOutputStream extends FilterOutputStream {
+        private long byteCount;
+
+        private CountingOutputStream(OutputStream outputStream) {
+            super(outputStream);
+        }
+
+        @Override
+        public void write(int value) throws IOException {
+            out.write(value);
+            byteCount++;
+        }
+
+        @Override
+        public void write(byte[] bytes, int offset, int length) throws IOException {
+            out.write(bytes, offset, length);
+            byteCount += length;
+        }
+
+        @Override
+        public void close() throws IOException {
+            flush();
+        }
+
+        private long getByteCount() {
+            return byteCount;
         }
     }
 }

@@ -1,8 +1,8 @@
 package kakha.kudava.filedrivespring.records;
 
-import java.io.InputStream;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 public record ZipDownloadResult(String fileName,
-                                InputStream inputStream
+                                StreamingResponseBody responseBody
 ) {
 }

@@ -2,6 +2,7 @@ package kakha.kudava.filedrivespring.controller;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.minio.errors.*;
+import jakarta.servlet.http.HttpServletResponse;
 import kakha.kudava.filedrivespring.dto.*;
 import kakha.kudava.filedrivespring.records.FolderDownloadResult;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
@@ -10,7 +11,6 @@ import kakha.kudava.filedrivespring.services.MoveService;
 import kakha.kudava.filedrivespring.services.objects.ObjectStorageService;
 import kakha.kudava.filedrivespring.services.objects.FolderService;
 import kakha.kudava.filedrivespring.services.RenameService;
-import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -51,16 +51,19 @@ public class FoldersRestController {
     }
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<InputStreamResource> download(@PathVariable Long id) throws Exception {
+    public void download(
+            @PathVariable Long id,
+            HttpServletResponse response
+    ) throws Exception {
         FolderDownloadResult result = folderService.downloadFolderAsZip(id);
 
-        return ResponseEntity.ok()
-                .header(
-                        HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + result.fileName() + "\""
-                )
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(new InputStreamResource(result.inputStream()));
+        response.setStatus(HttpServletResponse.SC_OK);
+        response.setHeader(
+                HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"" + result.fileName() + "\""
+        );
+        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        result.responseBody().writeTo(response.getOutputStream());
     }
 
     @GetMapping("/root")

@@ -22,9 +22,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
+import java.io.FilterOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -306,43 +307,62 @@ public class FolderService {
         Folders rootFolder = requireDriveFolder(
                 access.requireFolderView(folderId)
         );
-
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-        Set<String> usedZipNames = new HashSet<>();
-
-        ZipCount count;
-
-        try (ZipOutputStream zipOutputStream = new ZipOutputStream(byteArrayOutputStream)) {
-            String rootPath = uniqueZipName(
-                    sanitizeZipName(rootFolder.getName()) + "/",
-                    usedZipNames
-            );
-
-            count = addFolderToZip(rootFolder, rootPath, zipOutputStream, usedZipNames);
-        }
-
         String zipName = sanitizeZipName(rootFolder.getName()) + ".zip";
-
-        Map<String, Object> details = new LinkedHashMap<>();
-        details.put("downloadName", zipName);
-        details.put("folderId", rootFolder.getId());
-        details.put("folderName", rootFolder.getName());
-        details.put("fileCount", count.fileCount());
-        details.put("folderCount", count.folderCount());
-        details.put("zipSizeBytes", byteArrayOutputStream.size());
-
-        String detailsJson = objectMapper.writeValueAsString(details);
-
-        try {
-            logsService.folderDownloadLog(detailsJson, rootFolder.getId());
-        } catch (Exception e) {
-            log.error("Folder zip was created, but logging failed: folderId={}", rootFolder.getId(), e);
-        }
+        User user = access.currentUser();
 
         return new FolderDownloadResult(
                 zipName,
-                new ByteArrayInputStream(byteArrayOutputStream.toByteArray())
+                outputStream -> writeFolderZip(rootFolder, zipName, user, outputStream)
         );
+    }
+
+    private void writeFolderZip(
+            Folders rootFolder,
+            String zipName,
+            User user,
+            OutputStream outputStream
+    ) throws IOException {
+        CountingOutputStream countingOutputStream = new CountingOutputStream(outputStream);
+        Set<String> usedZipNames = new HashSet<>();
+
+        try {
+            ZipCount count;
+            try (ZipOutputStream zipOutputStream = new ZipOutputStream(countingOutputStream)) {
+                String rootPath = uniqueZipName(
+                        sanitizeZipName(rootFolder.getName()) + "/",
+                        usedZipNames
+                );
+                count = addFolderToZip(
+                        rootFolder,
+                        rootPath,
+                        zipOutputStream,
+                        usedZipNames,
+                        user
+                );
+            }
+
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("downloadName", zipName);
+            details.put("folderId", rootFolder.getId());
+            details.put("folderName", rootFolder.getName());
+            details.put("fileCount", count.fileCount());
+            details.put("folderCount", count.folderCount());
+            details.put("zipSizeBytes", countingOutputStream.getByteCount());
+
+            try {
+                logsService.folderDownloadLog(
+                        objectMapper.writeValueAsString(details),
+                        rootFolder.getId()
+                );
+            } catch (Exception e) {
+                log.error("Folder ZIP was streamed, but logging failed: folderId={}", rootFolder.getId(), e);
+            }
+        } catch (Exception e) {
+            if (e instanceof IOException ioException) {
+                throw ioException;
+            }
+            throw new IOException("Failed to stream folder ZIP download", e);
+        }
     }
 
     private String uniqueZipName(String desiredName, Set<String> usedZipNames) {
@@ -396,14 +416,13 @@ public class FolderService {
             Folders folder,
             String currentPath,
             ZipOutputStream zipOutputStream,
-            Set<String> usedZipNames
+            Set<String> usedZipNames,
+            User user
     ) throws Exception {
         int fileCount = 0;
         int folderCount = 1;
 
         addDirectoryEntry(currentPath, zipOutputStream, usedZipNames);
-
-        User user = access.currentUser();
 
         List<FileMetaData> files = fileMetaDataRepository.findByParentId(folder.getId())
                 .stream()
@@ -436,7 +455,8 @@ public class FolderService {
                     childFolder,
                     childPath,
                     zipOutputStream,
-                    usedZipNames
+                    usedZipNames,
+                    user
             );
 
             fileCount += childCount.fileCount();
@@ -455,7 +475,7 @@ public class FolderService {
         String safeFileName = sanitizeZipName(file.getFileName());
         String zipPath = uniqueZipName(folderPath + safeFileName, usedZipNames);
 
-        try (InputStream fileInputStream = objectStorageService.downloadWithoutLog(file.getId())) {
+        try (InputStream fileInputStream = objectStorageService.downloadWithoutLog(file)) {
             ZipEntry fileEntry = new ZipEntry(zipPath);
             zipOutputStream.putNextEntry(fileEntry);
 
@@ -511,6 +531,35 @@ public class FolderService {
         }
 
         return folder;
+    }
+
+    private static final class CountingOutputStream extends FilterOutputStream {
+        private long byteCount;
+
+        private CountingOutputStream(OutputStream outputStream) {
+            super(outputStream);
+        }
+
+        @Override
+        public void write(int value) throws IOException {
+            out.write(value);
+            byteCount++;
+        }
+
+        @Override
+        public void write(byte[] bytes, int offset, int length) throws IOException {
+            out.write(bytes, offset, length);
+            byteCount += length;
+        }
+
+        @Override
+        public void close() throws IOException {
+            flush();
+        }
+
+        private long getByteCount() {
+            return byteCount;
+        }
     }
 
     @Transactional

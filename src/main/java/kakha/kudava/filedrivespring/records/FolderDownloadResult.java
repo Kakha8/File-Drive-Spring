@@ -1,6 +1,6 @@
 package kakha.kudava.filedrivespring.records;
 
-import java.io.InputStream;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
-public record FolderDownloadResult(String fileName, InputStream inputStream) {
+public record FolderDownloadResult(String fileName, StreamingResponseBody responseBody) {
 }
