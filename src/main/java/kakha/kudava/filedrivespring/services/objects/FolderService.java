@@ -239,6 +239,7 @@ public class FolderService {
             dto.setName(f.getName());
             dto.setPrefix(f.getPrefix());
             dto.setShared(sharingService.showsSharedIndicator(f, user));
+            dto.setOwnerUsername(f.getOwner() == null ? null : f.getOwner().getUsername());
             return dto;
         }).toList();
     }
@@ -265,6 +266,7 @@ public class FolderService {
             dto.setDeleted(file.isDeleted());
             dto.setParentId(file.getParent() != null ? file.getParent().getId() : null);
             dto.setShared(sharingService.showsSharedIndicator(file, user));
+            dto.setOwnerUsername(file.getOwner() == null ? null : file.getOwner().getUsername());
             return dto;
         }).toList();
     }
@@ -297,6 +299,7 @@ public class FolderService {
         FolderViewDTO dto = new FolderViewDTO();
         dto.setId(folder.getId());
         dto.setName(folder.getName());
+        dto.setOwnerUsername(folder.getOwner() == null ? null : folder.getOwner().getUsername());
         dto.setFolders(viewFolders(id));
         dto.setFiles(viewFiles(id));
 

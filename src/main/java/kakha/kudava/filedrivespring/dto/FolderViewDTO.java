@@ -10,6 +10,7 @@ import java.util.List;
 public class FolderViewDTO {
     private Long id;
     private String name;
+    private String ownerUsername;
 
     private List<FolderItemDTO> folders;
     private List<FileItemDTO> files;

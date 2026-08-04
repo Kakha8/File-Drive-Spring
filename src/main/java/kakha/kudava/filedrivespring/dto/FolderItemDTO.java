@@ -10,4 +10,5 @@ public class FolderItemDTO {
     private String name;
     private String prefix;
     private boolean shared;
+    private String ownerUsername;
 }

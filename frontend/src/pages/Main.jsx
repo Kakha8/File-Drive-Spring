@@ -375,19 +375,25 @@ function getFileTag(item) {
     return "File";
 }
 
+function getOwnerInitials(username) {
+    const normalized = String(username || "").trim();
+    return normalized ? normalized.slice(0, 2).toUpperCase() : "?";
+}
+
 function normalizeFolderItems(folderData) {
     if (!folderData) return [];
 
     const folders = (folderData.folders || []).map((folder) => {
         const edited = formatLastEdited(folder.lastModifiedDate);
+        const owner = folder.ownerUsername || folderData.ownerUsername || "Unknown";
 
         return {
             id: `folder-${folder.id}`,
             rawId: folder.id,
             name: folder.name || "Untitled folder",
             type: "folder",
-            owner: folderData.name || "You",
-            ownerInitials: "ME",
+            owner,
+            ownerInitials: getOwnerInitials(owner),
             tag: "Folder",
             lastEdited: edited.lastEdited,
             time: edited.time,
@@ -401,14 +407,15 @@ function normalizeFolderItems(folderData) {
         .filter((file) => !file.deleted)
         .map((file) => {
             const edited = formatLastEdited(file.lastModifiedDate);
+            const owner = file.ownerUsername || folderData.ownerUsername || "Unknown";
 
             return {
                 id: `file-${file.id}`,
                 rawId: file.id,
                 name: file.fileName || "Untitled file",
                 type: file.objectType || "file",
-                owner: folderData.name || "You",
-                ownerInitials: "ME",
+                owner,
+                ownerInitials: getOwnerInitials(owner),
                 tag: getFileTag({ type: file.objectType || "file" }),
                 lastEdited: edited.lastEdited,
                 time: edited.time,
@@ -1590,8 +1597,8 @@ function Main({ onLogout }) {
                 rawId: null,
                 name: newFolderDraft.name,
                 type: "folder",
-                owner: currentFolder?.name || "You",
-                ownerInitials: "ME",
+                owner: currentFolder?.ownerUsername || "Unknown",
+                ownerInitials: getOwnerInitials(currentFolder?.ownerUsername),
                 tag: "Folder",
                 lastEdited: "—",
                 time: "",
@@ -1933,7 +1940,6 @@ function Main({ onLogout }) {
                         <div className="file-table">
                             <div className="file-row table-head">
                                 <div>Name</div>
-                                <div>Owner</div>
                                 <div>Tags</div>
                                 <div>Last edited</div>
                                 <div>Size</div>
@@ -2252,11 +2258,6 @@ function FileRow({
 
                     <small>{isDraft ? "Folder" : getTypeLabel(item.type)}</small>
 </span>
-            </div>
-
-            <div className="owner-cell">
-                <Avatar initials={item.ownerInitials} />
-                <span>{item.owner}</span>
             </div>
 
             <div className="tags-cell">
