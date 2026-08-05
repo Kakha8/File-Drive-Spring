@@ -1,5 +1,6 @@
 package kakha.kudava.filedrivespring.repository;
 
+import kakha.kudava.filedrivespring.model.LockboxDevice;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -8,15 +9,15 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface CseDevice extends JpaRepository<CseDevice, Long> {
-    Optional<CseDevice> findByDeviceUuid(UUID deviceUuid);
+public interface LockboxDeviceRepository extends JpaRepository<LockboxDevice, Long> {
+    Optional<LockboxDeviceRepository> findByDeviceUuid(UUID deviceUuid);
 
-    Optional<CseDevice> findByDeviceUuidAndProfileUserId(
+    Optional<LockboxDeviceRepository> findByDeviceUuidAndProfileUserId(
             UUID deviceUuid,
             Long userId
     );
 
-    List<CseDevice> findAllByProfileId(Long profileId);
+    List<LockboxDeviceRepository> findAllByProfileId(Long profileId);
 
     boolean existsByDeviceUuid(UUID deviceUuid);
 }

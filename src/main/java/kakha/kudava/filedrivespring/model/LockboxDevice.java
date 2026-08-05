@@ -31,7 +31,7 @@ import java.util.UUID;
                 )
         }
 )
-public class CseDevice {
+public class LockboxDevice {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,7 +46,7 @@ public class CseDevice {
                     name = "fk_cse_devices_profile"
             )
     )
-    private CseProfile profile;
+    private LockboxProfile profile;
 
     @Column(
             name = "device_uuid",
@@ -86,8 +86,8 @@ public class CseDevice {
     @Column(name = "revoked_at")
     private Instant revokedAt;
 
-    public CseDevice(
-            CseProfile profile,
+    public LockboxDevice(
+            LockboxProfile profile,
             UUID deviceUuid,
             String displayName
     ) {

@@ -2,7 +2,6 @@ package kakha.kudava.filedrivespring.model;
 
 
 import jakarta.persistence.*;
-import kakha.kudava.filedrivespring.model.User;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -22,7 +21,7 @@ import java.util.Objects;
                 )
         }
 )
-public class CseProfile {
+public class LockboxProfile {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -67,7 +66,7 @@ public class CseProfile {
     )
     private Instant updatedAt;
 
-    public CseProfile(User user) {
+    public LockboxProfile(User user) {
         this.user = Objects.requireNonNull(user, "user");
         this.status = Status.ENABLED;
     }

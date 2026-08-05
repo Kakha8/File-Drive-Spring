@@ -30,7 +30,7 @@ import java.util.Objects;
                 )
         }
 )
-public class CseKey {
+public class LockboxKey {
 
     public static final int KEY_ID_LENGTH = 32;
 
@@ -47,7 +47,7 @@ public class CseKey {
                     name = "fk_cse_keys_device"
             )
     )
-    private CseDevice device;
+    private LockboxDevice device;
 
     @Enumerated(EnumType.STRING)
     @Column(
@@ -107,8 +107,8 @@ public class CseKey {
     @Column(name = "revoked_at")
     private Instant revokedAt;
 
-    public CseKey(
-            CseDevice device,
+    public LockboxKey(
+            LockboxDevice device,
             Role role,
             Algorithm algorithm,
             byte[] keyId,

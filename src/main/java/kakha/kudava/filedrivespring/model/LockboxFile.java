@@ -43,9 +43,6 @@ public class LockboxFile {
 
     /*
      * Shared primary key with FileMetaData.
-     *
-     * The LockboxFile ID is copied from the associated FileMetaData
-     * record by @MapsId.
      */
     @Id
     @Column(name = "file_id")
@@ -66,23 +63,12 @@ public class LockboxFile {
     )
     private FileMetaData file;
 
-    /*
-     * Version of the encrypted container layout.
-     *
-     * For your current CSEMLK02 container, this will be 2.
-     * The value should come from LockboxContainerValidator.
-     */
     @Column(
             name = "format_version",
             nullable = false
     )
     private int formatVersion;
 
-    /*
-     * Cryptographic construction used by the client.
-     *
-     * This is separate from the container format version.
-     */
     @Enumerated(EnumType.STRING)
     @Column(
             name = "algorithm_suite",
@@ -91,9 +77,6 @@ public class LockboxFile {
     )
     private AlgorithmSuite algorithmSuite;
 
-    /*
-     * Plaintext chunk size declared by the encrypted container.
-     */
     @Column(
             name = "chunk_size",
             nullable = false
@@ -101,10 +84,10 @@ public class LockboxFile {
     private int chunkSize;
 
     /*
-     * Public identifier or fingerprint of the encryption key.
+     * Public encryption-key identifier.
      *
-     * Must never contain private-key material, the plaintext DEK,
-     * recovery secrets, or other sensitive key material.
+     * Never store private-key material, file keys, shared secrets,
+     * or recovery secrets here.
      */
     @Column(
             name = "key_id",
@@ -112,12 +95,6 @@ public class LockboxFile {
     )
     private String keyId;
 
-    /*
-     * Optional metadata encrypted by the client.
-     *
-     * Lombok does not generate a getter for this field because byte
-     * arrays are mutable. The custom getter returns a defensive copy.
-     */
     @Getter(AccessLevel.NONE)
     @Lob
     @Basic(fetch = FetchType.LAZY)
@@ -137,10 +114,6 @@ public class LockboxFile {
     )
     private Instant updatedAt;
 
-    /**
-     * Creates Lockbox metadata without a separate encrypted metadata
-     * blob.
-     */
     public LockboxFile(
             FileMetaData file,
             int formatVersion,
@@ -158,9 +131,6 @@ public class LockboxFile {
         );
     }
 
-    /**
-     * Creates a complete Lockbox metadata record.
-     */
     public LockboxFile(
             FileMetaData file,
             int formatVersion,
@@ -169,37 +139,38 @@ public class LockboxFile {
             String keyId,
             byte[] encryptedMetadata
     ) {
-        this.file = Objects.requireNonNull(file, "file");
-        this.formatVersion = requireValidFormatVersion(formatVersion);
+        this.file = Objects.requireNonNull(
+                file,
+                "file"
+        );
+
+        this.formatVersion =
+                requireValidFormatVersion(formatVersion);
+
         this.algorithmSuite = Objects.requireNonNull(
                 algorithmSuite,
                 "algorithmSuite"
         );
-        this.chunkSize = requireValidChunkSize(chunkSize);
+
+        this.chunkSize =
+                requireValidChunkSize(chunkSize);
+
         this.keyId = requireValidKeyId(keyId);
         this.encryptedMetadata = copy(encryptedMetadata);
     }
 
-    /**
-     * Returns a copy so callers cannot modify the entity's internal
-     * byte array directly.
-     */
     public byte[] getEncryptedMetadata() {
         return copy(encryptedMetadata);
     }
 
-    /**
-     * Replaces the optional client-encrypted metadata.
-     */
-    public void updateEncryptedMetadata(byte[] encryptedMetadata) {
+    public void updateEncryptedMetadata(
+            byte[] encryptedMetadata
+    ) {
         this.encryptedMetadata = copy(encryptedMetadata);
     }
 
-    /**
-     * Removes the optional client-encrypted metadata.
-     */
     public void clearEncryptedMetadata() {
-        this.encryptedMetadata = null;
+        encryptedMetadata = null;
     }
 
     @PrePersist
@@ -223,14 +194,19 @@ public class LockboxFile {
 
     private void validateState() {
         Objects.requireNonNull(file, "file");
-        Objects.requireNonNull(algorithmSuite, "algorithmSuite");
+        Objects.requireNonNull(
+                algorithmSuite,
+                "algorithmSuite"
+        );
 
         requireValidFormatVersion(formatVersion);
         requireValidChunkSize(chunkSize);
         requireValidKeyId(keyId);
     }
 
-    private static int requireValidFormatVersion(int formatVersion) {
+    private static int requireValidFormatVersion(
+            int formatVersion
+    ) {
         if (formatVersion < 1) {
             throw new IllegalArgumentException(
                     "Format version must be at least 1."
@@ -261,7 +237,9 @@ public class LockboxFile {
     }
 
     private static byte[] copy(byte[] value) {
-        return value == null ? null : value.clone();
+        return value == null
+                ? null
+                : value.clone();
     }
 
     public enum AlgorithmSuite {
