@@ -3,6 +3,7 @@ package kakha.kudava.filedrivespring.services.lockbox;
 import kakha.kudava.filedrivespring.dto.LockboxEnrollmentChallengeResponse;
 import kakha.kudava.filedrivespring.dto.LockboxEnrollmentCompleteRequest;
 import kakha.kudava.filedrivespring.dto.LockboxEnrollmentCompleteResponse;
+import kakha.kudava.filedrivespring.dto.LockboxStatusResponse;
 import kakha.kudava.filedrivespring.model.*;
 import kakha.kudava.filedrivespring.repository.LockboxDeviceRepository;
 import kakha.kudava.filedrivespring.repository.LockboxEnrollmentChallengeRepository;
@@ -19,10 +20,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 public class LockboxEnrollmentService {
@@ -569,5 +567,52 @@ public class LockboxEnrollmentService {
     }
 
 
+    @Transactional(readOnly = true)
+    public LockboxStatusResponse getStatus(UUID deviceId) {
+        User user = access.currentUser();
+
+        Optional<LockboxProfile> profile =
+                profileRepository.findByUserId(user.getId());
+
+        if (profile.isEmpty()) {
+            return new LockboxStatusResponse(
+                    LockboxStatusResponse.LockboxStatus.NOT_ENABLED,
+                    LockboxStatusResponse.DeviceStatus.NOT_REGISTERED,
+                    deviceId
+            );
+        }
+
+        Optional<LockboxDevice> device =
+                deviceRepository.findByProfileIdAndDeviceUuid(
+                        profile.get().getId(),
+                        deviceId
+                );
+
+        LockboxStatusResponse.DeviceStatus deviceStatus =
+                device.map(value -> switch (value.getStatus()) {
+                    case ACTIVE ->
+                            LockboxStatusResponse.DeviceStatus.ACTIVE;
+                    case PENDING ->
+                            LockboxStatusResponse.DeviceStatus.PENDING;
+                    case REVOKED ->
+                            LockboxStatusResponse.DeviceStatus.REVOKED;
+                }).orElse(
+                        LockboxStatusResponse.DeviceStatus.NOT_REGISTERED
+                );
+
+        LockboxStatusResponse.LockboxStatus lockboxStatus =
+                switch (profile.get().getStatus()) {
+                    case ENABLED ->
+                            LockboxStatusResponse.LockboxStatus.ENABLED;
+                    case SUSPENDED ->
+                            LockboxStatusResponse.LockboxStatus.SUSPENDED;
+                };
+
+        return new LockboxStatusResponse(
+                lockboxStatus,
+                deviceStatus,
+                deviceId
+        );
+    }
 
 }

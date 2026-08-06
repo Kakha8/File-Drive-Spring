@@ -1,5 +1,6 @@
 package kakha.kudava.filedrivespring.repository;
 
+import kakha.kudava.filedrivespring.model.LockboxDevice;
 import kakha.kudava.filedrivespring.model.LockboxProfile;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;

@@ -3,6 +3,7 @@ package kakha.kudava.filedrivespring.controller;
 import kakha.kudava.filedrivespring.dto.LockboxEnrollmentChallengeResponse;
 import kakha.kudava.filedrivespring.dto.LockboxEnrollmentCompleteRequest;
 import kakha.kudava.filedrivespring.dto.LockboxEnrollmentCompleteResponse;
+import kakha.kudava.filedrivespring.dto.LockboxStatusResponse;
 import kakha.kudava.filedrivespring.services.lockbox.LockboxEnrollmentService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -37,5 +38,12 @@ public class LockboxEnrollmentController {
                 enrollmentId,
                 request
         );
+    }
+
+    @GetMapping("/status")
+    public LockboxStatusResponse getStatus(
+            @RequestParam UUID deviceId
+    ) {
+        return enrollmentService.getStatus(deviceId);
     }
 }

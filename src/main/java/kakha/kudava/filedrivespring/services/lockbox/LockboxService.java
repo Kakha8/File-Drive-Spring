@@ -1,19 +1,11 @@
 package kakha.kudava.filedrivespring.services.lockbox;
 
-import kakha.kudava.filedrivespring.dto.LockboxFileItemResponse;
-import kakha.kudava.filedrivespring.dto.LockboxFolderItemResponse;
-import kakha.kudava.filedrivespring.dto.LockboxFolderViewResponse;
-import kakha.kudava.filedrivespring.dto.LockboxUploadResponse;
+import kakha.kudava.filedrivespring.dto.*;
 import kakha.kudava.filedrivespring.enums.DriveSpace;
-import kakha.kudava.filedrivespring.model.FileMetaData;
-import kakha.kudava.filedrivespring.model.Folders;
-import kakha.kudava.filedrivespring.model.LockboxFile;
-import kakha.kudava.filedrivespring.model.User;
+import kakha.kudava.filedrivespring.model.*;
 import kakha.kudava.filedrivespring.records.LockboxContainerInfo;
 import kakha.kudava.filedrivespring.records.LockboxDownloadResult;
-import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
-import kakha.kudava.filedrivespring.repository.FolderRepository;
-import kakha.kudava.filedrivespring.repository.LockboxFileRepository;
+import kakha.kudava.filedrivespring.repository.*;
 import kakha.kudava.filedrivespring.services.ResourceAccessService;
 import kakha.kudava.filedrivespring.services.objects.RootFolderService;
 import org.springframework.stereotype.Service;
@@ -29,14 +21,7 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 public class LockboxService {
@@ -54,6 +39,8 @@ public class LockboxService {
     private final LockboxFileRepository lockboxFileRepository;
     private final RootFolderService rootFolderService;
     private final ResourceAccessService access;
+    private final LockboxProfileRepository profileRepository;
+    private final LockboxDeviceRepository deviceRepository;
 
     public LockboxService(
             LockboxContainerValidator containerValidator,
@@ -62,7 +49,7 @@ public class LockboxService {
             FolderRepository folderRepository,
             LockboxFileRepository lockboxFileRepository,
             RootFolderService rootFolderService,
-            ResourceAccessService access
+            ResourceAccessService access, LockboxProfileRepository profileRepository, LockboxDeviceRepository deviceRepository
     ) {
         this.containerValidator = containerValidator;
         this.objectStorage = objectStorage;
@@ -71,6 +58,8 @@ public class LockboxService {
         this.lockboxFileRepository = lockboxFileRepository;
         this.rootFolderService = rootFolderService;
         this.access = access;
+        this.profileRepository = profileRepository;
+        this.deviceRepository = deviceRepository;
     }
 
     /**

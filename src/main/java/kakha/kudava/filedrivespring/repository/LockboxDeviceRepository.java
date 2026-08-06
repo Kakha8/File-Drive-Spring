@@ -24,5 +24,9 @@ public interface LockboxDeviceRepository extends JpaRepository<LockboxDevice, Lo
             Long profileId
     );
 
+    Optional<LockboxDevice> findByProfileIdAndDeviceUuid(
+            Long profileId,
+            UUID deviceUuid
+    );
     boolean existsByDeviceUuid(UUID deviceUuid);
 }
