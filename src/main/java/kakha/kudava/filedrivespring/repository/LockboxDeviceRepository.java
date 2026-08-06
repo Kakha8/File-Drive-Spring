@@ -10,14 +10,19 @@ import java.util.UUID;
 
 @Repository
 public interface LockboxDeviceRepository extends JpaRepository<LockboxDevice, Long> {
-    Optional<LockboxDeviceRepository> findByDeviceUuid(UUID deviceUuid);
+    Optional<LockboxDevice> findByDeviceUuid(
+            UUID deviceUuid
+    );
 
-    Optional<LockboxDeviceRepository> findByDeviceUuidAndProfileUserId(
+    Optional<LockboxDevice>
+    findByDeviceUuidAndProfileUserId(
             UUID deviceUuid,
             Long userId
     );
 
-    List<LockboxDeviceRepository> findAllByProfileId(Long profileId);
+    List<LockboxDevice> findAllByProfileId(
+            Long profileId
+    );
 
     boolean existsByDeviceUuid(UUID deviceUuid);
 }
