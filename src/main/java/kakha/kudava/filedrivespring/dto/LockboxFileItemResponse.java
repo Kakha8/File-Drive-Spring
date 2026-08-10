@@ -1,17 +1,5 @@
 package kakha.kudava.filedrivespring.dto;
-
-import kakha.kudava.filedrivespring.model.LockboxFile;
-
 import java.time.Instant;
-
-public record LockboxFileItemResponse(
-        Long id,
-        String fileName,
-        long ciphertextSize,
-        String ciphertextChecksum,
-        Instant createdAt,
-        int formatVersion,
-        LockboxFile.AlgorithmSuite algorithmSuite,
-        int chunkSize
-) {
-}
+import java.util.UUID;
+public record LockboxFileItemResponse(Long id, UUID clientFileId, long revision, long containerSize,
+                                      Instant createdAt, int formatVersion, int suiteId) {}

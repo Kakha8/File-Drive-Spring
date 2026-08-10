@@ -13,7 +13,7 @@ import java.util.UUID;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(
-        name = "cse_devices",
+        name = "lockbox_devices",
         uniqueConstraints = {
                 @UniqueConstraint(
                         name = "uk_cse_devices_device_uuid",

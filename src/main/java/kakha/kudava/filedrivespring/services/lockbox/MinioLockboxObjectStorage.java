@@ -17,9 +17,6 @@ import java.util.Objects;
 public class MinioLockboxObjectStorage
         implements LockboxObjectStorage {
 
-    private static final String LOCKBOX_CONTENT_TYPE =
-            "application/x-filedrive-lockbox";
-
     private final MinioClient minioClient;
     private final String lockboxBucket;
 
@@ -45,7 +42,8 @@ public class MinioLockboxObjectStorage
     @Override
     public void upload(
             String objectKey,
-            Path source
+            Path source,
+            ArtifactType artifactType
     ) throws Exception {
         requireObjectKey(objectKey);
         Objects.requireNonNull(source, "source");
@@ -67,7 +65,7 @@ public class MinioLockboxObjectStorage
                             .bucket(lockboxBucket)
                             .object(objectKey)
                             .stream(input, size, -1)
-                            .contentType(LOCKBOX_CONTENT_TYPE)
+                            .contentType(Objects.requireNonNull(artifactType).contentType())
                             .build()
             );
         }

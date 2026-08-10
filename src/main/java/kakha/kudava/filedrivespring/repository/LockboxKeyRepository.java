@@ -20,4 +20,7 @@ public interface LockboxKeyRepository
             LockboxKey.Role role,
             LockboxKey.Status status
     );
+
+    List<LockboxKey> findAllByDeviceProfileIdAndRoleAndStatus(
+            Long profileId, LockboxKey.Role role, LockboxKey.Status status);
 }

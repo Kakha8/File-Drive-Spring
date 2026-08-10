@@ -1,248 +1,74 @@
 package kakha.kudava.filedrivespring.model;
 
-import jakarta.persistence.Basic;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.ForeignKey;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
-import jakarta.persistence.MapsId;
-import jakarta.persistence.OneToOne;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@Table(
-        name = "lockbox_files",
-        indexes = {
-                @Index(
-                        name = "idx_lockbox_files_key_id",
-                        columnList = "key_id"
-                ),
-                @Index(
-                        name = "idx_lockbox_files_created_at",
-                        columnList = "created_at"
-                )
-        }
-)
+@Table(name = "lockbox_files",
+        uniqueConstraints = @UniqueConstraint(name = "uk_lockbox_profile_client_revision",
+                columnNames = {"profile_id", "client_file_id", "revision"}),
+        indexes = @Index(name = "idx_lockbox_files_created_at", columnList = "created_at"))
 public class LockboxFile {
-
-    /*
-     * Shared primary key with FileMetaData.
-     */
-    @Id
-    @Column(name = "file_id")
-    private Long id;
-
-    @OneToOne(
-            fetch = FetchType.LAZY,
-            optional = false
-    )
-    @MapsId
-    @JoinColumn(
-            name = "file_id",
-            nullable = false,
-            unique = true,
-            foreignKey = @ForeignKey(
-                    name = "fk_lockbox_file_metadata"
-            )
-    )
+    /* The shared PK means this row is the logical/current revision. A future
+       LockboxFileRevision entity can hold revision history without changing FileMetaData. */
+    @Id @Column(name = "file_id") private Long id;
+    @OneToOne(fetch = FetchType.LAZY, optional = false) @MapsId
+    @JoinColumn(name = "file_id", nullable = false, unique = true)
     private FileMetaData file;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "profile_id", nullable = false, updatable = false)
+    private LockboxProfile profile;
+    @Column(name = "client_file_id", nullable = false, updatable = false) private UUID clientFileId;
+    @Column(name = "revision", nullable = false, updatable = false) private long revision;
+    @Column(name = "format_version", nullable = false, updatable = false) private int formatVersion;
+    @Column(name = "suite_id", nullable = false, updatable = false) private int suiteId;
+    @Column(name = "container_size", nullable = false, updatable = false) private long containerSize;
+    @Column(name = "container_hash", nullable = false, updatable = false, length = 64) private byte[] containerHash;
+    @Column(name = "encryption_key_id", nullable = false, updatable = false, length = 32) private byte[] encryptionKeyId;
+    @Column(name = "signing_key_id", nullable = false, updatable = false, length = 32) private byte[] signingKeyId;
+    @Column(name = "device_uuid", nullable = false, updatable = false) private UUID deviceUuid;
+    @Column(name = "chunk_size", nullable = false, updatable = false) private int chunkSize;
+    @Column(name = "chunk_count", nullable = false, updatable = false) private long chunkCount;
+    @Column(name = "container_object_key", nullable = false, unique = true, updatable = false, length = 500) private String containerObjectKey;
+    @Column(name = "manifest_object_key", nullable = false, unique = true, updatable = false, length = 500) private String manifestObjectKey;
+    @Column(name = "signature_object_key", nullable = false, unique = true, updatable = false, length = 500) private String signatureObjectKey;
+    @Column(name = "created_at", nullable = false, updatable = false) private Instant createdAt;
+    @Column(name = "updated_at", nullable = false) private Instant updatedAt;
 
-    @Column(
-            name = "format_version",
-            nullable = false
-    )
-    private int formatVersion;
-
-    @Enumerated(EnumType.STRING)
-    @Column(
-            name = "algorithm_suite",
-            nullable = false,
-            length = 80
-    )
-    private AlgorithmSuite algorithmSuite;
-
-    @Column(
-            name = "chunk_size",
-            nullable = false
-    )
-    private int chunkSize;
-
-    /*
-     * Public encryption-key identifier.
-     *
-     * Never store private-key material, file keys, shared secrets,
-     * or recovery secrets here.
-     */
-    @Column(
-            name = "key_id",
-            length = 128
-    )
-    private String keyId;
-
-    @Getter(AccessLevel.NONE)
-    @Lob
-    @Basic(fetch = FetchType.LAZY)
-    @Column(name = "encrypted_metadata")
-    private byte[] encryptedMetadata;
-
-    @Column(
-            name = "created_at",
-            nullable = false,
-            updatable = false
-    )
-    private Instant createdAt;
-
-    @Column(
-            name = "updated_at",
-            nullable = false
-    )
-    private Instant updatedAt;
-
-    public LockboxFile(
-            FileMetaData file,
-            int formatVersion,
-            AlgorithmSuite algorithmSuite,
-            int chunkSize,
-            String keyId
-    ) {
-        this(
-                file,
-                formatVersion,
-                algorithmSuite,
-                chunkSize,
-                keyId,
-                null
-        );
+    public LockboxFile(FileMetaData file, LockboxProfile profile, UUID clientFileId, long revision,
+                       int formatVersion, int suiteId, long containerSize, byte[] containerHash,
+                       byte[] encryptionKeyId, byte[] signingKeyId, UUID deviceUuid,
+                       int chunkSize, long chunkCount, String containerObjectKey,
+                       String manifestObjectKey, String signatureObjectKey) {
+        this.file = Objects.requireNonNull(file); this.profile = Objects.requireNonNull(profile);
+        this.clientFileId = Objects.requireNonNull(clientFileId); this.revision = revision;
+        this.formatVersion = formatVersion; this.suiteId = suiteId; this.containerSize = containerSize;
+        this.containerHash = requireBytes(containerHash, 64); this.encryptionKeyId = requireBytes(encryptionKeyId, 32);
+        this.signingKeyId = requireBytes(signingKeyId, 32); this.deviceUuid = Objects.requireNonNull(deviceUuid);
+        this.chunkSize = chunkSize; this.chunkCount = chunkCount;
+        this.containerObjectKey = requireText(containerObjectKey); this.manifestObjectKey = requireText(manifestObjectKey);
+        this.signatureObjectKey = requireText(signatureObjectKey);
+        validate();
     }
 
-    public LockboxFile(
-            FileMetaData file,
-            int formatVersion,
-            AlgorithmSuite algorithmSuite,
-            int chunkSize,
-            String keyId,
-            byte[] encryptedMetadata
-    ) {
-        this.file = Objects.requireNonNull(
-                file,
-                "file"
-        );
-
-        this.formatVersion =
-                requireValidFormatVersion(formatVersion);
-
-        this.algorithmSuite = Objects.requireNonNull(
-                algorithmSuite,
-                "algorithmSuite"
-        );
-
-        this.chunkSize =
-                requireValidChunkSize(chunkSize);
-
-        this.keyId = requireValidKeyId(keyId);
-        this.encryptedMetadata = copy(encryptedMetadata);
+    public byte[] getContainerHash() { return containerHash.clone(); }
+    public byte[] getEncryptionKeyId() { return encryptionKeyId.clone(); }
+    public byte[] getSigningKeyId() { return signingKeyId.clone(); }
+    @PrePersist void create() { validate(); Instant now = Instant.now(); if (createdAt == null) createdAt = now; updatedAt = now; }
+    @PreUpdate void update() { validate(); updatedAt = Instant.now(); }
+    private void validate() {
+        if (revision < 1 || formatVersion != 3 || suiteId != 1 || containerSize < 0 || chunkSize < 1 || chunkCount < 1)
+            throw new IllegalArgumentException("Invalid Lockbox v3 metadata");
+        requireBytes(containerHash,64); requireBytes(encryptionKeyId,32); requireBytes(signingKeyId,32);
     }
-
-    public byte[] getEncryptedMetadata() {
-        return copy(encryptedMetadata);
-    }
-
-    public void updateEncryptedMetadata(
-            byte[] encryptedMetadata
-    ) {
-        this.encryptedMetadata = copy(encryptedMetadata);
-    }
-
-    public void clearEncryptedMetadata() {
-        encryptedMetadata = null;
-    }
-
-    @PrePersist
-    private void onCreate() {
-        validateState();
-
-        Instant now = Instant.now();
-
-        if (createdAt == null) {
-            createdAt = now;
-        }
-
-        updatedAt = now;
-    }
-
-    @PreUpdate
-    private void onUpdate() {
-        validateState();
-        updatedAt = Instant.now();
-    }
-
-    private void validateState() {
-        Objects.requireNonNull(file, "file");
-        Objects.requireNonNull(
-                algorithmSuite,
-                "algorithmSuite"
-        );
-
-        requireValidFormatVersion(formatVersion);
-        requireValidChunkSize(chunkSize);
-        requireValidKeyId(keyId);
-    }
-
-    private static int requireValidFormatVersion(
-            int formatVersion
-    ) {
-        if (formatVersion < 1) {
-            throw new IllegalArgumentException(
-                    "Format version must be at least 1."
-            );
-        }
-
-        return formatVersion;
-    }
-
-    private static int requireValidChunkSize(int chunkSize) {
-        if (chunkSize < 1) {
-            throw new IllegalArgumentException(
-                    "Chunk size must be positive."
-            );
-        }
-
-        return chunkSize;
-    }
-
-    private static String requireValidKeyId(String keyId) {
-        if (keyId != null && keyId.length() > 128) {
-            throw new IllegalArgumentException(
-                    "Key ID must not exceed 128 characters."
-            );
-        }
-
-        return keyId;
-    }
-
-    private static byte[] copy(byte[] value) {
-        return value == null
-                ? null
-                : value.clone();
-    }
-
-    public enum AlgorithmSuite {
-        ML_KEM_1024_AES_256_GCM_V1
-    }
+    private static byte[] requireBytes(byte[] b,int n){ if(b==null||b.length!=n) throw new IllegalArgumentException("Invalid binary field"); return b.clone(); }
+    private static String requireText(String s){ if(s==null||s.isBlank()) throw new IllegalArgumentException("Object key is required"); return s; }
 }

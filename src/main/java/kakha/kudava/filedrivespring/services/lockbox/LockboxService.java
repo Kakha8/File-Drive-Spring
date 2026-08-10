@@ -2,599 +2,119 @@ package kakha.kudava.filedrivespring.services.lockbox;
 
 import kakha.kudava.filedrivespring.dto.*;
 import kakha.kudava.filedrivespring.enums.DriveSpace;
+import kakha.kudava.filedrivespring.exceptions.LockboxApiException;
 import kakha.kudava.filedrivespring.model.*;
-import kakha.kudava.filedrivespring.records.LockboxContainerInfo;
 import kakha.kudava.filedrivespring.records.LockboxDownloadResult;
 import kakha.kudava.filedrivespring.repository.*;
 import kakha.kudava.filedrivespring.services.ResourceAccessService;
 import kakha.kudava.filedrivespring.services.objects.RootFolderService;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.security.DigestInputStream;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.io.*;
+import java.nio.file.*;
+import java.security.*;
 import java.time.Instant;
 import java.util.*;
 
 @Service
 public class LockboxService {
+    private static final byte[] SIGNING_DOMAIN="FD-LOCKBOX-MANIFEST-V1\0".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+    private final LockboxManifestParser manifests; private final LockboxSignatureRecordParser signatures;
+    private final LockboxV3ContainerValidator containers; private final LockboxSignatureVerifier verifier;
+    private final LockboxObjectStorage storage; private final FileMetaDataRepository files; private final FolderRepository folders;
+    private final LockboxFileRepository lockboxFiles; private final LockboxKeyRepository keys; private final LockboxProfileRepository profiles;
+    private final RootFolderService roots; private final ResourceAccessService access;
+    private final long maxContainer,maxManifest,maxSignature;
 
-    private static final String LOCKBOX_OBJECT_TYPE =
-            "application/x-filedrive-lockbox";
-
-    private static final String DEFAULT_FILE_NAME =
-            "encrypted-file.fdcse";
-
-    private final LockboxContainerValidator containerValidator;
-    private final LockboxObjectStorage objectStorage;
-    private final FileMetaDataRepository fileMetaDataRepository;
-    private final FolderRepository folderRepository;
-    private final LockboxFileRepository lockboxFileRepository;
-    private final RootFolderService rootFolderService;
-    private final ResourceAccessService access;
-    private final LockboxProfileRepository profileRepository;
-    private final LockboxDeviceRepository deviceRepository;
-
-    public LockboxService(
-            LockboxContainerValidator containerValidator,
-            LockboxObjectStorage objectStorage,
-            FileMetaDataRepository fileMetaDataRepository,
-            FolderRepository folderRepository,
-            LockboxFileRepository lockboxFileRepository,
-            RootFolderService rootFolderService,
-            ResourceAccessService access, LockboxProfileRepository profileRepository, LockboxDeviceRepository deviceRepository
-    ) {
-        this.containerValidator = containerValidator;
-        this.objectStorage = objectStorage;
-        this.fileMetaDataRepository = fileMetaDataRepository;
-        this.folderRepository = folderRepository;
-        this.lockboxFileRepository = lockboxFileRepository;
-        this.rootFolderService = rootFolderService;
-        this.access = access;
-        this.profileRepository = profileRepository;
-        this.deviceRepository = deviceRepository;
+    public LockboxService(LockboxManifestParser manifests,LockboxSignatureRecordParser signatures,
+      LockboxV3ContainerValidator containers,LockboxSignatureVerifier verifier,LockboxObjectStorage storage,
+      FileMetaDataRepository files,FolderRepository folders,LockboxFileRepository lockboxFiles,
+      LockboxKeyRepository keys,LockboxProfileRepository profiles,RootFolderService roots,ResourceAccessService access,
+      @Value("${lockbox.upload.max-container-size}") long maxContainer,
+      @Value("${lockbox.upload.max-manifest-size}") long maxManifest,
+      @Value("${lockbox.upload.max-signature-size}") long maxSignature){
+        this.manifests=manifests;this.signatures=signatures;this.containers=containers;this.verifier=verifier;this.storage=storage;
+        this.files=files;this.folders=folders;this.lockboxFiles=lockboxFiles;this.keys=keys;this.profiles=profiles;this.roots=roots;this.access=access;
+        this.maxContainer=maxContainer;this.maxManifest=maxManifest;this.maxSignature=maxSignature;
     }
 
-    /**
-     * Uploads one already client-encrypted Lockbox container.
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public LockboxUploadResponse upload(
-            MultipartFile encryptedFile,
-            Long parentFolderId
-    ) throws Exception {
-        validateMultipart(encryptedFile);
-
-        User user = access.currentUser();
-        Folders parent = resolveUploadParent(
-                parentFolderId,
-                user
-        );
-
-        Path stagingFile = Files.createTempFile(
-                "lockbox-upload-",
-                ".fdcse"
-        );
-
-        String objectKey = null;
-        boolean objectUploaded = false;
-
-        try {
-            copyToStagingFile(
-                    encryptedFile,
-                    stagingFile
-            );
-
-            LockboxContainerInfo containerInfo =
-                    containerValidator.validate(stagingFile);
-
-            long ciphertextSize = Files.size(stagingFile);
-            String ciphertextChecksum =
-                    calculateSha256(stagingFile);
-
-            objectKey = generateObjectKey(user);
-            objectStorage.upload(objectKey, stagingFile);
-            objectUploaded = true;
-
-            FileMetaData file = createFileMetadata(
-                    encryptedFile,
-                    user,
-                    parent,
-                    objectKey,
-                    ciphertextSize,
-                    ciphertextChecksum
-            );
-
-            FileMetaData savedFile =
-                    fileMetaDataRepository.saveAndFlush(file);
-
-            LockboxFile lockboxFile = new LockboxFile(
-                    savedFile,
-                    containerInfo.formatVersion(),
-                    containerInfo.algorithmSuite(),
-                    containerInfo.chunkSize(),
-                    null,
-                    null
-            );
-
-            LockboxFile savedLockboxFile =
-                    lockboxFileRepository.saveAndFlush(
-                            lockboxFile
-                    );
-
-            return new LockboxUploadResponse(
-                    savedFile.getId(),
-                    savedFile.getFileName(),
-                    parent.getId(),
-                    savedFile.getSize(),
-                    savedFile.getChecksum(),
-                    savedLockboxFile.getFormatVersion(),
-                    savedLockboxFile.getAlgorithmSuite(),
-                    savedLockboxFile.getChunkSize(),
-                    savedLockboxFile.getCreatedAt()
-            );
-        } catch (Exception originalFailure) {
-            if (objectUploaded && objectKey != null) {
-                try {
-                    objectStorage.delete(objectKey);
-                } catch (Exception cleanupFailure) {
-                    originalFailure.addSuppressed(
-                            cleanupFailure
-                    );
-                }
-            }
-
-            throw originalFailure;
-        } finally {
-            try {
-                Files.deleteIfExists(stagingFile);
-            } catch (IOException ignored) {
-                // Do not hide the original upload result.
-            }
-        }
+    @Transactional(rollbackFor=Exception.class)
+    public LockboxUploadResponse upload(MultipartFile container,MultipartFile manifest,MultipartFile signature,Long parentId) throws Exception {
+        User user=access.currentUser();
+        LockboxProfile profile=profiles.findByUserId(user.getId()).filter(p->p.getStatus()==LockboxProfile.Status.ENABLED)
+          .orElseThrow(()->new LockboxApiException("LOCKBOX_NOT_ENABLED",HttpStatus.FORBIDDEN,"Lockbox is not enabled."));
+        Folders parent=resolveParent(parentId,user);
+        Path dir=Files.createTempDirectory("lockbox-v3-"); Path c=dir.resolve("container"),m=dir.resolve("manifest"),s=dir.resolve("signature");
+        List<String> uploaded=new ArrayList<>();
+        try{
+            stage(container,c,maxContainer);stage(manifest,m,maxManifest);stage(signature,s,maxSignature);
+            byte[] manifestBytes=readExact(m,maxManifest,"INVALID_MANIFEST");
+            LockboxSignatureRecordParser.SignatureRecord sig=signatures.parse(readExact(s,maxSignature,"INVALID_SIGNATURE_RECORD"));
+            LockboxKey signing=findKey(profile,LockboxKey.Role.SIGNING,sig.signingKeyId(),"UNKNOWN_SIGNING_KEY");
+            LockboxDevice device=signing.getDevice();
+            if(device.getStatus()!=LockboxDevice.Status.ACTIVE) throw LockboxApiException.bad("DEVICE_NOT_ACTIVE","Signing device is not active.");
+            byte[] transcript=new byte[SIGNING_DOMAIN.length+manifestBytes.length];System.arraycopy(SIGNING_DOMAIN,0,transcript,0,SIGNING_DOMAIN.length);System.arraycopy(manifestBytes,0,transcript,SIGNING_DOMAIN.length,manifestBytes.length);
+            try{verifier.verify(signing.getPublicKey(),transcript,sig.signature());}catch(RuntimeException e){throw LockboxApiException.bad("INVALID_SIGNATURE","Manifest signature is invalid.");}
+            LockboxManifestParser.Manifest man=manifests.parse(manifestBytes);
+            if(!MessageDigest.isEqual(sig.signingKeyId(),man.signingKeyId())) throw LockboxApiException.bad("INVALID_SIGNATURE","Signing key IDs do not match.");
+            if(!device.getDeviceUuid().equals(man.deviceUuid())) throw LockboxApiException.bad("DEVICE_NOT_ACTIVE","Manifest device is invalid.");
+            if(man.revision()!=1||!allZero(man.previousManifestHash())) throw LockboxApiException.bad("UNSUPPORTED_REVISION","Only initial revision 1 is supported.");
+            validateNames(container,manifest,signature,man.clientFileId());
+            long size=Files.size(c);if(size!=man.containerSize())throw LockboxApiException.bad("CONTAINER_SIZE_MISMATCH","Container size does not match the signed manifest.");
+            byte[] hash=digest(c);if(!MessageDigest.isEqual(hash,man.containerHash()))throw LockboxApiException.bad("CONTAINER_HASH_MISMATCH","Container hash does not match the signed manifest.");
+            LockboxV3ContainerValidator.Container parsed=containers.validate(c,size);
+            if(!parsed.clientFileId().equals(man.clientFileId())||parsed.suiteId()!=man.suiteId()||!MessageDigest.isEqual(parsed.encryptionKeyId(),man.encryptionKeyId()))
+                throw LockboxApiException.bad("MANIFEST_CONTAINER_MISMATCH","Container public fields do not match the signed manifest.");
+            findKey(profile,LockboxKey.Role.ENCRYPTION,man.encryptionKeyId(),"UNKNOWN_ENCRYPTION_KEY");
+            if(lockboxFiles.existsByProfileIdAndClientFileIdAndRevision(profile.getId(),man.clientFileId(),man.revision())) duplicate();
+            String prefix="users/"+user.getId()+"/lockbox/"+man.clientFileId()+"/1/requests/"+UUID.randomUUID()+"/";
+            String ck=prefix+"container.fdcse",mk=prefix+"manifest.fdmanifest",sk=prefix+"signature.fdsig";
+            registerRollbackCleanup(uploaded);
+            upload(ck,c,LockboxObjectStorage.ArtifactType.CONTAINER,uploaded);upload(mk,m,LockboxObjectStorage.ArtifactType.MANIFEST,uploaded);upload(sk,s,LockboxObjectStorage.ArtifactType.SIGNATURE,uploaded);
+            FileMetaData meta=new FileMetaData();meta.setObjectKey(ck);meta.setFileName(man.clientFileId()+".fdcse");meta.setObjectType(LockboxObjectStorage.ArtifactType.CONTAINER.contentType());meta.setChecksum(HexFormat.of().formatHex(hash));meta.setCreationDate(Instant.now());meta.setSize(size);meta.setOwner(user);meta.setParent(parent);meta.setDriveSpace(DriveSpace.LOCKBOX);
+            FileMetaData saved=files.saveAndFlush(meta);
+            LockboxFile lf=new LockboxFile(saved,profile,man.clientFileId(),man.revision(),3,1,size,hash,man.encryptionKeyId(),man.signingKeyId(),man.deviceUuid(),parsed.chunkSize(),parsed.chunkCount(),ck,mk,sk);
+            try{lockboxFiles.saveAndFlush(lf);}catch(DataIntegrityViolationException e){duplicate();}
+            return new LockboxUploadResponse(saved.getId(),man.clientFileId(),man.revision(),parent.getId(),size,HexFormat.of().formatHex(hash),3,1,lf.getCreatedAt());
+        }catch(Exception e){if(!TransactionSynchronizationManager.isSynchronizationActive())cleanup(uploaded,e);throw e;}
+        finally{deleteTree(dir);}
     }
 
-    /**
-     * Returns the Lockbox root and its direct children.
-     */
-    @Transactional(readOnly = true)
-    public LockboxFolderViewResponse viewRoot() {
-        User user = access.currentUser();
-
-        Folders root =
-                rootFolderService.ensureLockboxRootFolder(user);
-
-        return buildFolderView(root, user);
+    @Transactional(readOnly=true) public LockboxDownloadResult openDownload(Long id,LockboxObjectStorage.ArtifactType type)throws Exception{
+        User user=access.currentUser();LockboxFile f=lockboxFiles.findByIdAndProfileUserId(id,user.getId()).orElseThrow(()->new LockboxApiException("LOCKBOX_FILE_NOT_FOUND",HttpStatus.NOT_FOUND,"Lockbox file not found."));
+        String base=f.getClientFileId().toString();String key,name;long size;
+        switch(type){case CONTAINER->{key=f.getContainerObjectKey();name=base+".fdcse";size=f.getContainerSize();}case MANIFEST->{key=f.getManifestObjectKey();name=base+".fdmanifest";size=LockboxManifestParser.LENGTH;}default->{key=f.getSignatureObjectKey();name=base+".fdsig";size=LockboxSignatureRecordParser.LENGTH;}}
+        return new LockboxDownloadResult(name,size,type.contentType(),storage.download(key));
     }
-
-    /**
-     * Returns one owned Lockbox folder and its direct children.
-     */
-    @Transactional(readOnly = true)
-    public LockboxFolderViewResponse viewFolder(Long folderId) {
-        if (folderId == null) {
-            throw new IllegalArgumentException(
-                    "Folder ID is required."
-            );
-        }
-
-        User user = access.currentUser();
-        Folders folder = requireOwnedLockboxFolder(
-                folderId,
-                user
-        );
-
-        return buildFolderView(folder, user);
+    @Transactional(readOnly=true) public LockboxFolderViewResponse viewRoot(){User u=access.currentUser();return view(roots.ensureLockboxRootFolder(u),u);}
+    @Transactional(readOnly=true) public LockboxFolderViewResponse viewFolder(Long id){User u=access.currentUser();return view(ownedFolder(id,u),u);}
+    private LockboxFolderViewResponse view(Folders parent,User user){
+        List<LockboxFolderItemResponse> ds=folders.findFoldersByParent_Id(parent.getId()).stream().filter(x->x.getDriveSpace()==DriveSpace.LOCKBOX&&!x.isDeleted()&&!x.isPermanentlyDeleted()&&owned(x,user)).map(x->new LockboxFolderItemResponse(x.getId(),x.getName(),parent.getId())).toList();
+        List<FileMetaData> fs=files.findByParent_IdAndDeletedFalse(parent.getId()).stream().filter(x->x.getDriveSpace()==DriveSpace.LOCKBOX&&!x.isPermanentlyDeleted()&&Objects.equals(x.getOwner().getId(),user.getId())).toList();
+        Map<Long,LockboxFile> map=new HashMap<>();lockboxFiles.findAllById(fs.stream().map(FileMetaData::getId).toList()).forEach(x->map.put(x.getId(),x));
+        List<LockboxFileItemResponse> items=fs.stream().map(x->{LockboxFile l=map.get(x.getId());if(l==null)throw new IllegalStateException("Lockbox metadata is missing.");return new LockboxFileItemResponse(l.getId(),l.getClientFileId(),l.getRevision(),l.getContainerSize(),l.getCreatedAt(),l.getFormatVersion(),l.getSuiteId());}).toList();
+        return new LockboxFolderViewResponse(parent.getId(),parent.getName(),parent.getParent()==null?null:parent.getParent().getId(),ds,items);
     }
-
-    /**
-     * Opens the encrypted MinIO object for streaming to the client.
-     */
-    @Transactional(readOnly = true)
-    public LockboxDownloadResult openDownload(
-            Long fileId
-    ) throws Exception {
-        if (fileId == null) {
-            throw new IllegalArgumentException(
-                    "File ID is required."
-            );
-        }
-
-        User user = access.currentUser();
-
-        FileMetaData file = fileMetaDataRepository
-                .findById(fileId)
-                .orElseThrow(() -> new RuntimeException(
-                        "Lockbox file not found."
-                ));
-
-        requireOwnedLockboxFile(file, user);
-
-        if (!lockboxFileRepository.existsById(fileId)) {
-            throw new IllegalStateException(
-                    "Lockbox metadata is missing for file "
-                            + fileId
-                            + "."
-            );
-        }
-
-        InputStream input =
-                objectStorage.download(file.getObjectKey());
-
-        return new LockboxDownloadResult(
-                file.getFileName(),
-                file.getSize(),
-                input
-        );
-    }
-
-    private LockboxFolderViewResponse buildFolderView(
-            Folders parent,
-            User user
-    ) {
-        List<Folders> childFolders =
-                folderRepository
-                        .findFoldersByParent_Id(parent.getId())
-                        .stream()
-                        .filter(folder ->
-                                folder.getDriveSpace()
-                                        == DriveSpace.LOCKBOX
-                        )
-                        .filter(folder ->
-                                !folder.isDeleted()
-                        )
-                        .filter(folder ->
-                                !folder.isPermanentlyDeleted()
-                        )
-                        .filter(folder ->
-                                isOwnedBy(folder, user)
-                        )
-                        .sorted(
-                                Comparator.comparing(
-                                        Folders::getName,
-                                        String.CASE_INSENSITIVE_ORDER
-                                )
-                        )
-                        .toList();
-
-        List<FileMetaData> files =
-                fileMetaDataRepository
-                        .findByParent_IdAndDeletedFalse(
-                                parent.getId()
-                        )
-                        .stream()
-                        .filter(file ->
-                                file.getDriveSpace()
-                                        == DriveSpace.LOCKBOX
-                        )
-                        .filter(file ->
-                                !file.isPermanentlyDeleted()
-                        )
-                        .filter(file ->
-                                isOwnedBy(file, user)
-                        )
-                        .sorted(
-                                Comparator.comparing(
-                                        FileMetaData::getFileName,
-                                        String.CASE_INSENSITIVE_ORDER
-                                )
-                        )
-                        .toList();
-
-        List<Long> fileIds = files.stream()
-                .map(FileMetaData::getId)
-                .toList();
-
-        Map<Long, LockboxFile> lockboxByFileId =
-                new HashMap<>();
-
-        lockboxFileRepository
-                .findAllById(fileIds)
-                .forEach(lockbox ->
-                        lockboxByFileId.put(
-                                lockbox.getId(),
-                                lockbox
-                        )
-                );
-
-        List<LockboxFolderItemResponse> folderResponses =
-                childFolders.stream()
-                        .map(folder ->
-                                new LockboxFolderItemResponse(
-                                        folder.getId(),
-                                        folder.getName(),
-                                        parent.getId()
-                                )
-                        )
-                        .toList();
-
-        List<LockboxFileItemResponse> fileResponses =
-                new ArrayList<>();
-
-        for (FileMetaData file : files) {
-            LockboxFile lockbox =
-                    lockboxByFileId.get(file.getId());
-
-            if (lockbox == null) {
-                throw new IllegalStateException(
-                        "Lockbox metadata is missing for file "
-                                + file.getId()
-                                + "."
-                );
-            }
-
-            fileResponses.add(
-                    new LockboxFileItemResponse(
-                            file.getId(),
-                            file.getFileName(),
-                            file.getSize(),
-                            file.getChecksum(),
-                            file.getCreationDate(),
-                            lockbox.getFormatVersion(),
-                            lockbox.getAlgorithmSuite(),
-                            lockbox.getChunkSize()
-                    )
-            );
-        }
-
-        return new LockboxFolderViewResponse(
-                parent.getId(),
-                parent.getName(),
-                parent.getParent() == null
-                        ? null
-                        : parent.getParent().getId(),
-                folderResponses,
-                fileResponses
-        );
-    }
-
-    private Folders resolveUploadParent(
-            Long parentFolderId,
-            User user
-    ) {
-        if (parentFolderId == null) {
-            return rootFolderService
-                    .ensureLockboxRootFolder(user);
-        }
-
-        return requireOwnedLockboxFolder(
-                parentFolderId,
-                user
-        );
-    }
-
-    private Folders requireOwnedLockboxFolder(
-            Long folderId,
-            User user
-    ) {
-        Folders folder =
-                access.requireFolderOwner(folderId);
-
-        if (folder.isDeleted()
-                || folder.isPermanentlyDeleted()) {
-            throw new IllegalArgumentException(
-                    "The Lockbox folder is deleted."
-            );
-        }
-
-        if (folder.getDriveSpace()
-                != DriveSpace.LOCKBOX) {
-            throw new IllegalArgumentException(
-                    "Destination is not a Lockbox folder."
-            );
-        }
-
-        if (!isOwnedBy(folder, user)) {
-            throw new IllegalArgumentException(
-                    "Lockbox folder access denied."
-            );
-        }
-
-        return folder;
-    }
-
-    private void requireOwnedLockboxFile(
-            FileMetaData file,
-            User user
-    ) {
-        if (file.isDeleted()
-                || file.isPermanentlyDeleted()) {
-            throw new RuntimeException(
-                    "Lockbox file not found."
-            );
-        }
-
-        if (file.getDriveSpace()
-                != DriveSpace.LOCKBOX) {
-            throw new IllegalArgumentException(
-                    "The requested file is not a Lockbox file."
-            );
-        }
-
-        if (!isOwnedBy(file, user)) {
-            throw new RuntimeException(
-                    "Lockbox file not found."
-            );
-        }
-
-        if (file.getObjectKey() == null
-                || file.getObjectKey().isBlank()) {
-            throw new IllegalStateException(
-                    "Lockbox object key is missing."
-            );
-        }
-    }
-
-    private boolean isOwnedBy(
-            Folders folder,
-            User user
-    ) {
-        return folder.getOwner() != null
-                && Objects.equals(
-                        folder.getOwner().getId(),
-                        user.getId()
-                );
-    }
-
-    private boolean isOwnedBy(
-            FileMetaData file,
-            User user
-    ) {
-        return file.getOwner() != null
-                && Objects.equals(
-                        file.getOwner().getId(),
-                        user.getId()
-                );
-    }
-
-    private void validateMultipart(MultipartFile encryptedFile) {
-        if (encryptedFile == null) {
-            throw new IllegalArgumentException(
-                    "Encrypted Lockbox file is required."
-            );
-        }
-
-        if (encryptedFile.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Encrypted Lockbox file cannot be empty."
-            );
-        }
-    }
-
-    private void copyToStagingFile(
-            MultipartFile encryptedFile,
-            Path stagingFile
-    ) throws IOException {
-        try (InputStream input =
-                     encryptedFile.getInputStream()) {
-            Files.copy(
-                    input,
-                    stagingFile,
-                    StandardCopyOption.REPLACE_EXISTING
-            );
-        }
-
-        if (Files.size(stagingFile) == 0) {
-            throw new IllegalArgumentException(
-                    "Encrypted Lockbox file cannot be empty."
-            );
-        }
-    }
-
-    private FileMetaData createFileMetadata(
-            MultipartFile encryptedFile,
-            User user,
-            Folders parent,
-            String objectKey,
-            long ciphertextSize,
-            String ciphertextChecksum
-    ) {
-        FileMetaData file = new FileMetaData();
-
-        file.setObjectKey(objectKey);
-        file.setFileName(
-                sanitizeDisplayName(
-                        encryptedFile.getOriginalFilename()
-                )
-        );
-        file.setObjectType(LOCKBOX_OBJECT_TYPE);
-        file.setChecksum(ciphertextChecksum);
-        file.setCreationDate(Instant.now());
-        file.setSize(ciphertextSize);
-        file.setDeleted(false);
-        file.setDeletedAt(null);
-        file.setPermanentlyDeleted(false);
-        file.setPermanentlyDeletedAt(null);
-        file.setOriginalObjectKey(null);
-        file.setOwner(user);
-        file.setParent(parent);
-        file.setDriveSpace(DriveSpace.LOCKBOX);
-
-        return file;
-    }
-
-    private String generateObjectKey(User user) {
-        return "users/"
-                + user.getId()
-                + "/objects/"
-                + UUID.randomUUID()
-                + ".fdcse";
-    }
-
-    private String calculateSha256(Path path)
-            throws IOException {
-        MessageDigest digest;
-
-        try {
-            digest = MessageDigest.getInstance(
-                    "SHA-256"
-            );
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException(
-                    "SHA-256 is unavailable.",
-                    exception
-            );
-        }
-
-        try (
-                InputStream input = Files.newInputStream(path);
-                DigestInputStream digestInput =
-                        new DigestInputStream(
-                                input,
-                                digest
-                        )
-        ) {
-            byte[] buffer = new byte[64 * 1024];
-
-            while (digestInput.read(buffer) != -1) {
-                // DigestInputStream updates the digest.
-            }
-        }
-
-        return HexFormat.of().formatHex(
-                digest.digest()
-        );
-    }
-
-    private String sanitizeDisplayName(
-            String originalFilename
-    ) {
-        if (originalFilename == null
-                || originalFilename.isBlank()) {
-            return DEFAULT_FILE_NAME;
-        }
-
-        String normalized = originalFilename
-                .trim()
-                .replace('\\', '/');
-
-        int lastSlash = normalized.lastIndexOf('/');
-
-        if (lastSlash >= 0) {
-            normalized = normalized.substring(
-                    lastSlash + 1
-            );
-        }
-
-        normalized = normalized
-                .replaceAll("[\\p{Cntrl}]", "_")
-                .trim();
-
-        if (normalized.isBlank()) {
-            return DEFAULT_FILE_NAME;
-        }
-
-        if (normalized.length() > 255) {
-            normalized = normalized.substring(0, 255);
-        }
-
-        return normalized;
-    }
+    private LockboxKey findKey(LockboxProfile p,LockboxKey.Role role,byte[] id,String code){return keys.findAllByDeviceProfileIdAndRoleAndStatus(p.getId(),role,LockboxKey.Status.ACTIVE).stream().filter(k->MessageDigest.isEqual(k.getKeyId(),id)).findFirst().orElseThrow(()->LockboxApiException.bad(code,"Registered active key was not found."));}
+    private Folders resolveParent(Long id,User u){return id==null?roots.ensureLockboxRootFolder(u):ownedFolder(id,u);}
+    private Folders ownedFolder(Long id,User u){Folders f=access.requireFolderOwner(id);if(f.getDriveSpace()!=DriveSpace.LOCKBOX||f.isDeleted()||f.isPermanentlyDeleted()||!owned(f,u))throw LockboxApiException.bad("INVALID_LOCKBOX_FOLDER","Destination Lockbox folder is invalid.");return f;}
+    private boolean owned(Folders f,User u){return f.getOwner()!=null&&Objects.equals(f.getOwner().getId(),u.getId());}
+    private static void stage(MultipartFile part,Path path,long max)throws IOException{if(part==null||part.isEmpty())throw LockboxApiException.bad("INVALID_MANIFEST","All three artifacts are required.");try(InputStream in=part.getInputStream();OutputStream out=Files.newOutputStream(path)){byte[] buf=new byte[65536];long total=0;for(int n;(n=in.read(buf))!=-1;){total=Math.addExact(total,n);if(total>max)throw LockboxApiException.bad("ARTIFACT_TOO_LARGE","Lockbox artifact exceeds its configured limit.");out.write(buf,0,n);}}}
+    private static byte[] readExact(Path p,long max,String code)throws IOException{long n=Files.size(p);if(n>max||n>Integer.MAX_VALUE)throw LockboxApiException.bad("ARTIFACT_TOO_LARGE","Lockbox artifact exceeds its configured limit.");return Files.readAllBytes(p);}
+    private static byte[] digest(Path p)throws Exception{MessageDigest d=MessageDigest.getInstance("SHA3-512");try(InputStream in=Files.newInputStream(p)){byte[] b=new byte[1024*1024];for(int n;(n=in.read(b))!=-1;)d.update(b,0,n);}return d.digest();}
+    private void upload(String k,Path p,LockboxObjectStorage.ArtifactType t,List<String> uploaded)throws Exception{storage.upload(k,p,t);uploaded.add(k);}
+    private void registerRollbackCleanup(List<String> uploaded){TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){@Override public void afterCompletion(int status){if(status!=STATUS_COMMITTED)cleanup(List.copyOf(uploaded),null);}});}
+    private void cleanup(List<String> ks,Exception original){for(String k:ks)try{storage.delete(k);}catch(Exception x){if(original!=null)original.addSuppressed(x);}}
+    private static void deleteTree(Path d){if(d==null)return;try(var paths=Files.walk(d)){paths.sorted(Comparator.reverseOrder()).forEach(p->{try{Files.deleteIfExists(p);}catch(IOException ignored){}});}catch(IOException ignored){}}
+    private static boolean allZero(byte[] b){int x=0;for(byte v:b)x|=v;return x==0;}
+    private static void duplicate(){throw new LockboxApiException("DUPLICATE_LOCKBOX_FILE",HttpStatus.CONFLICT,"This Lockbox file revision already exists.");}
+    private static void validateNames(MultipartFile c,MultipartFile m,MultipartFile s,UUID id){checkName(c,id+".fdcse");checkName(m,id+".fdmanifest");checkName(s,id+".fdsig");}
+    private static void checkName(MultipartFile p,String expected){String n=p.getOriginalFilename();if(n!=null&&!n.isBlank()&&!n.equalsIgnoreCase(expected))throw LockboxApiException.bad("INVALID_MANIFEST","Multipart artifact filename does not match the signed file UUID.");}
 }

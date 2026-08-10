@@ -48,8 +48,9 @@ public class LockboxRestController {
     )
     @ResponseStatus(HttpStatus.CREATED)
     public LockboxUploadResponse upload(
-            @RequestPart("file")
-            MultipartFile encryptedFile,
+            @RequestPart("container") MultipartFile container,
+            @RequestPart("manifest") MultipartFile manifest,
+            @RequestPart("signature") MultipartFile signature,
 
             @RequestParam(
                     name = "parentFolderId",
@@ -58,7 +59,7 @@ public class LockboxRestController {
             Long parentFolderId
     ) throws Exception {
         return lockboxService.upload(
-                encryptedFile,
+                container, manifest, signature,
                 parentFolderId
         );
     }
@@ -92,12 +93,13 @@ public class LockboxRestController {
      *
      * The server does not decrypt the downloaded object.
      */
-    @GetMapping("/files/{fileId}/download")
-    public ResponseEntity<StreamingResponseBody> download(
-            @PathVariable Long fileId
-    ) throws Exception {
+    @GetMapping("/files/{fileId}/container") public ResponseEntity<StreamingResponseBody> container(@PathVariable Long fileId)throws Exception{return download(fileId, kakha.kudava.filedrivespring.services.lockbox.LockboxObjectStorage.ArtifactType.CONTAINER);}
+    @GetMapping("/files/{fileId}/manifest") public ResponseEntity<StreamingResponseBody> manifest(@PathVariable Long fileId)throws Exception{return download(fileId, kakha.kudava.filedrivespring.services.lockbox.LockboxObjectStorage.ArtifactType.MANIFEST);}
+    @GetMapping("/files/{fileId}/signature") public ResponseEntity<StreamingResponseBody> signature(@PathVariable Long fileId)throws Exception{return download(fileId, kakha.kudava.filedrivespring.services.lockbox.LockboxObjectStorage.ArtifactType.SIGNATURE);}
+
+    private ResponseEntity<StreamingResponseBody> download(Long fileId, kakha.kudava.filedrivespring.services.lockbox.LockboxObjectStorage.ArtifactType type) throws Exception {
         LockboxDownloadResult result =
-                lockboxService.openDownload(fileId);
+                lockboxService.openDownload(fileId,type);
 
         StreamingResponseBody responseBody = outputStream -> {
             try (InputStream input = result.inputStream()) {
@@ -112,8 +114,8 @@ public class LockboxRestController {
                         .build();
 
         return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .contentLength(result.ciphertextSize())
+                .contentType(MediaType.parseMediaType(result.contentType()))
+                .contentLength(result.size())
                 .cacheControl(CacheControl.noStore())
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,

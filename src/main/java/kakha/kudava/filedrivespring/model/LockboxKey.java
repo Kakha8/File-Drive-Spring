@@ -12,7 +12,7 @@ import java.util.Objects;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(
-        name = "cse_keys",
+        name = "lockbox_keys",
         uniqueConstraints = {
                 @UniqueConstraint(
                         name = "uk_cse_keys_key_id",
