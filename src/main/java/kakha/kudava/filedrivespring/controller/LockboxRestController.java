@@ -2,6 +2,7 @@ package kakha.kudava.filedrivespring.controller;
 
 
 import kakha.kudava.filedrivespring.dto.LockboxFolderViewResponse;
+import kakha.kudava.filedrivespring.dto.LockboxPrivateMetadataListResponse;
 import kakha.kudava.filedrivespring.dto.LockboxUploadResponse;
 import kakha.kudava.filedrivespring.records.LockboxDownloadResult;
 import kakha.kudava.filedrivespring.services.lockbox.LockboxService;
@@ -35,12 +36,7 @@ public class LockboxRestController {
         this.lockboxService = lockboxService;
     }
 
-    /**
-     * Uploads an already client-encrypted CSEMLK02 container.
-     *
-     * Omitting parentFolderId uploads into the current user's
-     * Lockbox root.
-     */
+
     @PostMapping(
             value = "/files",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
@@ -88,11 +84,7 @@ public class LockboxRestController {
         return lockboxService.viewFolder(folderId);
     }
 
-    /**
-     * Streams the encrypted container exactly as stored.
-     *
-     * The server does not decrypt the downloaded object.
-     */
+
     @GetMapping("/files/{fileId}/container") public ResponseEntity<StreamingResponseBody> container(@PathVariable Long fileId)throws Exception{return download(fileId, kakha.kudava.filedrivespring.services.lockbox.LockboxObjectStorage.ArtifactType.CONTAINER);}
     @GetMapping("/files/{fileId}/manifest") public ResponseEntity<StreamingResponseBody> manifest(@PathVariable Long fileId)throws Exception{return download(fileId, kakha.kudava.filedrivespring.services.lockbox.LockboxObjectStorage.ArtifactType.MANIFEST);}
     @GetMapping("/files/{fileId}/signature") public ResponseEntity<StreamingResponseBody> signature(@PathVariable Long fileId)throws Exception{return download(fileId, kakha.kudava.filedrivespring.services.lockbox.LockboxObjectStorage.ArtifactType.SIGNATURE);}
@@ -122,5 +114,19 @@ public class LockboxRestController {
                         disposition.toString()
                 )
                 .body(responseBody);
+    }
+
+    @GetMapping(
+            value = "/files/private-metadata",
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<LockboxPrivateMetadataListResponse>
+    privateMetadataList() throws Exception {
+
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(
+                        lockboxService.privateMetadataList()
+                );
     }
 }
