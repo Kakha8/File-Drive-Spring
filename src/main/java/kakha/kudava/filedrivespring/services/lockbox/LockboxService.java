@@ -512,7 +512,6 @@ public class LockboxService {
 
         String objectKey;
         String fileName;
-        long size;
 
         switch (artifactType) {
             case CONTAINER -> {
@@ -521,9 +520,6 @@ public class LockboxService {
 
                 fileName =
                         baseName + ".fdcse";
-
-                size =
-                        file.getContainerSize();
             }
 
             case MANIFEST -> {
@@ -532,9 +528,6 @@ public class LockboxService {
 
                 fileName =
                         baseName + ".fdmanifest";
-
-                size =
-                        LockboxManifestParser.LENGTH;
             }
 
             case SIGNATURE -> {
@@ -543,9 +536,6 @@ public class LockboxService {
 
                 fileName =
                         baseName + ".fdsig";
-
-                size =
-                        LockboxSignatureRecordParser.LENGTH;
             }
 
             default -> throw new IllegalStateException(
@@ -553,11 +543,26 @@ public class LockboxService {
             );
         }
 
+        long actualSize =
+                storage.size(objectKey);
+
+        if (artifactType
+                == LockboxObjectStorage.ArtifactType.CONTAINER
+                && actualSize != file.getContainerSize()) {
+            throw new IllegalStateException(
+                    "Stored Lockbox container size "
+                            + "does not match its database record."
+            );
+        }
+
+        InputStream input =
+                storage.download(objectKey);
+
         return new LockboxDownloadResult(
                 fileName,
-                size,
+                actualSize,
                 artifactType.contentType(),
-                storage.download(objectKey)
+                input
         );
     }
 

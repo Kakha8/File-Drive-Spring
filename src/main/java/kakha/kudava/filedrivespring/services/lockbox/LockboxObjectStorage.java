@@ -23,4 +23,8 @@ public interface LockboxObjectStorage {
         ArtifactType(String contentType){this.contentType=contentType;}
         public String contentType(){return contentType;}
     }
+
+    long size(
+            String objectKey
+    ) throws Exception;
 }

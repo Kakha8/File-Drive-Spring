@@ -5,6 +5,7 @@ import kakha.kudava.filedrivespring.dto.LockboxFolderViewResponse;
 import kakha.kudava.filedrivespring.dto.LockboxPrivateMetadataListResponse;
 import kakha.kudava.filedrivespring.dto.LockboxUploadResponse;
 import kakha.kudava.filedrivespring.records.LockboxDownloadResult;
+import kakha.kudava.filedrivespring.services.lockbox.LockboxObjectStorage;
 import kakha.kudava.filedrivespring.services.lockbox.LockboxService;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
@@ -85,10 +86,41 @@ public class LockboxRestController {
     }
 
 
-    @GetMapping("/files/{fileId}/container") public ResponseEntity<StreamingResponseBody> container(@PathVariable Long fileId)throws Exception{return download(fileId, kakha.kudava.filedrivespring.services.lockbox.LockboxObjectStorage.ArtifactType.CONTAINER);}
-    @GetMapping("/files/{fileId}/manifest") public ResponseEntity<StreamingResponseBody> manifest(@PathVariable Long fileId)throws Exception{return download(fileId, kakha.kudava.filedrivespring.services.lockbox.LockboxObjectStorage.ArtifactType.MANIFEST);}
-    @GetMapping("/files/{fileId}/signature") public ResponseEntity<StreamingResponseBody> signature(@PathVariable Long fileId)throws Exception{return download(fileId, kakha.kudava.filedrivespring.services.lockbox.LockboxObjectStorage.ArtifactType.SIGNATURE);}
+    @GetMapping("/files/{fileId}/container")
+    public ResponseEntity<StreamingResponseBody>
+    downloadContainer(
+            @PathVariable Long fileId
+    ) throws Exception {
 
+        return download(
+                fileId,
+                LockboxObjectStorage.ArtifactType.CONTAINER
+        );
+    }
+
+    @GetMapping("/files/{fileId}/manifest")
+    public ResponseEntity<StreamingResponseBody>
+    downloadManifest(
+            @PathVariable Long fileId
+    ) throws Exception {
+
+        return download(
+                fileId,
+                LockboxObjectStorage.ArtifactType.MANIFEST
+        );
+    }
+
+    @GetMapping("/files/{fileId}/signature")
+    public ResponseEntity<StreamingResponseBody>
+    downloadSignature(
+            @PathVariable Long fileId
+    ) throws Exception {
+
+        return download(
+                fileId,
+                LockboxObjectStorage.ArtifactType.SIGNATURE
+        );
+    }
     private ResponseEntity<StreamingResponseBody> download(Long fileId, kakha.kudava.filedrivespring.services.lockbox.LockboxObjectStorage.ArtifactType type) throws Exception {
         LockboxDownloadResult result =
                 lockboxService.openDownload(fileId,type);

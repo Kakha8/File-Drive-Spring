@@ -1,9 +1,7 @@
 package kakha.kudava.filedrivespring.services.lockbox;
 
-import io.minio.GetObjectArgs;
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
-import io.minio.RemoveObjectArgs;
+import io.minio.*;
+import kakha.kudava.filedrivespring.services.objects.ObjectStorageService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -72,7 +70,10 @@ public class MinioLockboxObjectStorage
     }
 
     @Override
-    public InputStream download(String objectKey) throws Exception {
+    public InputStream download(
+            String objectKey
+    ) throws Exception {
+
         requireObjectKey(objectKey);
 
         return minioClient.getObject(
@@ -84,7 +85,25 @@ public class MinioLockboxObjectStorage
     }
 
     @Override
-    public void delete(String objectKey) throws Exception {
+    public long size(
+            String objectKey
+    ) throws Exception {
+
+        requireObjectKey(objectKey);
+
+        return minioClient.statObject(
+                StatObjectArgs.builder()
+                        .bucket(lockboxBucket)
+                        .object(objectKey)
+                        .build()
+        ).size();
+    }
+
+    @Override
+    public void delete(
+            String objectKey
+    ) throws Exception {
+
         requireObjectKey(objectKey);
 
         minioClient.removeObject(
