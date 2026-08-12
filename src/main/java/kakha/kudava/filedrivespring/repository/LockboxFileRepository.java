@@ -20,4 +20,15 @@ public interface LockboxFileRepository
     List<LockboxFile> findAllByProfileUserIdOrderByCreatedAtDesc(
             Long userId
     );
+
+    List<LockboxFile>
+    findAllByProfileUserIdAndFileDeletedFalseAndFilePermanentlyDeletedFalseOrderByCreatedAtDesc(
+            Long userId
+    );
+
+    Optional<LockboxFile> findByProfileIdAndClientFileIdAndRevision(
+            Long profileId,
+            UUID clientFileId,
+            long revision
+    );
 }

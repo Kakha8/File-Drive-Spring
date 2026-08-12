@@ -37,16 +37,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 public class LockboxService {
@@ -203,15 +194,15 @@ public class LockboxService {
 
             if (device.getStatus()
                     != LockboxDevice.Status.ACTIVE) {
+
                 throw LockboxApiException.bad(
                         "DEVICE_NOT_ACTIVE",
                         "Signing device is not active."
                 );
             }
 
-            byte[] transcript = signingTranscript(
-                    manifestBytes
-            );
+            byte[] transcript =
+                    signingTranscript(manifestBytes);
 
             try {
                 verifier.verify(
@@ -270,6 +261,7 @@ public class LockboxService {
 
             if (actualContainerSize
                     != parsedManifest.containerSize()) {
+
                 throw LockboxApiException.bad(
                         "CONTAINER_SIZE_MISMATCH",
                         "Container size does not match "
@@ -324,18 +316,129 @@ public class LockboxService {
                     "UNKNOWN_ENCRYPTION_KEY"
             );
 
-            boolean duplicate =
+            /*
+             * Check whether this exact signed file identity already exists.
+             */
+            Optional<LockboxFile> existingFile =
                     lockboxFiles
-                            .existsByProfileIdAndClientFileIdAndRevision(
+                            .findByProfileIdAndClientFileIdAndRevision(
                                     profile.getId(),
                                     parsedManifest.clientFileId(),
                                     parsedManifest.revision()
                             );
 
-            if (duplicate) {
-                throwDuplicate();
+            if (existingFile.isPresent()) {
+                LockboxFile existing =
+                        existingFile.get();
+
+                FileMetaData existingMetadata =
+                        existing.getFile();
+
+                /*
+                 * An active entry remains a duplicate.
+                 */
+                if (!existingMetadata.isPermanentlyDeleted()) {
+                    throwDuplicate();
+                }
+
+                /*
+                 * Ensure this really is the same immutable cryptographic
+                 * object before restoring the old database identity.
+                 */
+                boolean sameArtifact =
+                        existing.getFormatVersion() == 3
+                                && existing.getSuiteId()
+                                == parsedManifest.suiteId()
+                                && existing.getContainerSize()
+                                == actualContainerSize
+                                && existing.getChunkSize()
+                                == parsedContainer.chunkSize()
+                                && existing.getChunkCount()
+                                == parsedContainer.chunkCount()
+                                && existing.getDeviceUuid().equals(
+                                parsedManifest.deviceUuid()
+                        )
+                                && MessageDigest.isEqual(
+                                existing.getContainerHash(),
+                                actualContainerHash
+                        )
+                                && MessageDigest.isEqual(
+                                existing.getEncryptionKeyId(),
+                                parsedManifest.encryptionKeyId()
+                        )
+                                && MessageDigest.isEqual(
+                                existing.getSigningKeyId(),
+                                parsedManifest.signingKeyId()
+                        );
+
+                if (!sameArtifact) {
+                    throw new LockboxApiException(
+                            "LOCKBOX_IDENTITY_CONFLICT",
+                            HttpStatus.CONFLICT,
+                            "The uploaded artifacts do not match "
+                                    + "the previously deleted Lockbox file."
+                    );
+                }
+
+                registerRollbackCleanup(
+                        uploadedObjects
+                );
+
+                /*
+                 * Restore the three physical objects using the keys already
+                 * recorded by the retained LockboxFile row.
+                 */
+                uploadObject(
+                        existing.getContainerObjectKey(),
+                        containerPath,
+                        LockboxObjectStorage.ArtifactType.CONTAINER,
+                        uploadedObjects
+                );
+
+                uploadObject(
+                        existing.getManifestObjectKey(),
+                        manifestPath,
+                        LockboxObjectStorage.ArtifactType.MANIFEST,
+                        uploadedObjects
+                );
+
+                uploadObject(
+                        existing.getSignatureObjectKey(),
+                        signaturePath,
+                        LockboxObjectStorage.ArtifactType.SIGNATURE,
+                        uploadedObjects
+                );
+
+                Instant restoredAt = Instant.now();
+
+                existingMetadata.setDeleted(false);
+                existingMetadata.setDeletedAt(null);
+                existingMetadata.setPermanentlyDeleted(false);
+                existingMetadata.setPermanentlyDeletedAt(null);
+                existingMetadata.setLastModifiedDate(restoredAt);
+
+                files.saveAndFlush(existingMetadata);
+
+                return new LockboxUploadResponse(
+                        existing.getId(),
+                        existing.getClientFileId(),
+                        existing.getRevision(),
+                        existingMetadata.getParent() == null
+                                ? null
+                                : existingMetadata.getParent().getId(),
+                        existing.getContainerSize(),
+                        HexFormat.of().formatHex(
+                                existing.getContainerHash()
+                        ),
+                        existing.getFormatVersion(),
+                        existing.getSuiteId(),
+                        existing.getCreatedAt()
+                );
             }
 
+            /*
+             * No previous entry exists: perform a normal new upload.
+             */
             String objectPrefix =
                     "users/"
                             + user.getId()
@@ -444,9 +547,7 @@ public class LockboxService {
                 lockboxFiles.saveAndFlush(
                         lockboxFile
                 );
-            } catch (
-                    DataIntegrityViolationException exception
-            ) {
+            } catch (DataIntegrityViolationException exception) {
                 throwDuplicate();
             }
 
@@ -466,6 +567,7 @@ public class LockboxService {
         } catch (Exception exception) {
             if (!TransactionSynchronizationManager
                     .isSynchronizationActive()) {
+
                 cleanupUploadedObjects(
                         uploadedObjects,
                         exception
@@ -644,6 +746,68 @@ public class LockboxService {
                 ownedFolder(folderId, user);
 
         return view(folder, user);
+    }
+
+    @Transactional
+    public void deleteLockboxFile(
+            Long fileId
+    ) throws Exception {
+
+        User user = access.currentUser();
+
+        LockboxFile lockboxFile =
+                requireOwnedLockboxFile(
+                        fileId,
+                        user
+                );
+
+        FileMetaData metadata =
+                lockboxFile.getFile();
+
+        if (metadata.isPermanentlyDeleted()) {
+            return; // idempotent
+        }
+
+        // Physically delete all encrypted artifacts.
+        storage.delete(
+                lockboxFile.getContainerObjectKey()
+        );
+
+        storage.delete(
+                lockboxFile.getManifestObjectKey()
+        );
+
+        storage.delete(
+                lockboxFile.getSignatureObjectKey()
+        );
+
+        Instant deletedAt = Instant.now();
+
+        // Keep the DB row as a tombstone/deletion record.
+        metadata.setDeleted(true);
+        metadata.setDeletedAt(deletedAt);
+        metadata.setPermanentlyDeleted(true);
+        metadata.setPermanentlyDeletedAt(deletedAt);
+
+        files.save(metadata);
+    }
+
+    private LockboxFile requireOwnedLockboxFile(
+            Long fileId,
+            User user
+    ) {
+        return lockboxFiles
+                .findByIdAndProfileUserId(
+                        fileId,
+                        user.getId()
+                )
+                .orElseThrow(
+                        () -> new LockboxApiException(
+                                "LOCKBOX_FILE_NOT_FOUND",
+                                HttpStatus.NOT_FOUND,
+                                "Lockbox file not found."
+                        )
+                );
     }
 
     private LockboxFolderViewResponse view(
@@ -1308,7 +1472,7 @@ public class LockboxService {
 
         List<LockboxFile> ownedFiles =
                 lockboxFiles
-                        .findAllByProfileUserIdOrderByCreatedAtDesc(
+                        .findAllByProfileUserIdAndFileDeletedFalseAndFilePermanentlyDeletedFalseOrderByCreatedAtDesc(
                                 user.getId()
                         );
 
