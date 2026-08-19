@@ -74,7 +74,11 @@ public class RefreshRestController {
         setRefreshCookie(response, newRefresh, refreshDays);
 
         log.info("[+]New refresh token issued");
-        return ResponseEntity.ok(Map.of("accessToken", newAccessToken));
+        return ResponseEntity.ok(Map.of(
+                "accessToken", newAccessToken,
+                "userId", user.getId(),
+                "username", user.getUsername()
+        ));
     }
 
 

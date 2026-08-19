@@ -1,5 +1,6 @@
 package kakha.kudava.filedrivespring.repository;
 
+import kakha.kudava.filedrivespring.model.LockboxDevice;
 import kakha.kudava.filedrivespring.model.LockboxKey;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -23,4 +24,12 @@ public interface LockboxKeyRepository
 
     List<LockboxKey> findAllByDeviceProfileIdAndRoleAndStatus(
             Long profileId, LockboxKey.Role role, LockboxKey.Status status);
+
+    List<LockboxKey>
+    findAllByDeviceProfileUserIdAndDeviceStatusAndRoleAndStatus(
+            Long userId,
+            LockboxDevice.Status deviceStatus,
+            LockboxKey.Role role,
+            LockboxKey.Status keyStatus
+    );
 }

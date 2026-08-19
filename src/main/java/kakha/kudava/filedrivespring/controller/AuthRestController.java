@@ -65,7 +65,11 @@ public class AuthRestController {
         String refreshToken = refreshService.createToken(selectedUser, refreshDays);
         setRefreshCookie(response, refreshToken, refreshDays);
 
-        return ResponseEntity.ok(new LoginResponse(token));
+        return ResponseEntity.ok(new LoginResponse(
+                token,
+                selectedUser.getId(),
+                selectedUser.getUsername()
+        ));
     }
 
     private void setRefreshCookie(HttpServletResponse response, String token, int days) {
