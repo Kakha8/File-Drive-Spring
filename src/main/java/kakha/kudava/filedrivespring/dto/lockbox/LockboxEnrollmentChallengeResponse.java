@@ -1,4 +1,4 @@
-package kakha.kudava.filedrivespring.dto;
+package kakha.kudava.filedrivespring.dto.lockbox;
 
 import java.time.Instant;
 import java.util.Objects;

@@ -35,7 +35,7 @@ public final class LockboxSignatureVerifier {
 
         if (message == null) {
             throw badRequest(
-                    "Enrollment transcript is required."
+                    "Signature message is required."
             );
         }
 

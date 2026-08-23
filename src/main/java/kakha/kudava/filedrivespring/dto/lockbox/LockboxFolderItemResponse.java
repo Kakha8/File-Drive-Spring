@@ -1,4 +1,4 @@
-package kakha.kudava.filedrivespring.dto;
+package kakha.kudava.filedrivespring.dto.lockbox;
 
 public record LockboxFolderItemResponse(
         Long id,

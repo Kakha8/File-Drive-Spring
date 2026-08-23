@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import kakha.kudava.filedrivespring.model.JwtRefresher;
 import kakha.kudava.filedrivespring.model.User;
+import kakha.kudava.filedrivespring.dto.LoginResponse;
 import kakha.kudava.filedrivespring.services.users.DbUserDetailsService;
 import kakha.kudava.filedrivespring.services.jwt.JwtRefreshService;
 import kakha.kudava.filedrivespring.services.jwt.JwtService;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.UUID;
 
 @Slf4j
 @RestController
@@ -63,10 +65,11 @@ public class RefreshRestController {
                     .body(Map.of("message", ex.getMessage()));
         }
 
+        User user = stored.getUser();
+        UUID publicUuid = requirePublicUuid(user);
+
         // rotating refresh token
         refreshService.revoke(stored);
-
-        User user = stored.getUser();
         UserDetails userDetails = dbUserDetailsService.loadUserByUsername(user.getUsername());
         String newAccessToken = jwtService.generateAccessToken(userDetails);
 
@@ -74,11 +77,19 @@ public class RefreshRestController {
         setRefreshCookie(response, newRefresh, refreshDays);
 
         log.info("[+]New refresh token issued");
-        return ResponseEntity.ok(Map.of(
-                "accessToken", newAccessToken,
-                "userId", user.getId(),
-                "username", user.getUsername()
+        return ResponseEntity.ok(new LoginResponse(
+                newAccessToken,
+                user.getId(),
+                user.getUsername(),
+                publicUuid
         ));
+    }
+
+    private UUID requirePublicUuid(User user) {
+        if (user.getPublicUuid() == null) {
+            throw new IllegalStateException("Authenticated account has no public UUID.");
+        }
+        return user.getPublicUuid();
     }
 
 

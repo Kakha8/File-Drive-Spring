@@ -1,4 +1,4 @@
-package kakha.kudava.filedrivespring.dto;
+package kakha.kudava.filedrivespring.dto.lockbox;
 
 import java.util.Objects;
 import java.util.UUID;

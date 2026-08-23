@@ -1,6 +1,6 @@
 package kakha.kudava.filedrivespring.services.lockbox;
 
-import kakha.kudava.filedrivespring.dto.*;
+import kakha.kudava.filedrivespring.dto.lockbox.*;
 import kakha.kudava.filedrivespring.enums.DriveSpace;
 import kakha.kudava.filedrivespring.exceptions.LockboxApiException;
 import kakha.kudava.filedrivespring.model.FileMetaData;

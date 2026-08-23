@@ -1,9 +1,9 @@
 package kakha.kudava.filedrivespring.controller;
 
 
-import kakha.kudava.filedrivespring.dto.LockboxFolderViewResponse;
-import kakha.kudava.filedrivespring.dto.LockboxPrivateMetadataListResponse;
-import kakha.kudava.filedrivespring.dto.LockboxUploadResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxFolderViewResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxPrivateMetadataListResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxUploadResponse;
 import kakha.kudava.filedrivespring.records.LockboxDownloadResult;
 import kakha.kudava.filedrivespring.services.lockbox.LockboxObjectStorage;
 import kakha.kudava.filedrivespring.services.lockbox.LockboxService;
@@ -18,7 +18,6 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 
 @RestController
 @RequestMapping("/api/lockbox")

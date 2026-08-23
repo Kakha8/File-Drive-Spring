@@ -1,4 +1,4 @@
-package kakha.kudava.filedrivespring.dto;
+package kakha.kudava.filedrivespring.dto.share;
 
 import kakha.kudava.filedrivespring.enums.SharingRole;
 import lombok.Getter;
@@ -8,9 +8,8 @@ import java.util.List;
 
 @Getter
 @Setter
-public class ShareRequestDTO {
+public class ShareFilesRequest {
     private List<Long> fileIds;
-    private List<Long> folderIds;
-    private String targetUsername;
+    private String username;
     private SharingRole role;
 }

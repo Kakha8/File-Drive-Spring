@@ -76,31 +76,11 @@ public class LockboxShareEnvelope {
     @Lob
     @Basic(fetch = FetchType.LAZY)
     @Column(
-            name = "kem_ciphertext",
+            name = "envelope",
             nullable = false,
             updatable = false
     )
-    private byte[] kemCiphertext;
-
-    @Getter(AccessLevel.NONE)
-    @Lob
-    @Basic(fetch = FetchType.LAZY)
-    @Column(
-            name = "wrap_nonce",
-            nullable = false,
-            updatable = false
-    )
-    private byte[] wrapNonce;
-
-    @Getter(AccessLevel.NONE)
-    @Lob
-    @Basic(fetch = FetchType.LAZY)
-    @Column(
-            name = "wrapped_dek",
-            nullable = false,
-            updatable = false
-    )
-    private byte[] wrappedDek;
+    private byte[] envelope;
 
     @Getter(AccessLevel.NONE)
     @Lob
@@ -123,9 +103,7 @@ public class LockboxShareEnvelope {
             LockboxShare share,
             LockboxKey recipientKey,
             LockboxKey ownerSigningKey,
-            byte[] kemCiphertext,
-            byte[] wrapNonce,
-            byte[] wrappedDek,
+            byte[] envelope,
             byte[] ownerSignature
     ) {
         this.share = Objects.requireNonNull(
@@ -143,39 +121,15 @@ public class LockboxShareEnvelope {
                 "ownerSigningKey"
         );
 
-        this.kemCiphertext = requireBytes(
-                kemCiphertext,
-                "KEM ciphertext"
-        );
+        this.envelope = requireBytes(envelope, 1858, "envelope");
 
-        this.wrapNonce = requireBytes(
-                wrapNonce,
-                "wrap nonce"
-        );
-
-        this.wrappedDek = requireBytes(
-                wrappedDek,
-                "wrapped DEK"
-        );
-
-        this.ownerSignature = requireBytes(
-                ownerSignature,
-                "owner signature"
-        );
+        this.ownerSignature = requireBytes(ownerSignature, 4627, "owner signature");
 
         validateKeys();
     }
 
-    public byte[] getKemCiphertext() {
-        return kemCiphertext.clone();
-    }
-
-    public byte[] getWrapNonce() {
-        return wrapNonce.clone();
-    }
-
-    public byte[] getWrappedDek() {
-        return wrappedDek.clone();
+    public byte[] getEnvelope() {
+        return envelope.clone();
     }
 
     public byte[] getOwnerSignature() {
@@ -212,25 +166,8 @@ public class LockboxShareEnvelope {
                 "ownerSigningKey"
         );
 
-        kemCiphertext = requireBytes(
-                kemCiphertext,
-                "KEM ciphertext"
-        );
-
-        wrapNonce = requireBytes(
-                wrapNonce,
-                "wrap nonce"
-        );
-
-        wrappedDek = requireBytes(
-                wrappedDek,
-                "wrapped DEK"
-        );
-
-        ownerSignature = requireBytes(
-                ownerSignature,
-                "owner signature"
-        );
+        envelope = requireBytes(envelope, 1858, "envelope");
+        ownerSignature = requireBytes(ownerSignature, 4627, "owner signature");
 
         validateKeys();
     }
@@ -246,6 +183,10 @@ public class LockboxShareEnvelope {
             );
         }
 
+        if (recipientKey.getStatus() != LockboxKey.Status.ACTIVE) {
+            throw new IllegalArgumentException("The recipient key must be active.");
+        }
+
         if (ownerSigningKey.getRole()
                 != LockboxKey.Role.SIGNING
                 || ownerSigningKey.getAlgorithm()
@@ -255,15 +196,20 @@ public class LockboxShareEnvelope {
                     "The owner key must be an ML-DSA-87 signing key."
             );
         }
+
+        if (ownerSigningKey.getStatus() != LockboxKey.Status.ACTIVE) {
+            throw new IllegalArgumentException("The owner signing key must be active.");
+        }
     }
 
     private static byte[] requireBytes(
             byte[] value,
+            int expectedLength,
             String field
     ) {
-        if (value == null || value.length == 0) {
+        if (value == null || value.length != expectedLength) {
             throw new IllegalArgumentException(
-                    field + " is required."
+                    field + " must contain exactly " + expectedLength + " bytes."
             );
         }
 

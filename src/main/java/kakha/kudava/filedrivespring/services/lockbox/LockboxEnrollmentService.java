@@ -1,9 +1,9 @@
 package kakha.kudava.filedrivespring.services.lockbox;
 
-import kakha.kudava.filedrivespring.dto.LockboxEnrollmentChallengeResponse;
-import kakha.kudava.filedrivespring.dto.LockboxEnrollmentCompleteRequest;
-import kakha.kudava.filedrivespring.dto.LockboxEnrollmentCompleteResponse;
-import kakha.kudava.filedrivespring.dto.LockboxStatusResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxEnrollmentChallengeResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxEnrollmentCompleteRequest;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxEnrollmentCompleteResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxStatusResponse;
 import kakha.kudava.filedrivespring.model.*;
 import kakha.kudava.filedrivespring.repository.LockboxDeviceRepository;
 import kakha.kudava.filedrivespring.repository.LockboxEnrollmentChallengeRepository;

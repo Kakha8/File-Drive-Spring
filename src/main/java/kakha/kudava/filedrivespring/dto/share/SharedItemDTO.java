@@ -1,4 +1,4 @@
-package kakha.kudava.filedrivespring.dto;
+package kakha.kudava.filedrivespring.dto.share;
 
 import kakha.kudava.filedrivespring.enums.SharingRole;
 import lombok.Getter;

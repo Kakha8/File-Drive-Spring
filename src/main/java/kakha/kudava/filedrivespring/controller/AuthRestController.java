@@ -17,6 +17,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
+import java.util.UUID;
 
 @Slf4j
 @RestController
@@ -59,6 +60,7 @@ public class AuthRestController {
         String username = user.getUsername();
         User selectedUser = userService.getUserByEmail(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+        UUID publicUuid = requirePublicUuid(selectedUser);
 
         String token = jwtService.generateAccessToken(user); // includes roles claim
 
@@ -68,8 +70,16 @@ public class AuthRestController {
         return ResponseEntity.ok(new LoginResponse(
                 token,
                 selectedUser.getId(),
-                selectedUser.getUsername()
+                selectedUser.getUsername(),
+                publicUuid
         ));
+    }
+
+    private UUID requirePublicUuid(User user) {
+        if (user.getPublicUuid() == null) {
+            throw new IllegalStateException("Authenticated account has no public UUID.");
+        }
+        return user.getPublicUuid();
     }
 
     private void setRefreshCookie(HttpServletResponse response, String token, int days) {

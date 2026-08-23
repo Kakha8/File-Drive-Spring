@@ -18,13 +18,6 @@ import java.util.UUID;
                 @UniqueConstraint(
                         name = "uk_lockbox_share_uuid",
                         columnNames = "share_uuid"
-                ),
-                @UniqueConstraint(
-                        name = "uk_lockbox_share_file_recipient",
-                        columnNames = {
-                                "lockbox_file_id",
-                                "recipient_user_id"
-                        }
                 )
         },
         indexes = {
@@ -111,22 +104,21 @@ public class LockboxShare {
     )
     private Instant createdAt;
 
-    @Column(name = "accepted_at")
-    private Instant acceptedAt;
-
-    @Column(name = "declined_at")
-    private Instant declinedAt;
-
     @Column(name = "revoked_at")
     private Instant revokedAt;
 
+    @Column(name = "expires_at")
+    private Instant expiresAt;
+
     public LockboxShare(
+            UUID shareUuid,
             LockboxFile lockboxFile,
             User owner,
             User recipient,
-            Permission permission
+            Permission permission,
+            Instant expiresAt
     ) {
-        this.shareUuid = UUID.randomUUID();
+        this.shareUuid = Objects.requireNonNull(shareUuid, "shareUuid");
 
         this.lockboxFile = Objects.requireNonNull(
                 lockboxFile,
@@ -147,6 +139,7 @@ public class LockboxShare {
                 permission,
                 "permission"
         );
+        this.expiresAt = expiresAt;
 
         if (Objects.equals(
                 owner.getId(),
@@ -157,41 +150,12 @@ public class LockboxShare {
             );
         }
 
-        this.status = Status.PENDING;
-    }
-
-    public void accept() {
-        if (status != Status.PENDING) {
-            throw new IllegalStateException(
-                    "Only a pending Lockbox share can be accepted."
-            );
-        }
-
         status = Status.ACTIVE;
-        acceptedAt = Instant.now();
-        declinedAt = null;
-    }
-
-    public void decline() {
-        if (status != Status.PENDING) {
-            throw new IllegalStateException(
-                    "Only a pending Lockbox share can be declined."
-            );
-        }
-
-        status = Status.DECLINED;
-        declinedAt = Instant.now();
     }
 
     public void revoke() {
         if (status == Status.REVOKED) {
             return;
-        }
-
-        if (status == Status.DECLINED) {
-            throw new IllegalStateException(
-                    "A declined Lockbox share cannot be revoked."
-            );
         }
 
         status = Status.REVOKED;
@@ -201,10 +165,6 @@ public class LockboxShare {
     @PrePersist
     private void beforeInsert() {
         validate();
-
-        if (shareUuid == null) {
-            shareUuid = UUID.randomUUID();
-        }
 
         if (createdAt == null) {
             createdAt = Instant.now();
@@ -217,6 +177,11 @@ public class LockboxShare {
     }
 
     private void validate() {
+        Objects.requireNonNull(
+                shareUuid,
+                "shareUuid"
+        );
+
         Objects.requireNonNull(
                 lockboxFile,
                 "lockboxFile"
@@ -251,9 +216,7 @@ public class LockboxShare {
     }
 
     public enum Status {
-        PENDING,
         ACTIVE,
-        DECLINED,
         REVOKED
     }
 

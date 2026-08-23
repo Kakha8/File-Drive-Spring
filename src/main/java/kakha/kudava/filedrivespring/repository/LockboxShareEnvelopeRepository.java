@@ -36,4 +36,8 @@ public interface LockboxShareEnvelopeRepository
     long deleteAllByShareId(
             Long shareId
     );
+
+    Optional<LockboxShareEnvelope> findByShareId(
+            Long shareId
+    );
 }
