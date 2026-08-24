@@ -8,6 +8,7 @@ import kakha.kudava.filedrivespring.model.LockboxKey;
 import kakha.kudava.filedrivespring.model.LockboxShare;
 import kakha.kudava.filedrivespring.model.LockboxShareEnvelope;
 import kakha.kudava.filedrivespring.model.User;
+import kakha.kudava.filedrivespring.records.LockboxDownloadResult;
 import kakha.kudava.filedrivespring.repository.LockboxFileRepository;
 import kakha.kudava.filedrivespring.repository.LockboxKeyRepository;
 import kakha.kudava.filedrivespring.repository.LockboxShareEnvelopeRepository;
@@ -509,6 +510,66 @@ public class LockboxSharingService {
                 "LOCKBOX_SHARE_UNAVAILABLE",
                 HttpStatus.NOT_FOUND,
                 "The shared Lockbox file is unavailable."
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public LockboxDownloadResult openReceivedContainer(
+            UUID shareUuid
+    ) throws Exception {
+
+        if (shareUuid == null) {
+            throw sharedArtifactUnavailable();
+        }
+
+        User recipient = access.currentUser();
+
+        LockboxShare share = shares.findReceivedAvailableShare(
+                        shareUuid,
+                        recipient.getId(),
+                        LockboxShare.Status.ACTIVE,
+                        Instant.now()
+                )
+                .orElseThrow(
+                        LockboxSharingService::sharedArtifactUnavailable
+                );
+
+        if (share.getPermission() != LockboxShare.Permission.READ) {
+            throw sharedArtifactUnavailable();
+        }
+
+        LockboxFile file = share.getLockboxFile();
+
+        long actualSize;
+
+        try {
+            actualSize = objectStorage.size(
+                    file.getContainerObjectKey()
+            );
+        } catch (Exception exception) {
+            throw sharedArtifactUnavailable();
+        }
+
+        if (actualSize < 1
+                || actualSize != file.getContainerSize()) {
+            throw sharedArtifactUnavailable();
+        }
+
+        InputStream inputStream;
+
+        try {
+            inputStream = objectStorage.download(
+                    file.getContainerObjectKey()
+            );
+        } catch (Exception exception) {
+            throw sharedArtifactUnavailable();
+        }
+
+        return new LockboxDownloadResult(
+                file.getClientFileId() + ".fdcse",
+                actualSize,
+                LockboxObjectStorage.ArtifactType.CONTAINER.contentType(),
+                inputStream
         );
     }
 }

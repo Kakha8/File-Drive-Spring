@@ -5,13 +5,13 @@ import kakha.kudava.filedrivespring.dto.lockbox.LockboxRecipientKeysResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxReceivedShareResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxReceivedSharesResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxShareResponse;
+import kakha.kudava.filedrivespring.records.LockboxDownloadResult;
 import kakha.kudava.filedrivespring.services.lockbox.LockboxSharingService;
-import org.springframework.http.CacheControl;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.io.InputStream;
 import java.util.UUID;
 
 @RestController
@@ -80,5 +80,46 @@ public class LockboxSharingController {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(sharingService.receivedShare(shareUuid));
+    }
+
+    @GetMapping("/shares/received/{shareUuid}/container")
+    public ResponseEntity<StreamingResponseBody>
+    downloadReceivedContainer(
+            @PathVariable UUID shareUuid
+    ) throws Exception {
+
+        LockboxDownloadResult result =
+                sharingService.openReceivedContainer(
+                        shareUuid
+                );
+
+        StreamingResponseBody responseBody =
+                outputStream -> {
+                    try (InputStream input =
+                                 result.inputStream()) {
+
+                        input.transferTo(outputStream);
+                    }
+                };
+
+        ContentDisposition disposition =
+                ContentDisposition
+                        .attachment()
+                        .filename(result.fileName())
+                        .build();
+
+        return ResponseEntity.ok()
+                .contentType(
+                        MediaType.parseMediaType(
+                                result.contentType()
+                        )
+                )
+                .contentLength(result.size())
+                .cacheControl(CacheControl.noStore())
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        disposition.toString()
+                )
+                .body(responseBody);
     }
 }
