@@ -10,6 +10,7 @@ import kakha.kudava.filedrivespring.model.LockboxShareEnvelope;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.records.LockboxDownloadResult;
 import kakha.kudava.filedrivespring.repository.LockboxFileRepository;
+import kakha.kudava.filedrivespring.repository.LockboxDeviceRepository;
 import kakha.kudava.filedrivespring.repository.LockboxKeyRepository;
 import kakha.kudava.filedrivespring.repository.LockboxShareEnvelopeRepository;
 import kakha.kudava.filedrivespring.repository.LockboxShareRepository;
@@ -33,6 +34,9 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.Objects;
 
 @Service
 public class LockboxSharingService {
@@ -54,6 +58,7 @@ public class LockboxSharingService {
     private static final int MAX_HEADER_SIZE = 1024 * 1024;
 
     private final LockboxObjectStorage objectStorage;
+    private final LockboxDeviceRepository devices;
 
     public LockboxSharingService(
             UserRepository users,
@@ -63,7 +68,8 @@ public class LockboxSharingService {
             LockboxShareRepository shares,
             LockboxShareEnvelopeRepository envelopes,
             LockboxShareEnvelopeParser parser,
-            LockboxSignatureVerifier verifier, LockboxObjectStorage objectStorage
+            LockboxSignatureVerifier verifier, LockboxObjectStorage objectStorage,
+            LockboxDeviceRepository devices
     ) {
         this.users = users;
         this.keys = keys;
@@ -74,6 +80,31 @@ public class LockboxSharingService {
         this.parser = parser;
         this.verifier = verifier;
         this.objectStorage = objectStorage;
+        this.devices = devices;
+    }
+
+    @Transactional(readOnly = true)
+    public LockboxOwnDevicesResponse ownDevices(UUID excludeDeviceId) {
+        User user = access.currentUser();
+        List<LockboxDevice> owned = devices.findOwnedDevices(
+                user.getId(), LockboxDevice.Status.ACTIVE, excludeDeviceId);
+        Map<Long, List<LockboxOwnDeviceKeyResponse>> keysByDevice = new LinkedHashMap<>();
+        Base64.Encoder base64 = Base64.getEncoder();
+        for (LockboxKey key : keys.findOwnedActiveEncryptionKeys(
+                user.getId(), LockboxDevice.Status.ACTIVE,
+                LockboxKey.Role.ENCRYPTION, LockboxKey.Algorithm.ML_KEM_1024,
+                LockboxKey.Status.ACTIVE)) {
+            keysByDevice.computeIfAbsent(key.getDevice().getId(), ignored -> new ArrayList<>())
+                    .add(new LockboxOwnDeviceKeyResponse(
+                            base64.encodeToString(key.getKeyId()),
+                            key.getAlgorithm().name(),
+                            base64.encodeToString(key.getPublicKey())));
+        }
+        return new LockboxOwnDevicesResponse(owned.stream()
+                .map(device -> new LockboxOwnDeviceResponse(
+                        device.getDeviceUuid(), device.getDisplayName(), device.getStatus().name(),
+                        keysByDevice.getOrDefault(device.getId(), List.of())))
+                .toList());
     }
 
     @Transactional(readOnly = true)
@@ -145,10 +176,6 @@ public class LockboxSharingService {
 
         User recipient = users.findByPublicUuid(context.recipientPublicUuid())
                 .orElseThrow(LockboxSharingService::recipientUnavailable);
-        if (owner.getId().equals(recipient.getId())) {
-            throw invalid("You cannot share a Lockbox file with yourself.");
-        }
-
         LockboxKey recipientKey = keys.findByKeyId(context.recipientKeyId())
                 .orElseThrow(LockboxSharingService::recipientUnavailable);
         requireKey(
@@ -173,6 +200,15 @@ public class LockboxSharingService {
             throw invalid("The owner signing key is unavailable.");
         }
 
+        LockboxDevice targetDevice = recipientKey.getDevice();
+        if (owner.getId().equals(recipient.getId())
+                && Objects.equals(targetDevice.getDeviceUuid(), signingKey.getDevice().getDeviceUuid())) {
+            throw LockboxApiException.bad(
+                    "LOCKBOX_SELF_SHARE_SAME_DEVICE",
+                    "Select another registered device."
+            );
+        }
+
         byte[] signature = decodeExact(request.ownerSignature(), 4_627, "owner signature");
         byte[] signatureMessage = signatureMessage(packageBytes);
         try {
@@ -185,11 +221,8 @@ public class LockboxSharingService {
         if (shares.existsByShareUuid(context.shareUuid())) {
             throw conflict("LOCKBOX_SHARE_ID_EXISTS", "The share ID already exists.");
         }
-        if (shares.existsByLockboxFileIdAndRecipientIdAndStatusIn(
-                file.getId(),
-                recipient.getId(),
-                List.of(LockboxShare.Status.ACTIVE)
-        )) {
+        if (shares.existsByLockboxFileIdAndTargetDeviceId(
+                file.getId(), targetDevice.getId())) {
             throw conflict(
                     "LOCKBOX_SHARE_ALREADY_EXISTS",
                     "This Lockbox file is already shared with that recipient."
@@ -202,6 +235,7 @@ public class LockboxSharingService {
                     file,
                     owner,
                     recipient,
+                    targetDevice,
                     LockboxShare.Permission.READ,
                     expiresAt
             ));
@@ -212,6 +246,10 @@ public class LockboxSharingService {
                     packageBytes,
                     signature
             ));
+            if (!Objects.equals(share.getTargetDevice().getDeviceUuid(),
+                    recipientKey.getDevice().getDeviceUuid())) {
+                throw invalid("The share target device is inconsistent.");
+            }
             return new LockboxShareResponse(
                     share.getShareUuid().toString(),
                     file.getId(),
@@ -322,14 +360,16 @@ public class LockboxSharingService {
     }
 
     @Transactional(readOnly = true)
-    public LockboxReceivedSharesResponse receivedShares()
+    public LockboxReceivedSharesResponse receivedShares(UUID deviceId)
             throws Exception {
 
         User recipient = access.currentUser();
+        LockboxDevice selectedDevice = requireOwnedActiveDevice(deviceId, recipient);
         Instant now = Instant.now();
 
         List<LockboxShare> availableShares = shares.findReceivedAvailableShares(
                         recipient.getId(),
+                        selectedDevice.getDeviceUuid(),
                         LockboxShare.Status.ACTIVE,
                         now,
                         PageRequest.of(0, MAX_RECEIVED_SHARES)
@@ -339,7 +379,7 @@ public class LockboxSharingService {
                 new ArrayList<>(availableShares.size());
 
         for (LockboxShare share : availableShares) {
-            responses.add(buildReceivedShare(share));
+            responses.add(buildReceivedShare(share, selectedDevice));
         }
 
         return new LockboxReceivedSharesResponse(
@@ -348,24 +388,27 @@ public class LockboxSharingService {
     }
 
     @Transactional(readOnly = true)
-    public LockboxReceivedShareResponse receivedShare(UUID shareUuid)
+    public LockboxReceivedShareResponse receivedShare(UUID shareUuid, UUID deviceId)
             throws Exception {
         if (shareUuid == null) {
             throw sharedArtifactUnavailable();
         }
         User recipient = access.currentUser();
+        LockboxDevice selectedDevice = requireOwnedActiveDevice(deviceId, recipient);
         Instant now = Instant.now();
         LockboxShare share = shares.findReceivedAvailableShare(
                         shareUuid,
                         recipient.getId(),
+                        selectedDevice.getDeviceUuid(),
                         LockboxShare.Status.ACTIVE,
                         now
                 )
                 .orElseThrow(LockboxSharingService::sharedArtifactUnavailable);
-        return buildReceivedShare(share);
+        return buildReceivedShare(share, selectedDevice);
     }
 
-    private LockboxReceivedShareResponse buildReceivedShare(LockboxShare share)
+    private LockboxReceivedShareResponse buildReceivedShare(
+            LockboxShare share, LockboxDevice selectedDevice)
             throws Exception {
         LockboxFile file = share.getLockboxFile();
         LockboxShareEnvelope envelope = envelopes.findByShareId(share.getId())
@@ -373,7 +416,16 @@ public class LockboxSharingService {
 
         Long envelopeRecipientId = envelope.getRecipientKey().getDevice()
                 .getProfile().getUser().getId();
-        if (!share.getRecipient().getId().equals(envelopeRecipientId)) {
+        byte[] parsedRecipientKeyId;
+        try {
+            parsedRecipientKeyId = parser.parse(envelope.getEnvelope()).recipientKeyId();
+        } catch (LockboxApiException exception) {
+            throw sharedArtifactUnavailable();
+        }
+        if (!share.getRecipient().getId().equals(envelopeRecipientId)
+                || !share.getTargetDevice().getDeviceUuid().equals(selectedDevice.getDeviceUuid())
+                || !envelope.getRecipientKey().getDevice().getDeviceUuid().equals(selectedDevice.getDeviceUuid())
+                || !MessageDigest.isEqual(parsedRecipientKeyId, envelope.getRecipientKey().getKeyId())) {
             throw sharedArtifactUnavailable();
         }
 
@@ -515,7 +567,8 @@ public class LockboxSharingService {
 
     @Transactional(readOnly = true)
     public LockboxDownloadResult openReceivedContainer(
-            UUID shareUuid
+            UUID shareUuid,
+            UUID deviceId
     ) throws Exception {
 
         if (shareUuid == null) {
@@ -523,16 +576,26 @@ public class LockboxSharingService {
         }
 
         User recipient = access.currentUser();
+        LockboxDevice selectedDevice = requireOwnedActiveDevice(deviceId, recipient);
 
         LockboxShare share = shares.findReceivedAvailableShare(
                         shareUuid,
                         recipient.getId(),
+                        selectedDevice.getDeviceUuid(),
                         LockboxShare.Status.ACTIVE,
                         Instant.now()
                 )
                 .orElseThrow(
                         LockboxSharingService::sharedArtifactUnavailable
                 );
+
+        LockboxShareEnvelope envelope = envelopes.findByShareId(share.getId())
+                .orElseThrow(LockboxSharingService::sharedArtifactUnavailable);
+        if (!share.getTargetDevice().getDeviceUuid().equals(selectedDevice.getDeviceUuid())
+                || !envelope.getRecipientKey().getDevice().getDeviceUuid()
+                .equals(selectedDevice.getDeviceUuid())) {
+            throw sharedArtifactUnavailable();
+        }
 
         if (share.getPermission() != LockboxShare.Permission.READ) {
             throw sharedArtifactUnavailable();
@@ -571,5 +634,14 @@ public class LockboxSharingService {
                 LockboxObjectStorage.ArtifactType.CONTAINER.contentType(),
                 inputStream
         );
+    }
+
+    private LockboxDevice requireOwnedActiveDevice(UUID deviceId, User user) {
+        if (deviceId == null) {
+            throw sharedArtifactUnavailable();
+        }
+        return devices.findOwnedActiveDevice(
+                        deviceId, user.getId(), LockboxDevice.Status.ACTIVE)
+                .orElseThrow(LockboxSharingService::sharedArtifactUnavailable);
     }
 }

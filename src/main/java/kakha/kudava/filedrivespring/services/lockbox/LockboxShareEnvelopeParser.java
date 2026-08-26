@@ -30,7 +30,7 @@ public final class LockboxShareEnvelopeParser {
         long kemLength = Integer.toUnsignedLong(buffer.getInt());
         long wrappedLength = Integer.toUnsignedLong(buffer.getInt());
         if (revision <= 0 || allZero(containerHash) || allZero(recipientKeyId)
-                || ownerPublicUuid.equals(recipientPublicUuid) || permission != 1
+                || permission != 1
                 || kemLength != 1568 || wrappedLength != 48 || buffer.remaining() != 1616) invalid();
         return new ParsedContext(shareUuid, clientFileUuid, revision, containerHash,
                 ownerPublicUuid, recipientPublicUuid, recipientKeyId, permission, expiresAt);

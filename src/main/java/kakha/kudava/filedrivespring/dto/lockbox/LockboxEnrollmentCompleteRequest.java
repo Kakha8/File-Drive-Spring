@@ -5,6 +5,7 @@ import java.util.UUID;
 public record LockboxEnrollmentCompleteRequest(
         String challenge,
         UUID deviceId,
+        String installationHandle,
         String deviceName,
         PublicKeyRequest encryptionKey,
         PublicKeyRequest signingKey,

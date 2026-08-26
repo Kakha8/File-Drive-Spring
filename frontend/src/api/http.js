@@ -3,8 +3,7 @@ import {
     clearAccessToken,
     getAccessToken,
 } from "./tokenstore";
-
-const API_BASE = "https://localhost:8443";
+import { API_BASE_URL } from "./config";
 
 function createAuthError(
     message = "Session expired. Please log in again."
@@ -16,7 +15,7 @@ function createAuthError(
 
 export async function apiFetch(path, options = {}) {
     const doFetch = (token) =>
-        fetch(`${API_BASE}${path}`, {
+        fetch(`${API_BASE_URL}${path}`, {
             ...options,
             credentials: "include",
             headers: {

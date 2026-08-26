@@ -24,15 +24,15 @@ class LockboxReceivedSharesServiceTests {
     @Test
     void emptyListUsesAuthenticatedRecipientActiveAndDatabaseCap() throws Exception {
         Fixture fixture = new Fixture();
-        when(fixture.shares.findReceivedAvailableShares(eq(2L), eq(LockboxShare.Status.ACTIVE),
+        when(fixture.shares.findReceivedAvailableShares(eq(2L), eq(fixture.deviceUuid), eq(LockboxShare.Status.ACTIVE),
                 any(Instant.class), any(Pageable.class))).thenReturn(List.of());
 
-        var response = fixture.service.receivedShares();
+        var response = fixture.service.receivedShares(fixture.deviceUuid);
 
         assertTrue(response.shares().isEmpty());
         assertThrows(UnsupportedOperationException.class, () -> response.shares().add(null));
         ArgumentCaptor<Pageable> page = ArgumentCaptor.forClass(Pageable.class);
-        verify(fixture.shares).findReceivedAvailableShares(eq(2L), eq(LockboxShare.Status.ACTIVE),
+        verify(fixture.shares).findReceivedAvailableShares(eq(2L), eq(fixture.deviceUuid), eq(LockboxShare.Status.ACTIVE),
                 any(Instant.class), page.capture());
         assertEquals(100, page.getValue().getPageSize());
     }
@@ -41,10 +41,10 @@ class LockboxReceivedSharesServiceTests {
     void validSingleReturnsExactBase64ArtifactsAndReadsOnlyHeader() throws Exception {
         Fixture fixture = new Fixture();
         fixture.stubValidArtifacts();
-        when(fixture.shares.findReceivedAvailableShare(eq(fixture.shareUuid), eq(2L),
+        when(fixture.shares.findReceivedAvailableShare(eq(fixture.shareUuid), eq(2L), eq(fixture.deviceUuid),
                 eq(LockboxShare.Status.ACTIVE), any(Instant.class))).thenReturn(Optional.of(fixture.share));
 
-        var response = fixture.service.receivedShare(fixture.shareUuid);
+        var response = fixture.service.receivedShare(fixture.shareUuid, fixture.deviceUuid);
 
         assertEquals(fixture.shareUuid.toString(), response.shareId());
         assertEquals(Base64.getEncoder().encodeToString(fixture.envelopeBytes), response.recipientEnvelope());
@@ -58,28 +58,28 @@ class LockboxReceivedSharesServiceTests {
     void nullUnknownAndMissingEnvelopeUseSameUnavailableResponse() throws Exception {
         Fixture fixture = new Fixture();
         assertUnavailable(assertThrows(LockboxApiException.class,
-                () -> fixture.service.receivedShare(null)));
-        when(fixture.shares.findReceivedAvailableShare(eq(fixture.shareUuid), eq(2L), any(), any()))
+                () -> fixture.service.receivedShare(null, fixture.deviceUuid)));
+        when(fixture.shares.findReceivedAvailableShare(eq(fixture.shareUuid), eq(2L), eq(fixture.deviceUuid), any(), any()))
                 .thenReturn(Optional.empty());
         assertUnavailable(assertThrows(LockboxApiException.class,
-                () -> fixture.service.receivedShare(fixture.shareUuid)));
-        when(fixture.shares.findReceivedAvailableShare(eq(fixture.shareUuid), eq(2L), any(), any()))
+                () -> fixture.service.receivedShare(fixture.shareUuid, fixture.deviceUuid)));
+        when(fixture.shares.findReceivedAvailableShare(eq(fixture.shareUuid), eq(2L), eq(fixture.deviceUuid), any(), any()))
                 .thenReturn(Optional.of(fixture.share));
         when(fixture.envelopes.findByShareId(9L)).thenReturn(Optional.empty());
         assertUnavailable(assertThrows(LockboxApiException.class,
-                () -> fixture.service.receivedShare(fixture.shareUuid)));
+                () -> fixture.service.receivedShare(fixture.shareUuid, fixture.deviceUuid)));
     }
 
     @Test
     void relationalRecipientMismatchIsUnavailableBeforeStorageReads() throws Exception {
         Fixture fixture = new Fixture();
-        when(fixture.shares.findReceivedAvailableShare(eq(fixture.shareUuid), eq(2L), any(), any()))
+        when(fixture.shares.findReceivedAvailableShare(eq(fixture.shareUuid), eq(2L), eq(fixture.deviceUuid), any(), any()))
                 .thenReturn(Optional.of(fixture.share));
         when(fixture.envelopes.findByShareId(9L)).thenReturn(Optional.of(fixture.envelope));
         when(fixture.keyOwner.getId()).thenReturn(3L);
 
         assertUnavailable(assertThrows(LockboxApiException.class,
-                () -> fixture.service.receivedShare(fixture.shareUuid)));
+                () -> fixture.service.receivedShare(fixture.shareUuid, fixture.deviceUuid)));
         verifyNoInteractions(fixture.storage);
     }
 
@@ -118,7 +118,7 @@ class LockboxReceivedSharesServiceTests {
 
     private static LockboxApiException callSingle(Fixture fixture) {
         return assertThrows(LockboxApiException.class,
-                () -> fixture.service.receivedShare(fixture.shareUuid));
+                () -> fixture.service.receivedShare(fixture.shareUuid, fixture.deviceUuid));
     }
 
     private static void assertUnavailable(LockboxApiException exception) {
@@ -134,9 +134,12 @@ class LockboxReceivedSharesServiceTests {
         final LockboxShareRepository shares = mock(LockboxShareRepository.class);
         final LockboxShareEnvelopeRepository envelopes = mock(LockboxShareEnvelopeRepository.class);
         final LockboxObjectStorage storage = mock(LockboxObjectStorage.class);
+        final LockboxDeviceRepository devices = mock(LockboxDeviceRepository.class);
+        final LockboxShareEnvelopeParser parser = mock(LockboxShareEnvelopeParser.class);
         final LockboxSharingService service = new LockboxSharingService(users, keys, access, files,
-                shares, envelopes, new LockboxShareEnvelopeParser(), mock(LockboxSignatureVerifier.class), storage);
+                shares, envelopes, parser, mock(LockboxSignatureVerifier.class), storage, devices);
         final UUID shareUuid = UUID.randomUUID();
+        final UUID deviceUuid = UUID.randomUUID();
         final User recipient = mock(User.class), owner = mock(User.class), keyOwner = mock(User.class);
         final LockboxShare share = mock(LockboxShare.class);
         final LockboxFile file = mock(LockboxFile.class);
@@ -149,10 +152,13 @@ class LockboxReceivedSharesServiceTests {
 
         Fixture() {
             when(access.currentUser()).thenReturn(recipient); when(recipient.getId()).thenReturn(2L);
+            when(devices.findOwnedActiveDevice(deviceUuid, 2L, LockboxDevice.Status.ACTIVE)).thenReturn(Optional.of(device));
+            when(device.getDeviceUuid()).thenReturn(deviceUuid);
             when(share.getId()).thenReturn(9L); when(share.getShareUuid()).thenReturn(shareUuid);
             when(share.getRecipient()).thenReturn(recipient); when(share.getOwner()).thenReturn(owner);
             when(owner.getUsername()).thenReturn("owner"); when(share.getPermission()).thenReturn(LockboxShare.Permission.READ);
             when(share.getLockboxFile()).thenReturn(file); when(file.getId()).thenReturn(10L);
+            when(share.getTargetDevice()).thenReturn(device);
             when(file.getClientFileId()).thenReturn(UUID.randomUUID()); when(file.getRevision()).thenReturn(7L);
             when(file.getManifestObjectKey()).thenReturn("manifest"); when(file.getSignatureObjectKey()).thenReturn("signature");
             when(file.getContainerObjectKey()).thenReturn("container");
@@ -161,10 +167,14 @@ class LockboxReceivedSharesServiceTests {
             when(envelope.getOwnerSigningKey()).thenReturn(signingKey); when(envelope.getEnvelope()).thenReturn(envelopeBytes);
             when(envelope.getOwnerSignature()).thenReturn(new byte[]{7}); when(signingKey.getKeyId()).thenReturn(new byte[]{8});
             when(signingKey.getPublicKey()).thenReturn(new byte[]{9});
+            when(recipientKey.getKeyId()).thenReturn(new byte[]{10});
+            when(parser.parse(envelopeBytes)).thenReturn(new LockboxShareEnvelopeParser.ParsedContext(
+                    shareUuid, UUID.randomUUID(), 1L, new byte[64], UUID.randomUUID(),
+                    UUID.randomUUID(), new byte[]{10}, 1, 0L));
         }
 
         void stubRelation() {
-            when(shares.findReceivedAvailableShare(eq(shareUuid), eq(2L), any(), any())).thenReturn(Optional.of(share));
+            when(shares.findReceivedAvailableShare(eq(shareUuid), eq(2L), eq(deviceUuid), any(), any())).thenReturn(Optional.of(share));
             when(envelopes.findByShareId(9L)).thenReturn(Optional.of(envelope));
         }
         void stubThroughSignature() throws Exception {

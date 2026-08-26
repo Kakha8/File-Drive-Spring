@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.services.lockbox;
 
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxCreateShareRequest;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxShareResponse;
 import kakha.kudava.filedrivespring.exceptions.LockboxApiException;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.LockboxDevice;
@@ -11,6 +12,7 @@ import kakha.kudava.filedrivespring.model.LockboxShare;
 import kakha.kudava.filedrivespring.model.LockboxShareEnvelope;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.LockboxFileRepository;
+import kakha.kudava.filedrivespring.repository.LockboxDeviceRepository;
 import kakha.kudava.filedrivespring.repository.LockboxKeyRepository;
 import kakha.kudava.filedrivespring.repository.LockboxShareEnvelopeRepository;
 import kakha.kudava.filedrivespring.repository.LockboxShareRepository;
@@ -33,6 +35,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -147,10 +150,6 @@ class LockboxSharingServiceCreateShareTests {
         when(missingRecipient.users.findByPublicUuid(Fixture.RECIPIENT_UUID)).thenReturn(Optional.empty());
         assertError(missingRecipient, missingRecipient.request(), "LOCKBOX_RECIPIENT_UNAVAILABLE", HttpStatus.NOT_FOUND);
 
-        Fixture self = new Fixture();
-        when(self.users.findByPublicUuid(Fixture.RECIPIENT_UUID)).thenReturn(Optional.of(self.owner));
-        assertError(self, self.request(), "INVALID_LOCKBOX_SHARE", HttpStatus.BAD_REQUEST);
-
         Fixture missingKey = new Fixture();
         when(missingKey.keys.findByKeyId(missingKey.recipientKeyId)).thenReturn(Optional.empty());
         assertError(missingKey, missingKey.request(), "LOCKBOX_RECIPIENT_UNAVAILABLE", HttpStatus.NOT_FOUND);
@@ -236,9 +235,41 @@ class LockboxSharingServiceCreateShareTests {
         assertError(duplicateId, duplicateId.request(), "LOCKBOX_SHARE_ID_EXISTS", HttpStatus.CONFLICT);
 
         Fixture duplicateRecipient = new Fixture();
-        when(duplicateRecipient.shares.existsByLockboxFileIdAndRecipientIdAndStatusIn(any(), any(), any()))
+        when(duplicateRecipient.shares.existsByLockboxFileIdAndTargetDeviceId(any(), any()))
                 .thenReturn(true);
         assertError(duplicateRecipient, duplicateRecipient.request(), "LOCKBOX_SHARE_ALREADY_EXISTS", HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void selfShareTargetsAnotherOwnedDeviceAndRejectsSigningDevice() {
+        Fixture allowed = new Fixture();
+        UUID signingDeviceId = UUID.randomUUID();
+        UUID targetDeviceId = UUID.randomUUID();
+        when(allowed.users.findByPublicUuid(Fixture.OWNER_UUID)).thenReturn(Optional.of(allowed.owner));
+        when(allowed.recipientKey.getDevice().getProfile().getUser()).thenReturn(allowed.owner);
+        when(allowed.signingKey.getDevice().getDeviceUuid()).thenReturn(signingDeviceId);
+        when(allowed.recipientKey.getDevice().getDeviceUuid()).thenReturn(targetDeviceId);
+        byte[] selfEnvelope = allowed.packageBytes(0);
+        putUuid(selfEnvelope, 132, Fixture.OWNER_UUID);
+
+        LockboxShareResponse response = allowed.service.createShare(allowed.request(selfEnvelope));
+
+        assertEquals(Fixture.SHARE_UUID.toString(), response.shareId());
+        ArgumentCaptor<LockboxShare> share = ArgumentCaptor.forClass(LockboxShare.class);
+        verify(allowed.shares).save(share.capture());
+        assertSame(allowed.owner, share.getValue().getRecipient());
+        assertSame(allowed.recipientKey.getDevice(), share.getValue().getTargetDevice());
+
+        Fixture rejected = new Fixture();
+        when(rejected.users.findByPublicUuid(Fixture.OWNER_UUID)).thenReturn(Optional.of(rejected.owner));
+        when(rejected.recipientKey.getDevice().getProfile().getUser()).thenReturn(rejected.owner);
+        when(rejected.signingKey.getDevice().getDeviceUuid()).thenReturn(signingDeviceId);
+        when(rejected.recipientKey.getDevice().getDeviceUuid()).thenReturn(signingDeviceId);
+        selfEnvelope = rejected.packageBytes(0);
+        putUuid(selfEnvelope, 132, Fixture.OWNER_UUID);
+
+        assertError(rejected, rejected.request(selfEnvelope),
+                "LOCKBOX_SELF_SHARE_SAME_DEVICE", HttpStatus.BAD_REQUEST);
     }
 
     @Test
@@ -294,9 +325,10 @@ class LockboxSharingServiceCreateShareTests {
         final LockboxShareEnvelopeRepository envelopes = mock(LockboxShareEnvelopeRepository.class);
         final LockboxSignatureVerifier verifier = mock(LockboxSignatureVerifier.class);
         final LockboxObjectStorage objectStorage = mock(LockboxObjectStorage.class);
+        final LockboxDeviceRepository devices = mock(LockboxDeviceRepository.class);
         final LockboxSharingService service = new LockboxSharingService(
                 users, keys, access, files, shares, envelopes,
-                new LockboxShareEnvelopeParser(), verifier, objectStorage
+                new LockboxShareEnvelopeParser(), verifier, objectStorage, devices
         );
         final User owner = user(1L, "owner", OWNER_UUID);
         final User recipient = user(2L, "recipient", RECIPIENT_UUID);

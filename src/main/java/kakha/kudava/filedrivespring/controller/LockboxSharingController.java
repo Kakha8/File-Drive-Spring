@@ -5,6 +5,7 @@ import kakha.kudava.filedrivespring.dto.lockbox.LockboxRecipientKeysResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxReceivedShareResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxReceivedSharesResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxShareResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxOwnDevicesResponse;
 import kakha.kudava.filedrivespring.records.LockboxDownloadResult;
 import kakha.kudava.filedrivespring.services.lockbox.LockboxSharingService;
 import org.springframework.http.*;
@@ -24,6 +25,15 @@ public class LockboxSharingController {
             LockboxSharingService sharingService
     ) {
         this.sharingService = sharingService;
+    }
+
+    @GetMapping(value = "/devices", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<LockboxOwnDevicesResponse> ownDevices(
+            @RequestParam(required = false) UUID excludeDeviceId
+    ) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(sharingService.ownDevices(excludeDeviceId));
     }
 
     @GetMapping(
@@ -63,11 +73,12 @@ public class LockboxSharingController {
             value = "/shares/received",
             produces = MediaType.APPLICATION_JSON_VALUE
     )
-    public ResponseEntity<LockboxReceivedSharesResponse> receivedShares()
+    public ResponseEntity<LockboxReceivedSharesResponse> receivedShares(
+            @RequestParam UUID deviceId)
             throws Exception {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
-                .body(sharingService.receivedShares());
+                .body(sharingService.receivedShares(deviceId));
     }
 
     @GetMapping(
@@ -76,21 +87,24 @@ public class LockboxSharingController {
     )
     public ResponseEntity<LockboxReceivedShareResponse> receivedShare(
             @PathVariable UUID shareUuid
+            , @RequestParam UUID deviceId
     ) throws Exception {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
-                .body(sharingService.receivedShare(shareUuid));
+                .body(sharingService.receivedShare(shareUuid, deviceId));
     }
 
     @GetMapping("/shares/received/{shareUuid}/container")
     public ResponseEntity<StreamingResponseBody>
     downloadReceivedContainer(
-            @PathVariable UUID shareUuid
+            @PathVariable UUID shareUuid,
+            @RequestParam UUID deviceId
     ) throws Exception {
 
         LockboxDownloadResult result =
                 sharingService.openReceivedContainer(
-                        shareUuid
+                        shareUuid,
+                        deviceId
                 );
 
         StreamingResponseBody responseBody =
@@ -98,7 +112,21 @@ public class LockboxSharingController {
                     try (InputStream input =
                                  result.inputStream()) {
 
-                        input.transferTo(outputStream);
+                        byte[] buffer =
+                                new byte[1024 * 1024];
+
+                        for (
+                                int count;
+                                (count = input.read(buffer)) != -1;
+                        ) {
+                            outputStream.write(
+                                    buffer,
+                                    0,
+                                    count
+                            );
+                        }
+
+                        outputStream.flush();
                     }
                 };
 

@@ -27,3 +27,15 @@ The database `envelope` column intentionally remains nullable while those legacy
 rows exist. The V1 JPA mapping and constructor still require every newly created
 V1 envelope to contain exactly 1,858 bytes. Do not make the database column
 `NOT NULL` until legacy split-envelope rows have been migrated or archived.
+`V20260824__lockbox_installation_handle_h2.sql` adds the account-scoped
+installation handle and enrollment context. The device handle is intentionally
+nullable during development migration. Production rollout must backfill or
+re-enroll legacy devices and then enforce `installation_handle NOT NULL`.
+
+Before deploying device-targeted self-sharing, apply
+`V20260826__lockbox_share_target_device_h2.sql`. It derives each existing share's
+target device from its stored recipient envelope key, makes the association
+mandatory, and adds the file/device uniqueness constraint and received-share
+lookup indexes. The migration intentionally fails if legacy data has no complete
+recipient envelope or contains multiple shares for the same file and target
+device; reconcile those rows from a backup before retrying.

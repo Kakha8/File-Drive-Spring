@@ -18,6 +18,10 @@ import java.util.UUID;
                 @UniqueConstraint(
                         name = "uk_lockbox_share_uuid",
                         columnNames = "share_uuid"
+                ),
+                @UniqueConstraint(
+                        name = "uk_lockbox_share_file_target_device",
+                        columnNames = {"lockbox_file_id", "target_device_id"}
                 )
         },
         indexes = {
@@ -32,6 +36,14 @@ import java.util.UUID;
                 @Index(
                         name = "idx_lockbox_share_file",
                         columnList = "lockbox_file_id"
+                ),
+                @Index(
+                        name = "idx_lockbox_share_target_status",
+                        columnList = "target_device_id, status"
+                ),
+                @Index(
+                        name = "idx_lockbox_share_recipient_target_status",
+                        columnList = "recipient_user_id, target_device_id, status"
                 )
         }
 )
@@ -81,6 +93,15 @@ public class LockboxShare {
     )
     private User recipient;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "target_device_id",
+            nullable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(name = "fk_lockbox_share_target_device")
+    )
+    private LockboxDevice targetDevice;
+
     @Enumerated(EnumType.STRING)
     @Column(
             name = "status",
@@ -115,6 +136,7 @@ public class LockboxShare {
             LockboxFile lockboxFile,
             User owner,
             User recipient,
+            LockboxDevice targetDevice,
             Permission permission,
             Instant expiresAt
     ) {
@@ -139,16 +161,8 @@ public class LockboxShare {
                 permission,
                 "permission"
         );
+        this.targetDevice = Objects.requireNonNull(targetDevice, "targetDevice");
         this.expiresAt = expiresAt;
-
-        if (Objects.equals(
-                owner.getId(),
-                recipient.getId()
-        )) {
-            throw new IllegalArgumentException(
-                    "A Lockbox file cannot be shared with its owner."
-            );
-        }
 
         status = Status.ACTIVE;
     }
@@ -196,6 +210,7 @@ public class LockboxShare {
                 recipient,
                 "recipient"
         );
+        Objects.requireNonNull(targetDevice, "targetDevice");
 
         Objects.requireNonNull(
                 status,
@@ -207,11 +222,10 @@ public class LockboxShare {
                 "permission"
         );
 
-        if (owner.getId() != null
-                && owner.getId().equals(recipient.getId())) {
-            throw new IllegalStateException(
-                    "The owner cannot be the share recipient."
-            );
+        if (targetDevice.getProfile().getUser().getId() != null
+                && recipient.getId() != null
+                && !targetDevice.getProfile().getUser().getId().equals(recipient.getId())) {
+            throw new IllegalStateException("Target device must belong to the recipient.");
         }
     }
 

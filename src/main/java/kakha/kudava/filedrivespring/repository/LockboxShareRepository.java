@@ -47,10 +47,9 @@ public interface LockboxShareRepository
             Long recipientId
     );
 
-    boolean existsByLockboxFileIdAndRecipientIdAndStatusIn(
+    boolean existsByLockboxFileIdAndTargetDeviceId(
             Long lockboxFileId,
-            Long recipientId,
-            Collection<LockboxShare.Status> statuses
+            Long targetDeviceId
     );
 
     List<LockboxShare>
@@ -81,7 +80,19 @@ public interface LockboxShareRepository
         join fetch s.lockboxFile lf
         join fetch lf.file metadata
         join fetch s.owner
+        join fetch s.targetDevice target
+        join LockboxShareEnvelope envelope on envelope.share = s
+        join envelope.recipientKey recipientKey
+        join recipientKey.device envelopeDevice
+        join envelopeDevice.profile envelopeProfile
         where s.recipient.id = :recipientId
+          and target.deviceUuid = :deviceUuid
+          and envelopeDevice = target
+          and envelopeDevice.status = kakha.kudava.filedrivespring.model.LockboxDevice.Status.ACTIVE
+          and recipientKey.status = kakha.kudava.filedrivespring.model.LockboxKey.Status.ACTIVE
+          and recipientKey.role = kakha.kudava.filedrivespring.model.LockboxKey.Role.ENCRYPTION
+          and recipientKey.algorithm = kakha.kudava.filedrivespring.model.LockboxKey.Algorithm.ML_KEM_1024
+          and envelopeProfile.user.id = :recipientId
           and s.status = :status
           and (s.expiresAt is null or s.expiresAt > :now)
           and metadata.deleted = false
@@ -90,6 +101,7 @@ public interface LockboxShareRepository
         """)
     List<LockboxShare> findReceivedAvailableShares(
             @Param("recipientId") Long recipientId,
+            @Param("deviceUuid") UUID deviceUuid,
             @Param("status") LockboxShare.Status status,
             @Param("now") Instant now,
             Pageable pageable
@@ -101,8 +113,20 @@ public interface LockboxShareRepository
         join fetch s.lockboxFile lf
         join fetch lf.file metadata
         join fetch s.owner
+        join fetch s.targetDevice target
+        join LockboxShareEnvelope envelope on envelope.share = s
+        join envelope.recipientKey recipientKey
+        join recipientKey.device envelopeDevice
+        join envelopeDevice.profile envelopeProfile
         where s.shareUuid = :shareUuid
           and s.recipient.id = :recipientId
+          and target.deviceUuid = :deviceUuid
+          and envelopeDevice = target
+          and envelopeDevice.status = kakha.kudava.filedrivespring.model.LockboxDevice.Status.ACTIVE
+          and recipientKey.status = kakha.kudava.filedrivespring.model.LockboxKey.Status.ACTIVE
+          and recipientKey.role = kakha.kudava.filedrivespring.model.LockboxKey.Role.ENCRYPTION
+          and recipientKey.algorithm = kakha.kudava.filedrivespring.model.LockboxKey.Algorithm.ML_KEM_1024
+          and envelopeProfile.user.id = :recipientId
           and s.status = :status
           and (s.expiresAt is null or s.expiresAt > :now)
           and metadata.deleted = false
@@ -111,6 +135,7 @@ public interface LockboxShareRepository
     Optional<LockboxShare> findReceivedAvailableShare(
             @Param("shareUuid") UUID shareUuid,
             @Param("recipientId") Long recipientId,
+            @Param("deviceUuid") UUID deviceUuid,
             @Param("status") LockboxShare.Status status,
             @Param("now") Instant now
     );

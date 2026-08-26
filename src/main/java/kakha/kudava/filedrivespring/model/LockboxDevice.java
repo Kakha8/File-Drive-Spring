@@ -18,6 +18,10 @@ import java.util.UUID;
                 @UniqueConstraint(
                         name = "uk_cse_devices_device_uuid",
                         columnNames = "device_uuid"
+                ),
+                @UniqueConstraint(
+                        name = "uk_lockbox_device_profile_installation",
+                        columnNames = {"profile_id", "installation_handle"}
                 )
         },
         indexes = {
@@ -55,6 +59,11 @@ public class LockboxDevice {
     )
     private UUID deviceUuid;
 
+    /** Nullable only while legacy development rows are migrated. */
+    @Getter(AccessLevel.NONE)
+    @Column(name = "installation_handle", length = 32, updatable = false)
+    private byte[] installationHandle;
+
     @Column(
             name = "display_name",
             nullable = false,
@@ -89,6 +98,7 @@ public class LockboxDevice {
     public LockboxDevice(
             LockboxProfile profile,
             UUID deviceUuid,
+            byte[] installationHandle,
             String displayName
     ) {
         this.profile = Objects.requireNonNull(
@@ -100,9 +110,14 @@ public class LockboxDevice {
                 deviceUuid,
                 "deviceUuid"
         );
+        this.installationHandle = requireInstallationHandle(installationHandle);
 
         this.displayName = requireDisplayName(displayName);
         this.status = Status.ACTIVE;
+    }
+
+    public byte[] getInstallationHandle() {
+        return installationHandle == null ? null : installationHandle.clone();
     }
 
     public void activate() {
@@ -149,6 +164,9 @@ public class LockboxDevice {
         Objects.requireNonNull(status, "status");
 
         displayName = requireDisplayName(displayName);
+        if (installationHandle != null) {
+            installationHandle = requireInstallationHandle(installationHandle);
+        }
 
         Instant now = Instant.now();
 
@@ -166,6 +184,9 @@ public class LockboxDevice {
         Objects.requireNonNull(status, "status");
 
         displayName = requireDisplayName(displayName);
+        if (installationHandle != null) {
+            installationHandle = requireInstallationHandle(installationHandle);
+        }
     }
 
     private static String requireDisplayName(String value) {
@@ -190,6 +211,15 @@ public class LockboxDevice {
         }
 
         return normalized;
+    }
+
+    private static byte[] requireInstallationHandle(byte[] value) {
+        if (value == null || value.length != 32) {
+            throw new IllegalArgumentException(
+                    "Installation handle must contain exactly 32 bytes."
+            );
+        }
+        return value.clone();
     }
 
     public enum Status {

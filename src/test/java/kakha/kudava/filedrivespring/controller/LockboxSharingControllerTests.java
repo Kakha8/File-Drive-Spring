@@ -5,6 +5,9 @@ import kakha.kudava.filedrivespring.dto.lockbox.LockboxRecipientKeysResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxReceivedShareResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxReceivedSharesResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxShareResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxOwnDeviceKeyResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxOwnDeviceResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxOwnDevicesResponse;
 import kakha.kudava.filedrivespring.exceptions.LockboxApiException;
 import kakha.kudava.filedrivespring.services.lockbox.LockboxSharingService;
 import org.junit.jupiter.api.Test;
@@ -48,6 +51,8 @@ class LockboxSharingControllerTests {
     void unauthenticatedSharingRoutesAreRejected() throws Exception {
         mvc.perform(get("/api/lockbox/share-recipients/alice/keys"))
                 .andExpect(status().isForbidden());
+        mvc.perform(get("/api/lockbox/devices"))
+                .andExpect(status().isForbidden());
         mvc.perform(get("/api/lockbox/shares/received"))
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/lockbox/shares/received/11223344-5566-4788-99aa-bbccddeeff00"))
@@ -60,19 +65,39 @@ class LockboxSharingControllerTests {
 
     @Test
     @WithMockUser(roles = "USER")
+    void ownDevicesReturnsEncryptionKeysAndHonorsExclusion() throws Exception {
+        UUID excluded = UUID.randomUUID();
+        UUID target = UUID.randomUUID();
+        when(sharingService.ownDevices(excluded)).thenReturn(new LockboxOwnDevicesResponse(List.of(
+                new LockboxOwnDeviceResponse(target, "Laptop", "ACTIVE", List.of(
+                        new LockboxOwnDeviceKeyResponse("key-id", "ML_KEM_1024", "public-key")))
+        )));
+
+        mvc.perform(get("/api/lockbox/devices").param("excludeDeviceId", excluded.toString()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.devices[0].deviceId").value(target.toString()))
+                .andExpect(jsonPath("$.devices[0].encryptionKeys[0].algorithm").value("ML_KEM_1024"));
+        verify(sharingService).ownDevices(excluded);
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
     void receivedListAndIndividualReturnNoStoreContracts() throws Exception {
         UUID shareId = UUID.fromString("11223344-5566-4788-99aa-bbccddeeff00");
+        UUID deviceId = UUID.randomUUID();
         LockboxReceivedShareResponse share = received(shareId);
-        when(sharingService.receivedShares())
+        when(sharingService.receivedShares(deviceId))
                 .thenReturn(new LockboxReceivedSharesResponse(List.of(share)));
-        when(sharingService.receivedShare(shareId)).thenReturn(share);
+        when(sharingService.receivedShare(shareId, deviceId)).thenReturn(share);
 
-        mvc.perform(get("/api/lockbox/shares/received"))
+        mvc.perform(get("/api/lockbox/shares/received").param("deviceId", deviceId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.shares").isArray())
                 .andExpect(jsonPath("$.shares[0].shareId").value(shareId.toString()));
-        mvc.perform(get("/api/lockbox/shares/received/{shareUuid}", shareId))
+        mvc.perform(get("/api/lockbox/shares/received/{shareUuid}", shareId)
+                        .param("deviceId", deviceId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.shareId").value(shareId.toString()));
@@ -82,14 +107,17 @@ class LockboxSharingControllerTests {
     @WithMockUser(roles = "USER")
     void unavailableAndMalformedReceivedShareIdsAreStableClientErrors() throws Exception {
         UUID shareId = UUID.randomUUID();
-        when(sharingService.receivedShare(shareId)).thenThrow(new LockboxApiException(
+        UUID deviceId = UUID.randomUUID();
+        when(sharingService.receivedShare(shareId, deviceId)).thenThrow(new LockboxApiException(
                 "LOCKBOX_SHARE_UNAVAILABLE", HttpStatus.NOT_FOUND,
                 "The shared Lockbox file is unavailable."));
 
-        mvc.perform(get("/api/lockbox/shares/received/{shareUuid}", shareId))
+        mvc.perform(get("/api/lockbox/shares/received/{shareUuid}", shareId)
+                        .param("deviceId", deviceId.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("LOCKBOX_SHARE_UNAVAILABLE"));
-        mvc.perform(get("/api/lockbox/shares/received/not-a-uuid"))
+        mvc.perform(get("/api/lockbox/shares/received/not-a-uuid")
+                        .param("deviceId", deviceId.toString()))
                 .andExpect(status().is4xxClientError());
     }
 

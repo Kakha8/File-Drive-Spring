@@ -28,7 +28,13 @@ class LockboxShareEnvelopeParserTests {
     @Test void rejectsWrongLengthsAndTrailingBytes(){reject(Arrays.copyOf(valid(),1857));reject(Arrays.copyOf(valid(),1859));}
     @Test void rejectsMagicVersionAndSuite(){mutate(0);mutate16(8,2);mutate16(10,2);}
     @Test void rejectsInnerLengths(){mutate32(234,1567);mutate32(238,47);}
-    @Test void rejectsZeroAndEqualUuids(){zero(12,16);zero(28,16);zero(116,16);zero(132,16);byte[]p=valid();System.arraycopy(p,116,p,132,16);reject(p);}
+    @Test void rejectsZeroUuids(){zero(12,16);zero(28,16);zero(116,16);zero(132,16);}
+    @Test void acceptsEqualOwnerAndRecipientUuidsForSelfSharing(){
+        byte[] p=valid();
+        System.arraycopy(p,116,p,132,16);
+        var context=parser.parse(p);
+        assertEquals(context.ownerPublicUuid(),context.recipientPublicUuid());
+    }
     @Test void rejectsMalformedUuidEncoding(){byte[]p=valid();p[12+6]&=0x0f;reject(p);}
     @Test void rejectsZeroRevisionHashAndKeyId(){zero(44,8);zero(52,64);zero(148,32);}
     @Test void rejectsUnsupportedPermission(){mutate16(180,2);}

@@ -1,9 +1,11 @@
 package kakha.kudava.filedrivespring.services.lockbox;
 
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxEnrollmentChallengeResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxEnrollmentBeginRequest;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxEnrollmentCompleteRequest;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxEnrollmentCompleteResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxStatusResponse;
+import kakha.kudava.filedrivespring.exceptions.LockboxApiException;
 import kakha.kudava.filedrivespring.model.*;
 import kakha.kudava.filedrivespring.repository.LockboxDeviceRepository;
 import kakha.kudava.filedrivespring.repository.LockboxEnrollmentChallengeRepository;
@@ -71,10 +73,21 @@ public class LockboxEnrollmentService {
      * is persisted.
      */
     @Transactional
-    public LockboxEnrollmentChallengeResponse beginEnrollment() {
+    public LockboxEnrollmentChallengeResponse beginEnrollment(
+            LockboxEnrollmentBeginRequest request
+    ) {
+        if (request == null) {
+            throw badRequest("Enrollment request is required.");
+        }
         User user = access.currentUser();
-
-        rejectAlreadyEnabledAccount(user);
+        UUID deviceId = requireDeviceId(request.deviceId());
+        String deviceName = requireDeviceName(request.deviceName());
+        byte[] installationHandle = decodeCanonicalBase64Exact(
+                request.installationHandle(), 32, "installationHandle");
+        rejectInstallationConflict(user, installationHandle);
+        if (deviceRepository.existsByDeviceUuid(deviceId)) {
+            throw conflict("This Lockbox device is already registered.");
+        }
         cancelExistingPendingChallenges(user);
 
         byte[] challenge = generateChallenge();
@@ -91,6 +104,9 @@ public class LockboxEnrollmentService {
                         user,
                         enrollmentId,
                         challengeHash,
+                        deviceId,
+                        deviceName,
+                        installationHandle,
                         expiresAt
                 );
 
@@ -107,13 +123,12 @@ public class LockboxEnrollmentService {
         );
     }
 
-    private void rejectAlreadyEnabledAccount(User user) {
-        if (profileRepository.existsByUserId(user.getId())) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Lockbox is already enabled for this account."
-            );
-        }
+    private void rejectInstallationConflict(User user, byte[] installationHandle) {
+        profileRepository.findByUserId(user.getId()).ifPresent(profile ->
+                deviceRepository.findByProfileIdAndInstallationHandle(
+                        profile.getId(), installationHandle).ifPresent(device -> {
+                    throw conflict("This installation already has a Lockbox device.");
+                }));
     }
 
     private void cancelExistingPendingChallenges(User user) {
@@ -199,13 +214,6 @@ public class LockboxEnrollmentService {
         requirePendingEnrollment(enrollment);
         requireUnexpiredEnrollment(enrollment);
 
-        if (profileRepository.existsByUserId(user.getId())) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Lockbox is already enabled for this account."
-            );
-        }
-
         byte[] challenge = decodeBase64Exact(
                 request.challenge(),
                 CHALLENGE_LENGTH,
@@ -213,6 +221,15 @@ public class LockboxEnrollmentService {
         );
 
         verifyChallenge(enrollment, challenge);
+
+        byte[] installationHandle = decodeCanonicalBase64Exact(
+                request.installationHandle(), 32, "installationHandle");
+        if (!Objects.equals(enrollment.getDeviceUuid(), request.deviceId())
+                || !enrollment.getDeviceName().equals(requireDeviceName(request.deviceName()))
+                || !MessageDigest.isEqual(enrollment.getInstallationHandle(), installationHandle)) {
+            throw invalidInstallationHandle(
+                    "Enrollment context does not match the enrollment challenge.");
+        }
 
         DecodedEnrollmentKeys keys =
                 decodeEnrollmentKeys(request);
@@ -236,6 +253,7 @@ public class LockboxEnrollmentService {
                 challenge,
                 enrollment.getExpiresAt(),
                 requireDeviceId(request.deviceId()),
+                installationHandle,
                 requireDeviceName(request.deviceName()),
                 keys.encryptionKeyId(),
                 keys.encryptionPublicKey(),
@@ -253,16 +271,20 @@ public class LockboxEnrollmentService {
          * No persistent identity records are created until all
          * cryptographic checks above succeed.
          */
-        LockboxProfile profile =
-                profileRepository.save(
-                        new LockboxProfile(user)
-                );
+        LockboxProfile profile = profileRepository.findByUserId(user.getId())
+                .orElseGet(() -> profileRepository.save(new LockboxProfile(user)));
+
+        if (deviceRepository.findByProfileIdAndInstallationHandle(
+                profile.getId(), installationHandle).isPresent()) {
+            throw conflict("This installation already has a Lockbox device.");
+        }
 
         LockboxDevice device =
                 deviceRepository.save(
                         new LockboxDevice(
                                 profile,
                                 request.deviceId(),
+                                installationHandle,
                                 request.deviceName()
                         )
                 );
@@ -517,6 +539,37 @@ public class LockboxEnrollmentService {
         }
 
         return decoded;
+    }
+
+    private byte[] decodeCanonicalBase64Exact(
+            String value, int expectedLength, String fieldName
+    ) {
+        if (value == null || value.isBlank()) {
+            throw invalidInstallationHandle(fieldName + " is required.");
+        }
+        final byte[] decoded;
+        try {
+            decoded = Base64.getDecoder().decode(value);
+        } catch (IllegalArgumentException exception) {
+            throw invalidInstallationHandle(fieldName + " is not valid Base64.");
+        }
+        if (decoded.length != expectedLength) {
+            throw invalidInstallationHandle(
+                    fieldName + " must decode to exactly " + expectedLength + " bytes.");
+        }
+        if (!Base64.getEncoder().encodeToString(decoded).equals(value)) {
+            throw invalidInstallationHandle(fieldName + " must use canonical Base64.");
+        }
+        return decoded;
+    }
+
+    private LockboxApiException conflict(String message) {
+        return new LockboxApiException(
+                "LOCKBOX_INSTALLATION_CONFLICT", HttpStatus.CONFLICT, message);
+    }
+
+    private LockboxApiException invalidInstallationHandle(String message) {
+        return LockboxApiException.bad("INVALID_INSTALLATION_HANDLE", message);
     }
 
     private String encodeBase64(byte[] value) {

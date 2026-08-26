@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.controller;
 
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxEnrollmentChallengeResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxEnrollmentBeginRequest;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxEnrollmentCompleteRequest;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxEnrollmentCompleteResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxStatusResponse;
@@ -25,8 +26,10 @@ public class LockboxEnrollmentController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public LockboxEnrollmentChallengeResponse beginEnrollment() {
-        return enrollmentService.beginEnrollment();
+    public LockboxEnrollmentChallengeResponse beginEnrollment(
+            @RequestBody LockboxEnrollmentBeginRequest request
+    ) {
+        return enrollmentService.beginEnrollment(request);
     }
 
     @PostMapping("/{enrollmentId}/complete")

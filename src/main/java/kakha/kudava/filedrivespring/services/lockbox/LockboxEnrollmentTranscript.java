@@ -14,7 +14,7 @@ import java.util.UUID;
 public final class LockboxEnrollmentTranscript {
 
     private static final byte[] DOMAIN =
-            "FD-LOCKBOX-DEVICE-ENROLLMENT-V1\0"
+            "FD-LOCKBOX-DEVICE-ENROLLMENT-V2\0"
                     .getBytes(StandardCharsets.US_ASCII);
 
     private static final int CHALLENGE_LENGTH = 32;
@@ -37,6 +37,7 @@ public final class LockboxEnrollmentTranscript {
      * challenge                          32 bytes
      * expiresAtUnixMillis                i64 little-endian
      * deviceId                           16 RFC-4122 UUID bytes
+     * installationHandle                 32 bytes
      * deviceNameLength                   u16 little-endian
      * deviceName                         normalized UTF-8
      * encryptionAlgorithmId              u16 little-endian
@@ -53,6 +54,7 @@ public final class LockboxEnrollmentTranscript {
             byte[] challenge,
             Instant expiresAt,
             UUID deviceId,
+            byte[] installationHandle,
             String deviceName,
             byte[] encryptionKeyId,
             byte[] encryptionPublicKey,
@@ -77,6 +79,7 @@ public final class LockboxEnrollmentTranscript {
                 CHALLENGE_LENGTH,
                 "challenge"
         );
+        requireLength(installationHandle, 32, "installationHandle");
 
         requireLength(
                 encryptionKeyId,
@@ -118,6 +121,7 @@ public final class LockboxEnrollmentTranscript {
         );
 
         output.writeBytes(encodeUuid(deviceId));
+        output.writeBytes(installationHandle);
 
         writeU16LittleEndian(
                 output,

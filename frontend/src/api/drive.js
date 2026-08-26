@@ -1,8 +1,8 @@
 import { apiFetch } from "./http";
 import { refresh } from "./auth";
 import { getAccessToken } from "./tokenstore";
+import { API_BASE_URL } from "./config";
 
-const API_BASE_URL = "https://localhost:8443";
 export async function getRootFolder() {
     const response = await apiFetch("/api/folders/root");
 

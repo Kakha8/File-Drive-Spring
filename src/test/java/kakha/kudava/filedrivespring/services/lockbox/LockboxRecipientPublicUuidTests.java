@@ -43,13 +43,13 @@ class LockboxRecipientPublicUuidTests {
     }
 
     private static LockboxKey encryptionKey(User user){
-        LockboxProfile profile=new LockboxProfile(user);LockboxDevice device=new LockboxDevice(profile,UUID.randomUUID(),"device");
+        LockboxProfile profile=new LockboxProfile(user);LockboxDevice device=new LockboxDevice(profile,UUID.randomUUID(),new byte[32],"device");
         return new LockboxKey(device,LockboxKey.Role.ENCRYPTION,LockboxKey.Algorithm.ML_KEM_1024,new byte[32],new byte[]{1});
     }
     private static User user(Long id,String name,UUID uuid){User u=new User();u.setId(id);u.setUsername(name);u.setPublicUuid(uuid);return u;}
     private static final class Fixture {
         final UserRepository users=mock(UserRepository.class);final LockboxKeyRepository keys=mock(LockboxKeyRepository.class);
         final ResourceAccessService access=mock(ResourceAccessService.class);
-        LockboxSharingService service(){return new LockboxSharingService(users,keys,access,mock(LockboxFileRepository.class),mock(LockboxShareRepository.class),mock(LockboxShareEnvelopeRepository.class),new LockboxShareEnvelopeParser(),mock(LockboxSignatureVerifier.class),mock(LockboxObjectStorage.class));}
+        LockboxSharingService service(){return new LockboxSharingService(users,keys,access,mock(LockboxFileRepository.class),mock(LockboxShareRepository.class),mock(LockboxShareEnvelopeRepository.class),new LockboxShareEnvelopeParser(),mock(LockboxSignatureVerifier.class),mock(LockboxObjectStorage.class),mock(LockboxDeviceRepository.class));}
     }
 }

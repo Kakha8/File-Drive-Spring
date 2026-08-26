@@ -66,6 +66,16 @@ public class LockboxEnrollmentChallenge {
     )
     private byte[] challengeHash;
 
+    @Column(name = "device_uuid", updatable = false)
+    private UUID deviceUuid;
+
+    @Column(name = "device_name", length = 100, updatable = false)
+    private String deviceName;
+
+    @Getter(AccessLevel.NONE)
+    @Column(name = "installation_handle", length = 32, updatable = false)
+    private byte[] installationHandle;
+
     @Enumerated(EnumType.STRING)
     @Column(
             name = "status",
@@ -95,6 +105,9 @@ public class LockboxEnrollmentChallenge {
             User user,
             UUID enrollmentId,
             byte[] challengeHash,
+            UUID deviceUuid,
+            String deviceName,
+            byte[] installationHandle,
             Instant expiresAt
     ) {
         this.user = Objects.requireNonNull(user, "user");
@@ -104,6 +117,9 @@ public class LockboxEnrollmentChallenge {
         );
         this.challengeHash =
                 requireChallengeHash(challengeHash);
+        this.deviceUuid = Objects.requireNonNull(deviceUuid, "deviceUuid");
+        this.deviceName = requireDeviceName(deviceName);
+        this.installationHandle = requireInstallationHandle(installationHandle);
         this.expiresAt = Objects.requireNonNull(
                 expiresAt,
                 "expiresAt"
@@ -113,6 +129,10 @@ public class LockboxEnrollmentChallenge {
 
     public byte[] getChallengeHash() {
         return challengeHash.clone();
+    }
+
+    public byte[] getInstallationHandle() {
+        return installationHandle == null ? null : installationHandle.clone();
     }
 
     public boolean isExpired(Instant now) {
@@ -155,6 +175,9 @@ public class LockboxEnrollmentChallenge {
 
         challengeHash =
                 requireChallengeHash(challengeHash);
+        if (installationHandle != null) {
+            installationHandle = requireInstallationHandle(installationHandle);
+        }
 
         if (createdAt == null) {
             createdAt = Instant.now();
@@ -173,6 +196,20 @@ public class LockboxEnrollmentChallenge {
 
         challengeHash =
                 requireChallengeHash(challengeHash);
+    }
+
+    private static byte[] requireInstallationHandle(byte[] value) {
+        if (value == null || value.length != 32) {
+            throw new IllegalArgumentException("Installation handle must contain exactly 32 bytes.");
+        }
+        return value.clone();
+    }
+
+    private static String requireDeviceName(String value) {
+        if (value == null || value.isBlank() || value.trim().length() > 100) {
+            throw new IllegalArgumentException("Device name is invalid.");
+        }
+        return value.trim();
     }
 
     private static byte[] requireChallengeHash(byte[] value) {

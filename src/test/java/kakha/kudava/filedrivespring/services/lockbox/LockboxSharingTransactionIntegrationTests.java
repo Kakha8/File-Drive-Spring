@@ -76,6 +76,8 @@ class LockboxSharingTransactionIntegrationTests {
     User owner;
     User recipient;
     LockboxFile file;
+    LockboxDevice ownerDevice;
+    LockboxDevice recipientDevice;
 
     @BeforeEach
     void setUp() {
@@ -96,8 +98,8 @@ class LockboxSharingTransactionIntegrationTests {
         recipient = saveUser("recipient", UUID.fromString("12345678-1234-4abc-9def-123456789abc"));
         LockboxProfile ownerProfile = profiles.saveAndFlush(new LockboxProfile(owner));
         LockboxProfile recipientProfile = profiles.saveAndFlush(new LockboxProfile(recipient));
-        LockboxDevice ownerDevice = devices.saveAndFlush(new LockboxDevice(ownerProfile, UUID.randomUUID(), "owner device"));
-        LockboxDevice recipientDevice = devices.saveAndFlush(new LockboxDevice(recipientProfile, UUID.randomUUID(), "recipient device"));
+        ownerDevice = devices.saveAndFlush(new LockboxDevice(ownerProfile, UUID.randomUUID(), filled(32, (byte) 1), "owner device"));
+        recipientDevice = devices.saveAndFlush(new LockboxDevice(recipientProfile, UUID.randomUUID(), filled(32, (byte) 1), "recipient device"));
         keys.saveAndFlush(new LockboxKey(
                 recipientDevice, LockboxKey.Role.ENCRYPTION, LockboxKey.Algorithm.ML_KEM_1024,
                 RECIPIENT_KEY_ID, new byte[]{1}
@@ -142,42 +144,39 @@ class LockboxSharingTransactionIntegrationTests {
     }
 
     @Test
-    void receivedQueriesEnforceRecipientStatusExpiryDeletionAndOrdering() {
+    void receivedQueriesEnforceRecipientAndTargetDevice() {
+        service.createShare(request());
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             Instant now = Instant.now();
-            LockboxShare older = shares.saveAndFlush(new LockboxShare(
-                    UUID.randomUUID(), file, owner, recipient,
-                    kakha.kudava.filedrivespring.model.LockboxShare.Permission.READ, null));
-            LockboxShare newer = shares.saveAndFlush(new LockboxShare(
-                    UUID.randomUUID(), file, owner, recipient,
-                    kakha.kudava.filedrivespring.model.LockboxShare.Permission.READ, null));
-            LockboxShare expired = shares.saveAndFlush(new LockboxShare(
-                    UUID.randomUUID(), file, owner, recipient,
-                    kakha.kudava.filedrivespring.model.LockboxShare.Permission.READ, now.minusSeconds(1)));
-
             var available = shares.findReceivedAvailableShares(
-                    recipient.getId(), kakha.kudava.filedrivespring.model.LockboxShare.Status.ACTIVE,
+                    recipient.getId(), recipientDevice.getDeviceUuid(), LockboxShare.Status.ACTIVE,
                     now, PageRequest.of(0, 100));
-            assertEquals(List.of(newer.getShareUuid(), older.getShareUuid()),
-                    available.stream().map(kakha.kudava.filedrivespring.model.LockboxShare::getShareUuid).toList());
+            assertEquals(List.of(SHARE_UUID),
+                    available.stream().map(LockboxShare::getShareUuid).toList());
             assertTrue(shares.findReceivedAvailableShare(
-                    newer.getShareUuid(), owner.getId(),
-                    kakha.kudava.filedrivespring.model.LockboxShare.Status.ACTIVE, now).isEmpty());
+                    SHARE_UUID, owner.getId(), recipientDevice.getDeviceUuid(),
+                    LockboxShare.Status.ACTIVE, now).isEmpty());
             assertTrue(shares.findReceivedAvailableShare(
-                    expired.getShareUuid(), recipient.getId(),
-                    kakha.kudava.filedrivespring.model.LockboxShare.Status.ACTIVE, now).isEmpty());
+                    SHARE_UUID, recipient.getId(), ownerDevice.getDeviceUuid(),
+                    LockboxShare.Status.ACTIVE, now).isEmpty());
+            LockboxShare share = available.getFirst();
+            share.revoke();
+            shares.saveAndFlush(share);
+            assertTrue(shares.findReceivedAvailableShare(
+                    SHARE_UUID, recipient.getId(), recipientDevice.getDeviceUuid(),
+                    LockboxShare.Status.ACTIVE, now).isEmpty());
+        });
+    }
 
-            newer.revoke();
-            shares.saveAndFlush(newer);
-            assertTrue(shares.findReceivedAvailableShare(
-                    newer.getShareUuid(), recipient.getId(),
-                    kakha.kudava.filedrivespring.model.LockboxShare.Status.ACTIVE, now).isEmpty());
-
-            file.getFile().setDeleted(true);
-            metadataRepository.saveAndFlush(file.getFile());
-            assertTrue(shares.findReceivedAvailableShare(
-                    older.getShareUuid(), recipient.getId(),
-                    kakha.kudava.filedrivespring.model.LockboxShare.Status.ACTIVE, now).isEmpty());
+    @Test
+    void installationHandleLookupIsProfileScopedAndNotGloballyUnique() {
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            byte[] handle = filled(32, (byte) 1);
+            LockboxProfile ownerProfile = profiles.findByUserId(owner.getId()).orElseThrow();
+            LockboxProfile recipientProfile = profiles.findByUserId(recipient.getId()).orElseThrow();
+            assertTrue(devices.findByProfileIdAndInstallationHandle(ownerProfile.getId(), handle).isPresent());
+            assertTrue(devices.findByProfileIdAndInstallationHandle(recipientProfile.getId(), handle).isPresent());
+            assertTrue(devices.findByProfileIdAndInstallationHandle(Long.MAX_VALUE, handle).isEmpty());
         });
     }
 

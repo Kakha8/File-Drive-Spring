@@ -1,5 +1,6 @@
 package kakha.kudava.filedrivespring.config;
 
+import jakarta.servlet.DispatcherType;
 import kakha.kudava.filedrivespring.repository.UserRepository;
 import kakha.kudava.filedrivespring.services.objects.RootFolderService;
 import kakha.kudava.filedrivespring.services.users.DbUserDetailsService;
@@ -33,40 +34,95 @@ public class SecurityConfig {
     @Value("${ADMIN_PASSWORD}")
     private String ADMIN_PASSWORD;
 
+    @Value("${app.cors.allowed-origins}")
+    private List<String> allowedOrigins;
+
     @Bean
     public SecurityFilterChain apiSecurityFilterChain(
             HttpSecurity http,
             JwtService jwtService,
             DbUserDetailsService userDetailService
     ) throws Exception {
+
         http
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
-                .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
-                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .headers(headers ->
+                        headers.frameOptions(frame -> frame.sameOrigin())
+                )
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(
+                                SessionCreationPolicy.STATELESS
+                        )
+                )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        .requestMatchers("/h2-console/**").permitAll()
+                        // StreamingResponseBody uses an asynchronous servlet dispatch.
+                        // Authorization was already performed on the original request.
+                        .dispatcherTypeMatchers(
+                                DispatcherType.ASYNC,
+                                DispatcherType.ERROR
+                        ).permitAll()
 
-                        .requestMatchers("/api/auth/login").permitAll()
-                        .requestMatchers("/api/auth/logout").permitAll()
-                        .requestMatchers("/api/auth/me").permitAll()
-                        .requestMatchers("/api/auth/refresh").permitAll()
+                        .requestMatchers(
+                                HttpMethod.OPTIONS,
+                                "/**"
+                        ).permitAll()
 
-                        .requestMatchers("/api/files", "/api/files/**").hasAnyRole("USER", "ADMIN")
-                        .requestMatchers("/api/folders/**").hasAnyRole("USER", "ADMIN")
-                        .requestMatchers("/api/download/**").hasAnyRole("USER", "ADMIN")
-                        .requestMatchers("/api/quarantine/**").hasRole("ADMIN")
-                        .requestMatchers("/api/users/search").hasAnyRole("ADMIN", "USER")
-                        .requestMatchers("/api/users", "/api/users/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/register").permitAll()
-                        .requestMatchers("/api/register/**").hasRole("ADMIN")
+                        .requestMatchers(
+                                "/h2-console/**"
+                        ).permitAll()
+
+                        .requestMatchers(
+                                "/api/auth/login",
+                                "/api/auth/logout",
+                                "/api/auth/me",
+                                "/api/auth/refresh"
+                        ).permitAll()
+
+                        .requestMatchers(
+                                "/api/files",
+                                "/api/files/**"
+                        ).hasAnyRole("USER", "ADMIN")
+
+                        .requestMatchers(
+                                "/api/folders/**"
+                        ).hasAnyRole("USER", "ADMIN")
+
+                        .requestMatchers(
+                                "/api/download/**"
+                        ).hasAnyRole("USER", "ADMIN")
+
+                        .requestMatchers(
+                                "/api/quarantine/**"
+                        ).hasRole("ADMIN")
+
+                        .requestMatchers(
+                                "/api/users/search"
+                        ).hasAnyRole("USER", "ADMIN")
+
+                        .requestMatchers(
+                                "/api/users",
+                                "/api/users/**"
+                        ).hasRole("ADMIN")
+
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/register"
+                        ).permitAll()
+
+                        .requestMatchers(
+                                "/api/register/**"
+                        ).hasRole("ADMIN")
+
                         .anyRequest().authenticated()
                 );
 
         http.addFilterBefore(
-                new JwtFilter(jwtService, userDetailService),
+                new JwtFilter(
+                        jwtService,
+                        userDetailService
+                ),
                 UsernamePasswordAuthenticationFilter.class
         );
 
@@ -76,7 +132,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        config.setAllowedOrigins(List.of("http://localhost:5173"));
+        config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         config.setExposedHeaders(List.of("Authorization"));
