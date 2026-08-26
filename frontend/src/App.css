@@ -515,6 +515,119 @@ body {
 
 /* Content layout */
 
+.lockbox-page-content {
+  flex: 1;
+  min-height: 0;
+  padding: 24px 36px 36px;
+}
+
+.lockbox-intro {
+  min-height: 260px;
+  padding: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  background: linear-gradient(135deg, #242320 0%, #202020 55%, #1d1d1d 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.lockbox-intro-icon {
+  width: 52px;
+  height: 52px;
+  margin-bottom: 24px;
+  border: 1px solid rgba(196, 174, 135, 0.22);
+  border-radius: 14px;
+  background: rgba(168, 148, 114, 0.1);
+  color: #c4ae87;
+  display: grid;
+  place-items: center;
+}
+
+.lockbox-intro-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.lockbox-eyebrow {
+  margin: 0 0 8px;
+  color: #a89472 !important;
+  font-size: 12px !important;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.lockbox-intro h1 {
+  margin: 0 0 10px;
+  color: #fff;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.lockbox-intro p {
+  max-width: 500px;
+  margin: 0;
+  color: #9d9d9d;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.lockbox-status {
+  min-width: 330px;
+  margin-top: 30px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lockbox-status-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #777;
+  box-shadow: 0 0 0 4px rgba(119, 119, 119, 0.12);
+}
+
+.lockbox-status.activated .lockbox-status-dot {
+  background: #72b889;
+  box-shadow: 0 0 0 4px rgba(114, 184, 137, 0.12);
+}
+
+.lockbox-status.suspended .lockbox-status-dot,
+.lockbox-status-dot.error {
+  background: #c68b72;
+  box-shadow: 0 0 0 4px rgba(198, 139, 114, 0.12);
+}
+
+.lockbox-status-dot.loading {
+  background: #a89472;
+  box-shadow: 0 0 0 4px rgba(168, 148, 114, 0.12);
+}
+
+.lockbox-status span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lockbox-status strong {
+  color: #eee;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lockbox-status small {
+  color: #8e8e8e;
+  font-size: 12px;
+}
+
 .content-layout {
   flex: 1;
   min-height: 0;
