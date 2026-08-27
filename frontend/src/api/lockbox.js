@@ -23,3 +23,14 @@ export async function getLockboxStatus() {
 
     return response.json();
 }
+
+export async function getRegisteredDevices() {
+    const response = await apiFetch("/api/lockbox/devices");
+
+    if (!response.ok) {
+        throw new Error("Failed to load registered devices");
+    }
+
+    const result = await response.json();
+    return Array.isArray(result.devices) ? result.devices : [];
+}

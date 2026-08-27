@@ -519,40 +519,70 @@ body {
   flex: 1;
   min-height: 0;
   padding: 24px 36px 36px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.lockbox-page-content::-webkit-scrollbar {
+  width: 10px;
+}
+
+.lockbox-page-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lockbox-page-content::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: #344153;
+  background-clip: padding-box;
+}
+
+.lockbox-page-content::-webkit-scrollbar-thumb:hover {
+  background: #465a73;
+  background-clip: padding-box;
 }
 
 .lockbox-intro {
-  min-height: 260px;
-  padding: 42px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  min-height: 0;
+  padding: 26px 28px;
+  border: 1px solid rgba(96, 165, 250, 0.1);
   border-radius: 16px;
-  background: linear-gradient(135deg, #242320 0%, #202020 55%, #1d1d1d 100%);
+  background: #171c23;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.lockbox-intro-copy {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
 
 .lockbox-intro-icon {
-  width: 52px;
-  height: 52px;
-  margin-bottom: 24px;
-  border: 1px solid rgba(196, 174, 135, 0.22);
-  border-radius: 14px;
-  background: rgba(168, 148, 114, 0.1);
-  color: #c4ae87;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  color: #7db3f4;
   display: grid;
   place-items: center;
 }
 
 .lockbox-intro-icon svg {
-  width: 28px;
-  height: 28px;
+  width: 25px;
+  height: 25px;
 }
 
 .lockbox-eyebrow {
   margin: 0 0 8px;
-  color: #a89472 !important;
+  color: #7aa7df !important;
   font-size: 12px !important;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -560,9 +590,9 @@ body {
 }
 
 .lockbox-intro h1 {
-  margin: 0 0 10px;
+  margin: 0 0 6px;
   color: #fff;
-  font-size: 28px;
+  font-size: 23px;
   font-weight: 600;
 }
 
@@ -570,17 +600,17 @@ body {
   max-width: 500px;
   margin: 0;
   color: #9d9d9d;
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .lockbox-status {
-  min-width: 330px;
-  margin-top: 30px;
-  padding: 14px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  min-width: 310px;
+  margin-top: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.025);
+  background: #1c232c;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -607,8 +637,8 @@ body {
 }
 
 .lockbox-status-dot.loading {
-  background: #a89472;
-  box-shadow: 0 0 0 4px rgba(168, 148, 114, 0.12);
+  background: #60a5fa;
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.12);
 }
 
 .lockbox-status span:last-child {
@@ -626,6 +656,106 @@ body {
 .lockbox-status small {
   color: #8e8e8e;
   font-size: 12px;
+}
+
+.lockbox-devices {
+  margin-top: 24px;
+  border: 1px solid rgba(96, 165, 250, 0.08);
+  border-radius: 16px;
+  background: #171c23;
+  overflow: hidden;
+}
+
+.lockbox-section-heading {
+  padding: 24px 26px 20px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.lockbox-section-heading h2 {
+  margin: 0;
+  color: #f3f3f3;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.lockbox-section-heading > span {
+  color: #777;
+  font-size: 12px;
+}
+
+.lockbox-device-row {
+  min-height: 62px;
+  padding: 0 26px;
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) minmax(170px, 1fr) minmax(170px, 1fr) 110px;
+  align-items: center;
+  gap: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  color: #a9a9a9;
+  font-size: 13px;
+}
+
+.lockbox-device-row:not(.lockbox-device-head):hover {
+  background: rgba(59, 130, 246, 0.035);
+}
+
+.lockbox-device-row strong {
+  color: #e8e8e8;
+  font-weight: 500;
+}
+
+.lockbox-device-head {
+  min-height: 42px;
+  color: #777;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.device-status-badge {
+  display: inline-flex;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(190, 111, 98, 0.1);
+  color: #cf887c;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.device-status-badge.active {
+  background: rgba(114, 184, 137, 0.1);
+  color: #82c597;
+}
+
+.lockbox-device-message {
+  padding: 28px 26px;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  color: #888;
+  font-size: 13px;
+}
+
+.lockbox-device-message.error {
+  color: #cf887c;
+}
+
+@media (max-width: 850px) {
+  .lockbox-intro {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .lockbox-status {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .lockbox-device-table { overflow-x: auto; }
+  .lockbox-device-row { min-width: 760px; }
 }
 
 .content-layout {

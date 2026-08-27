@@ -87,7 +87,7 @@ public class LockboxSharingService {
     public LockboxOwnDevicesResponse ownDevices(UUID excludeDeviceId) {
         User user = access.currentUser();
         List<LockboxDevice> owned = devices.findOwnedDevices(
-                user.getId(), LockboxDevice.Status.ACTIVE, excludeDeviceId);
+                user.getId(), excludeDeviceId);
         Map<Long, List<LockboxOwnDeviceKeyResponse>> keysByDevice = new LinkedHashMap<>();
         Base64.Encoder base64 = Base64.getEncoder();
         for (LockboxKey key : keys.findOwnedActiveEncryptionKeys(
@@ -103,6 +103,7 @@ public class LockboxSharingService {
         return new LockboxOwnDevicesResponse(owned.stream()
                 .map(device -> new LockboxOwnDeviceResponse(
                         device.getDeviceUuid(), device.getDisplayName(), device.getStatus().name(),
+                        device.getCreatedAt(), device.getLastSeenAt(),
                         keysByDevice.getOrDefault(device.getId(), List.of())))
                 .toList());
     }

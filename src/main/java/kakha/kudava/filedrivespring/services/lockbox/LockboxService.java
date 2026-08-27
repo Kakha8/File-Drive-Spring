@@ -112,7 +112,6 @@ public class LockboxService {
             MultipartFile signature,
             Long parentId
     ) throws Exception {
-
         User user = access.currentUser();
 
         LockboxProfile profile = profiles

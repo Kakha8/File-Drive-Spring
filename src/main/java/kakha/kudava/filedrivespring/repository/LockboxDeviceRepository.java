@@ -40,13 +40,11 @@ public interface LockboxDeviceRepository extends JpaRepository<LockboxDevice, Lo
         select d from LockboxDevice d
         join fetch d.profile p
         where p.user.id = :userId
-          and d.status = :status
           and (:excludeDeviceId is null or d.deviceUuid <> :excludeDeviceId)
         order by d.createdAt asc, d.deviceUuid asc
         """)
     List<LockboxDevice> findOwnedDevices(
             @Param("userId") Long userId,
-            @Param("status") LockboxDevice.Status status,
             @Param("excludeDeviceId") UUID excludeDeviceId
     );
 

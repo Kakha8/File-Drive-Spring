@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import DriveSidebar from "../components/DriveSidebar";
 import NotificationMenu from "../components/NotificationMenu";
 import UserMenu from "../components/UserMenu";
-import { getLockboxStatus } from "../api/lockbox";
+import { getLockboxStatus, getRegisteredDevices } from "../api/lockbox";
 
 function SafeIcon({ className = "" }) {
     return (
@@ -15,9 +15,26 @@ function SafeIcon({ className = "" }) {
     );
 }
 
+function formatDate(value, fallback = "Never") {
+    if (!value) return fallback;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return fallback;
+
+    return new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+    }).format(date);
+}
+
 export default function Lockbox({ sidebarOpen, onToggleSidebar, onLogout }) {
     const [status, setStatus] = useState(null);
     const [statusError, setStatusError] = useState("");
+    const [devices, setDevices] = useState([]);
+    const [devicesLoading, setDevicesLoading] = useState(true);
+    const [devicesError, setDevicesError] = useState("");
 
     useEffect(() => {
         let cancelled = false;
@@ -28,6 +45,17 @@ export default function Lockbox({ sidebarOpen, onToggleSidebar, onLogout }) {
             })
             .catch((error) => {
                 if (!cancelled) setStatusError(error.message || "Unable to check Lockbox status");
+            });
+
+        getRegisteredDevices()
+            .then((result) => {
+                if (!cancelled) setDevices(result);
+            })
+            .catch((error) => {
+                if (!cancelled) setDevicesError(error.message || "Unable to load registered devices");
+            })
+            .finally(() => {
+                if (!cancelled) setDevicesLoading(false);
             });
 
         return () => {
@@ -53,10 +81,14 @@ export default function Lockbox({ sidebarOpen, onToggleSidebar, onLogout }) {
 
                 <section className="lockbox-page-content">
                     <div className="lockbox-intro">
-                        <span className="lockbox-intro-icon"><SafeIcon /></span>
-                        <p className="lockbox-eyebrow">Private storage</p>
-                        <h1>Your Lockbox</h1>
-                        <p>Keep your most sensitive files protected in a dedicated, encrypted space.</p>
+                        <div className="lockbox-intro-copy">
+                            <span className="lockbox-intro-icon"><SafeIcon /></span>
+                            <div>
+                                <p className="lockbox-eyebrow">Private storage</p>
+                                <h1>Your Lockbox</h1>
+                                <p>Keep your most sensitive files protected in a dedicated, encrypted space.</p>
+                            </div>
+                        </div>
 
                         <div className={`lockbox-status ${isActivated ? "activated" : isSuspended ? "suspended" : "inactive"}`} role="status">
                             {!status && !statusError && (
@@ -76,6 +108,36 @@ export default function Lockbox({ sidebarOpen, onToggleSidebar, onLogout }) {
                             )}
                         </div>
                     </div>
+
+                    <section className="lockbox-devices" aria-labelledby="registered-devices-title">
+                        <div className="lockbox-section-heading">
+                            <div>
+                                <p className="lockbox-eyebrow">Account security</p>
+                                <h2 id="registered-devices-title">Registered devices</h2>
+                            </div>
+                            {!devicesLoading && !devicesError && <span>{devices.length} {devices.length === 1 ? "device" : "devices"}</span>}
+                        </div>
+
+                        <div className="lockbox-device-table">
+                            <div className="lockbox-device-row lockbox-device-head">
+                                <span>Device name</span><span>Registration date</span><span>Last seen</span><span>Status</span>
+                            </div>
+                            {devicesLoading && <div className="lockbox-device-message">Loading registered devices…</div>}
+                            {!devicesLoading && devicesError && <div className="lockbox-device-message error">{devicesError}</div>}
+                            {!devicesLoading && !devicesError && devices.length === 0 && <div className="lockbox-device-message">No registered devices yet.</div>}
+                            {!devicesLoading && !devicesError && devices.map((device) => {
+                                const active = device.deviceStatus === "ACTIVE";
+                                return (
+                                    <div className="lockbox-device-row" key={device.deviceId}>
+                                        <strong>{device.deviceName}</strong>
+                                        <span>{formatDate(device.registeredAt, "Unknown")}</span>
+                                        <span>{formatDate(device.lastSeenAt)}</span>
+                                        <span><span className={`device-status-badge ${active ? "active" : "revoked"}`}>{active ? "Active" : "Revoked"}</span></span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </section>
                 </section>
             </main>
         </div>
