@@ -47,8 +47,8 @@ public interface LockboxShareRepository
             Long recipientId
     );
 
-    boolean existsByLockboxFileIdAndTargetDeviceId(
-            Long lockboxFileId,
+    boolean existsByRevisionIdAndTargetDeviceId(
+            Long revisionId,
             Long targetDeviceId
     );
 
@@ -70,14 +70,15 @@ public interface LockboxShareRepository
     );
 
     List<LockboxShare>
-    findAllByLockboxFileIdOrderByCreatedAtDesc(
+    findAllByRevisionLockboxFileIdOrderByCreatedAtDesc(
             Long lockboxFileId
     );
 
     @Query("""
         select s
         from LockboxShare s
-        join fetch s.lockboxFile lf
+        join fetch s.revision revision
+        join fetch revision.lockboxFile lf
         join fetch lf.file metadata
         join fetch s.owner
         join fetch s.targetDevice target
@@ -110,7 +111,8 @@ public interface LockboxShareRepository
     @Query("""
         select s
         from LockboxShare s
-        join fetch s.lockboxFile lf
+        join fetch s.revision revision
+        join fetch revision.lockboxFile lf
         join fetch lf.file metadata
         join fetch s.owner
         join fetch s.targetDevice target

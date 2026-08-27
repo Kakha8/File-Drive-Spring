@@ -20,8 +20,8 @@ import java.util.UUID;
                         columnNames = "share_uuid"
                 ),
                 @UniqueConstraint(
-                        name = "uk_lockbox_share_file_target_device",
-                        columnNames = {"lockbox_file_id", "target_device_id"}
+                        name = "uk_lockbox_share_revision_target_device",
+                        columnNames = {"lockbox_revision_id", "target_device_id"}
                 )
         },
         indexes = {
@@ -34,8 +34,8 @@ import java.util.UUID;
                         columnList = "recipient_user_id, status"
                 ),
                 @Index(
-                        name = "idx_lockbox_share_file",
-                        columnList = "lockbox_file_id"
+                        name = "idx_lockbox_share_revision",
+                        columnList = "lockbox_revision_id"
                 ),
                 @Index(
                         name = "idx_lockbox_share_target_status",
@@ -62,14 +62,14 @@ public class LockboxShare {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
-            name = "lockbox_file_id",
+            name = "lockbox_revision_id",
             nullable = false,
             updatable = false,
             foreignKey = @ForeignKey(
-                    name = "fk_lockbox_share_file"
+                    name = "fk_lockbox_share_revision"
             )
     )
-    private LockboxFile lockboxFile;
+    private LockboxFileRevision revision;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
@@ -133,7 +133,7 @@ public class LockboxShare {
 
     public LockboxShare(
             UUID shareUuid,
-            LockboxFile lockboxFile,
+            LockboxFileRevision revision,
             User owner,
             User recipient,
             LockboxDevice targetDevice,
@@ -142,9 +142,9 @@ public class LockboxShare {
     ) {
         this.shareUuid = Objects.requireNonNull(shareUuid, "shareUuid");
 
-        this.lockboxFile = Objects.requireNonNull(
-                lockboxFile,
-                "lockboxFile"
+        this.revision = Objects.requireNonNull(
+                revision,
+                "revision"
         );
 
         this.owner = Objects.requireNonNull(
@@ -197,8 +197,8 @@ public class LockboxShare {
         );
 
         Objects.requireNonNull(
-                lockboxFile,
-                "lockboxFile"
+                revision,
+                "revision"
         );
 
         Objects.requireNonNull(

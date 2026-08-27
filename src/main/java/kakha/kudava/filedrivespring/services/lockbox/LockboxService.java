@@ -7,6 +7,7 @@ import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.LockboxDevice;
 import kakha.kudava.filedrivespring.model.LockboxFile;
+import kakha.kudava.filedrivespring.model.LockboxFileRevision;
 import kakha.kudava.filedrivespring.model.LockboxKey;
 import kakha.kudava.filedrivespring.model.LockboxProfile;
 import kakha.kudava.filedrivespring.model.User;
@@ -14,6 +15,7 @@ import kakha.kudava.filedrivespring.records.LockboxDownloadResult;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.FolderRepository;
 import kakha.kudava.filedrivespring.repository.LockboxFileRepository;
+import kakha.kudava.filedrivespring.repository.LockboxFileRevisionRepository;
 import kakha.kudava.filedrivespring.repository.LockboxKeyRepository;
 import kakha.kudava.filedrivespring.repository.LockboxProfileRepository;
 import kakha.kudava.filedrivespring.services.ResourceAccessService;
@@ -21,6 +23,8 @@ import kakha.kudava.filedrivespring.services.objects.RootFolderService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -41,6 +45,7 @@ import java.util.*;
 
 @Service
 public class LockboxService {
+    private static final Logger log = LoggerFactory.getLogger(LockboxService.class);
 
     private static final byte[] SIGNING_DOMAIN =
             "FD-LOCKBOX-MANIFEST-V1\0"
@@ -59,6 +64,7 @@ public class LockboxService {
     private final FileMetaDataRepository files;
     private final FolderRepository folders;
     private final LockboxFileRepository lockboxFiles;
+    private final LockboxFileRevisionRepository revisions;
     private final LockboxKeyRepository keys;
     private final LockboxProfileRepository profiles;
     private final RootFolderService roots;
@@ -77,6 +83,7 @@ public class LockboxService {
             FileMetaDataRepository files,
             FolderRepository folders,
             LockboxFileRepository lockboxFiles,
+            LockboxFileRevisionRepository revisions,
             LockboxKeyRepository keys,
             LockboxProfileRepository profiles,
             RootFolderService roots,
@@ -96,6 +103,7 @@ public class LockboxService {
         this.files = files;
         this.folders = folders;
         this.lockboxFiles = lockboxFiles;
+        this.revisions = revisions;
         this.keys = keys;
         this.profiles = profiles;
         this.roots = roots;
@@ -318,121 +326,9 @@ public class LockboxService {
             /*
              * Check whether this exact signed file identity already exists.
              */
-            Optional<LockboxFile> existingFile =
-                    lockboxFiles
-                            .findByProfileIdAndClientFileIdAndRevision(
-                                    profile.getId(),
-                                    parsedManifest.clientFileId(),
-                                    parsedManifest.revision()
-                            );
-
-            if (existingFile.isPresent()) {
-                LockboxFile existing =
-                        existingFile.get();
-
-                FileMetaData existingMetadata =
-                        existing.getFile();
-
-                /*
-                 * An active entry remains a duplicate.
-                 */
-                if (!existingMetadata.isPermanentlyDeleted()) {
-                    throwDuplicate();
-                }
-
-                /*
-                 * Ensure this really is the same immutable cryptographic
-                 * object before restoring the old database identity.
-                 */
-                boolean sameArtifact =
-                        existing.getFormatVersion() == 3
-                                && existing.getSuiteId()
-                                == parsedManifest.suiteId()
-                                && existing.getContainerSize()
-                                == actualContainerSize
-                                && existing.getChunkSize()
-                                == parsedContainer.chunkSize()
-                                && existing.getChunkCount()
-                                == parsedContainer.chunkCount()
-                                && existing.getDeviceUuid().equals(
-                                parsedManifest.deviceUuid()
-                        )
-                                && MessageDigest.isEqual(
-                                existing.getContainerHash(),
-                                actualContainerHash
-                        )
-                                && MessageDigest.isEqual(
-                                existing.getEncryptionKeyId(),
-                                parsedManifest.encryptionKeyId()
-                        )
-                                && MessageDigest.isEqual(
-                                existing.getSigningKeyId(),
-                                parsedManifest.signingKeyId()
-                        );
-
-                if (!sameArtifact) {
-                    throw new LockboxApiException(
-                            "LOCKBOX_IDENTITY_CONFLICT",
-                            HttpStatus.CONFLICT,
-                            "The uploaded artifacts do not match "
-                                    + "the previously deleted Lockbox file."
-                    );
-                }
-
-                registerRollbackCleanup(
-                        uploadedObjects
-                );
-
-                /*
-                 * Restore the three physical objects using the keys already
-                 * recorded by the retained LockboxFile row.
-                 */
-                uploadObject(
-                        existing.getContainerObjectKey(),
-                        containerPath,
-                        LockboxObjectStorage.ArtifactType.CONTAINER,
-                        uploadedObjects
-                );
-
-                uploadObject(
-                        existing.getManifestObjectKey(),
-                        manifestPath,
-                        LockboxObjectStorage.ArtifactType.MANIFEST,
-                        uploadedObjects
-                );
-
-                uploadObject(
-                        existing.getSignatureObjectKey(),
-                        signaturePath,
-                        LockboxObjectStorage.ArtifactType.SIGNATURE,
-                        uploadedObjects
-                );
-
-                Instant restoredAt = Instant.now();
-
-                existingMetadata.setDeleted(false);
-                existingMetadata.setDeletedAt(null);
-                existingMetadata.setPermanentlyDeleted(false);
-                existingMetadata.setPermanentlyDeletedAt(null);
-                existingMetadata.setLastModifiedDate(restoredAt);
-
-                files.saveAndFlush(existingMetadata);
-
-                return new LockboxUploadResponse(
-                        existing.getId(),
-                        existing.getClientFileId(),
-                        existing.getRevision(),
-                        existingMetadata.getParent() == null
-                                ? null
-                                : existingMetadata.getParent().getId(),
-                        existing.getContainerSize(),
-                        HexFormat.of().formatHex(
-                                existing.getContainerHash()
-                        ),
-                        existing.getFormatVersion(),
-                        existing.getSuiteId(),
-                        existing.getCreatedAt()
-                );
+            if (lockboxFiles.existsByProfileIdAndClientFileId(
+                    profile.getId(), parsedManifest.clientFileId())) {
+                throwDuplicate();
             }
 
             /*
@@ -522,30 +418,18 @@ public class LockboxService {
             FileMetaData savedMetadata =
                     files.saveAndFlush(metadata);
 
-            LockboxFile lockboxFile =
-                    new LockboxFile(
-                            savedMetadata,
-                            profile,
-                            parsedManifest.clientFileId(),
-                            parsedManifest.revision(),
-                            3,
-                            1,
-                            actualContainerSize,
-                            actualContainerHash,
-                            parsedManifest.encryptionKeyId(),
-                            parsedManifest.signingKeyId(),
-                            parsedManifest.deviceUuid(),
-                            parsedContainer.chunkSize(),
-                            parsedContainer.chunkCount(),
-                            containerObjectKey,
-                            manifestObjectKey,
-                            signatureObjectKey
-                    );
+            LockboxFile lockboxFile = new LockboxFile(
+                    savedMetadata, profile, parsedManifest.clientFileId(), 1);
 
             try {
                 lockboxFiles.saveAndFlush(
                         lockboxFile
                 );
+                revisions.saveAndFlush(new LockboxFileRevision(lockboxFile, 1, 3, 1,
+                        actualContainerSize, actualContainerHash, parsedManifest.encryptionKeyId(),
+                        parsedManifest.signingKeyId(), parsedManifest.deviceUuid(),
+                        parsedContainer.chunkSize(), parsedContainer.chunkCount(), containerObjectKey,
+                        manifestObjectKey, signatureObjectKey));
             } catch (DataIntegrityViolationException exception) {
                 throwDuplicate();
             }
@@ -579,6 +463,88 @@ public class LockboxService {
         }
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public LockboxUploadResponse uploadRevision(Long fileId,long expectedRevision,MultipartFile container,
+            MultipartFile manifest,MultipartFile signature) throws Exception {
+        User user=access.currentUser();
+        LockboxFile logical=lockboxFiles.findForUpdateByIdAndProfileUserId(fileId,user.getId())
+                .orElseThrow(LockboxService::notFound);
+        if(logical.getFile().isDeleted()||logical.getFile().isPermanentlyDeleted())throw notFound();
+        LockboxProfile profile=logical.getProfile();
+        if(profile.getStatus()!=LockboxProfile.Status.ENABLED){
+            throw new LockboxApiException("LOCKBOX_NOT_ENABLED",HttpStatus.FORBIDDEN,"Lockbox is not enabled.");
+        }
+        if(logical.getCurrentRevision()!=expectedRevision)throw revisionConflict();
+        LockboxFileRevision previous=revisions.findByLockboxFileIdAndRevision(logical.getId(),expectedRevision)
+                .orElseThrow(()->new IllegalStateException("Previous Lockbox revision is missing."));
+        Path temporaryDirectory=Files.createTempDirectory("lockbox-revision-");
+        Path containerPath=temporaryDirectory.resolve("container"),manifestPath=temporaryDirectory.resolve("manifest"),signaturePath=temporaryDirectory.resolve("signature");
+        List<String> uploadedObjects=new ArrayList<>();
+        try{
+            stage(container,containerPath,maxContainer);stage(manifest,manifestPath,maxManifest);stage(signature,signaturePath,maxSignature);
+            byte[] manifestBytes=readExact(manifestPath,maxManifest),signatureBytes=readExact(signaturePath,maxSignature);
+            var parsedManifest=manifests.parse(manifestBytes);var signatureRecord=signatures.parse(signatureBytes);
+            if(!parsedManifest.clientFileId().equals(logical.getClientFileId())||parsedManifest.revision()!=expectedRevision+1)
+                throw LockboxApiException.bad("UNSUPPORTED_REVISION","Revision identity or sequence is invalid.");
+            byte[] previousManifest=readBoundedObject(previous.getManifestObjectKey(),MAX_MANIFEST_SIZE,"manifest");
+            MessageDigest digest=MessageDigest.getInstance("SHA3-512");
+            if(!MessageDigest.isEqual(digest.digest(previousManifest),parsedManifest.previousManifestHash()))
+                throw LockboxApiException.bad("INVALID_REVISION_CHAIN","Previous manifest hash is invalid.");
+            LockboxKey signingKey=findKey(profile,LockboxKey.Role.SIGNING,signatureRecord.signingKeyId(),"UNKNOWN_SIGNING_KEY");
+            if(signingKey.getDevice().getStatus()!=LockboxDevice.Status.ACTIVE||!signingKey.getDevice().getDeviceUuid().equals(parsedManifest.deviceUuid()))
+                throw LockboxApiException.bad("DEVICE_NOT_ACTIVE","Manifest device is invalid.");
+            if(!MessageDigest.isEqual(signatureRecord.signingKeyId(),parsedManifest.signingKeyId()))
+                throw LockboxApiException.bad("INVALID_SIGNATURE","Signing key IDs do not match.");
+            try{verifier.verify(signingKey.getPublicKey(),signingTranscript(manifestBytes),signatureRecord.signature());}
+            catch(RuntimeException exception){throw LockboxApiException.bad("INVALID_SIGNATURE","Manifest signature is invalid.");}
+            validateNames(container,manifest,signature,logical.getClientFileId());
+            long actualSize=Files.size(containerPath);
+            if(actualSize!=parsedManifest.containerSize())throw LockboxApiException.bad("CONTAINER_SIZE_MISMATCH","Container size does not match the signed manifest.");
+            byte[] actualHash=calculateSha3_512(containerPath);
+            if(!MessageDigest.isEqual(actualHash,parsedManifest.containerHash()))throw LockboxApiException.bad("CONTAINER_HASH_MISMATCH","Container hash does not match the signed manifest.");
+            var parsedContainer=containers.validate(containerPath,actualSize);
+            if(!parsedContainer.clientFileId().equals(logical.getClientFileId())||parsedContainer.suiteId()!=parsedManifest.suiteId()||!MessageDigest.isEqual(parsedContainer.encryptionKeyId(),parsedManifest.encryptionKeyId()))
+                throw LockboxApiException.bad("MANIFEST_CONTAINER_MISMATCH","Container public fields do not match the signed manifest.");
+            findKey(profile,LockboxKey.Role.ENCRYPTION,parsedManifest.encryptionKeyId(),"UNKNOWN_ENCRYPTION_KEY");
+            if(revisions.existsByLockboxFileIdAndRevision(logical.getId(),parsedManifest.revision()))throw revisionConflict();
+            String prefix="users/"+user.getId()+"/lockbox/"+logical.getClientFileId()+"/"+parsedManifest.revision()+"/requests/"+UUID.randomUUID()+"/";
+            String containerKey=prefix+"container.fdcse",manifestKey=prefix+"manifest.fdmanifest",signatureKey=prefix+"signature.fdsig";
+            registerRollbackCleanup(uploadedObjects);
+            uploadObject(containerKey,containerPath,LockboxObjectStorage.ArtifactType.CONTAINER,uploadedObjects);
+            uploadObject(manifestKey,manifestPath,LockboxObjectStorage.ArtifactType.MANIFEST,uploadedObjects);
+            uploadObject(signatureKey,signaturePath,LockboxObjectStorage.ArtifactType.SIGNATURE,uploadedObjects);
+            try{
+                LockboxFileRevision saved=revisions.saveAndFlush(new LockboxFileRevision(logical,parsedManifest.revision(),3,1,actualSize,actualHash,parsedManifest.encryptionKeyId(),parsedManifest.signingKeyId(),parsedManifest.deviceUuid(),parsedContainer.chunkSize(),parsedContainer.chunkCount(),containerKey,manifestKey,signatureKey));
+                logical.advanceToRevision(expectedRevision,parsedManifest.revision());lockboxFiles.saveAndFlush(logical);
+                FileMetaData metadata=logical.getFile();metadata.setObjectKey(containerKey);metadata.setSize(actualSize);metadata.setChecksum(HexFormat.of().formatHex(actualHash));metadata.setLastModifiedDate(Instant.now());files.save(metadata);
+                return new LockboxUploadResponse(logical.getId(),logical.getClientFileId(),saved.getRevision(),metadata.getParent()==null?null:metadata.getParent().getId(),actualSize,HexFormat.of().formatHex(actualHash),3,1,saved.getCreatedAt());
+            }catch(DataIntegrityViolationException|IllegalStateException exception){throw revisionConflict();}
+        }catch(Exception exception){if(!TransactionSynchronizationManager.isSynchronizationActive())cleanupUploadedObjects(uploadedObjects,exception);throw exception;}
+        finally{deleteTree(temporaryDirectory);}
+    }
+
+    @Transactional(readOnly=true)
+    public LockboxRevisionHistoryResponse revisionHistory(Long fileId){
+        User user=access.currentUser();LockboxFile file=requireOwnedLockboxFile(fileId,user);
+        if(file.getFile().isDeleted()||file.getFile().isPermanentlyDeleted())throw notFound();
+        return new LockboxRevisionHistoryResponse(file.getId(),file.getClientFileId(),file.getCurrentRevision(),
+                revisions.findAllByLockboxFileIdOrderByRevisionDesc(file.getId()).stream().map(r->new LockboxRevisionItemResponse(r.getRevision(),r.getContainerSize(),HexFormat.of().formatHex(r.getContainerHash()),r.getCreatedAt(),r.getRevision()==file.getCurrentRevision())).toList());
+    }
+
+    @Transactional(readOnly=true)
+    public LockboxDownloadResult openRevisionDownload(Long fileId,long revision,LockboxObjectStorage.ArtifactType type)throws Exception{
+        LockboxFile file=requireOwnedLockboxFile(fileId,access.currentUser());
+        if(file.getFile().isDeleted()||file.getFile().isPermanentlyDeleted())throw notFound();
+        LockboxFileRevision selected=revisions.findByLockboxFileIdAndRevision(file.getId(),revision).orElseThrow(LockboxService::notFound);
+        String key=switch(type){case CONTAINER->selected.getContainerObjectKey();case MANIFEST->selected.getManifestObjectKey();case SIGNATURE->selected.getSignatureObjectKey();};
+        long size=storage.size(key);if(type==LockboxObjectStorage.ArtifactType.CONTAINER&&size!=selected.getContainerSize())throw new IllegalStateException("Stored Lockbox container size does not match its database record.");
+        String extension=switch(type){case CONTAINER->".fdcse";case MANIFEST->".fdmanifest";case SIGNATURE->".fdsig";};
+        return new LockboxDownloadResult(file.getClientFileId()+"-r"+revision+extension,size,type.contentType(),storage.download(key));
+    }
+
+    private static LockboxApiException notFound(){return new LockboxApiException("LOCKBOX_FILE_NOT_FOUND",HttpStatus.NOT_FOUND,"Lockbox file not found.");}
+    private static LockboxApiException revisionConflict(){return new LockboxApiException("LOCKBOX_REVISION_CONFLICT",HttpStatus.CONFLICT,"The Lockbox file revision changed. Refresh and retry.");}
+
     @Transactional(readOnly = true)
     public LockboxDownloadResult openDownload(
             Long fileId,
@@ -607,6 +573,8 @@ public class LockboxService {
                                 "Lockbox file not found."
                         )
                 );
+        if(file.getFile().isDeleted()||file.getFile().isPermanentlyDeleted())throw notFound();
+        LockboxFileRevision revision = currentRevision(file);
 
         String baseName =
                 file.getClientFileId().toString();
@@ -617,7 +585,7 @@ public class LockboxService {
         switch (artifactType) {
             case CONTAINER -> {
                 objectKey =
-                        file.getContainerObjectKey();
+                        revision.getContainerObjectKey();
 
                 fileName =
                         baseName + ".fdcse";
@@ -625,7 +593,7 @@ public class LockboxService {
 
             case MANIFEST -> {
                 objectKey =
-                        file.getManifestObjectKey();
+                        revision.getManifestObjectKey();
 
                 fileName =
                         baseName + ".fdmanifest";
@@ -633,7 +601,7 @@ public class LockboxService {
 
             case SIGNATURE -> {
                 objectKey =
-                        file.getSignatureObjectKey();
+                        revision.getSignatureObjectKey();
 
                 fileName =
                         baseName + ".fdsig";
@@ -649,7 +617,7 @@ public class LockboxService {
 
         if (artifactType
                 == LockboxObjectStorage.ArtifactType.CONTAINER
-                && actualSize != file.getContainerSize()) {
+                && actualSize != revision.getContainerSize()) {
             throw new IllegalStateException(
                     "Stored Lockbox container size "
                             + "does not match its database record."
@@ -694,28 +662,29 @@ public class LockboxService {
                                 "Lockbox file not found."
                         )
                 );
+        LockboxFileRevision revision = currentRevision(file);
 
         byte[] manifest = readBoundedObject(
-                file.getManifestObjectKey(),
+                revision.getManifestObjectKey(),
                 MAX_MANIFEST_SIZE,
                 "manifest"
         );
 
         byte[] signature = readBoundedObject(
-                file.getSignatureObjectKey(),
+                revision.getSignatureObjectKey(),
                 MAX_SIGNATURE_SIZE,
                 "signature"
         );
 
         byte[] encryptedHeader =
                 readContainerHeader(
-                        file.getContainerObjectKey()
+                        revision.getContainerObjectKey()
                 );
 
         return new LockboxPrivateMetadataResponse(
                 file.getId(),
                 file.getClientFileId(),
-                file.getRevision(),
+                revision.getRevision(),
                 Base64.getEncoder()
                         .encodeToString(manifest),
                 Base64.getEncoder()
@@ -767,18 +736,10 @@ public class LockboxService {
             return; // idempotent
         }
 
-        // Physically delete all encrypted artifacts.
-        storage.delete(
-                lockboxFile.getContainerObjectKey()
-        );
-
-        storage.delete(
-                lockboxFile.getManifestObjectKey()
-        );
-
-        storage.delete(
-                lockboxFile.getSignatureObjectKey()
-        );
+        List<String> objectKeys = revisions.findAllByLockboxFileIdOrderByRevisionDesc(lockboxFile.getId())
+                .stream().flatMap(revision -> java.util.stream.Stream.of(
+                        revision.getContainerObjectKey(), revision.getManifestObjectKey(),
+                        revision.getSignatureObjectKey())).toList();
 
         Instant deletedAt = Instant.now();
 
@@ -788,7 +749,18 @@ public class LockboxService {
         metadata.setPermanentlyDeleted(true);
         metadata.setPermanentlyDeletedAt(deletedAt);
 
-        files.save(metadata);
+        files.saveAndFlush(metadata);
+        List<String> committedKeys=List.copyOf(objectKeys);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){
+            @Override public void afterCommit(){deleteCommittedObjects(committedKeys);}
+        });
+    }
+
+    private void deleteCommittedObjects(List<String> objectKeys){
+        for(String objectKey:objectKeys){
+            try{storage.delete(objectKey);}
+            catch(Exception exception){log.error("Failed to delete committed Lockbox object key {}; manual cleanup retry is required.",objectKey,exception);}
+        }
     }
 
     private LockboxFile requireOwnedLockboxFile(
@@ -896,11 +868,11 @@ public class LockboxService {
                             return new LockboxFileItemResponse(
                                     lockboxFile.getId(),
                                     lockboxFile.getClientFileId(),
-                                    lockboxFile.getRevision(),
-                                    lockboxFile.getContainerSize(),
+                                    lockboxFile.getCurrentRevision(),
+                                    currentRevision(lockboxFile).getContainerSize(),
                                     lockboxFile.getCreatedAt(),
-                                    lockboxFile.getFormatVersion(),
-                                    lockboxFile.getSuiteId()
+                                    currentRevision(lockboxFile).getFormatVersion(),
+                                    currentRevision(lockboxFile).getSuiteId()
                             );
                         })
                         .toList();
@@ -1495,28 +1467,29 @@ public class LockboxService {
     buildPrivateMetadata(
             LockboxFile file
     ) throws Exception {
+        LockboxFileRevision revision = currentRevision(file);
 
         byte[] manifest = readBoundedObject(
-                file.getManifestObjectKey(),
+                revision.getManifestObjectKey(),
                 MAX_MANIFEST_SIZE,
                 "manifest"
         );
 
         byte[] signature = readBoundedObject(
-                file.getSignatureObjectKey(),
+                revision.getSignatureObjectKey(),
                 MAX_SIGNATURE_SIZE,
                 "signature"
         );
 
         byte[] encryptedHeader =
                 readContainerHeader(
-                        file.getContainerObjectKey()
+                        revision.getContainerObjectKey()
                 );
 
         return new LockboxPrivateMetadataResponse(
                 file.getId(),
                 file.getClientFileId(),
-                file.getRevision(),
+                revision.getRevision(),
                 Base64.getEncoder()
                         .encodeToString(manifest),
                 Base64.getEncoder()
@@ -1524,5 +1497,10 @@ public class LockboxService {
                 Base64.getEncoder()
                         .encodeToString(encryptedHeader)
         );
+    }
+
+    private LockboxFileRevision currentRevision(LockboxFile file) {
+        return revisions.findByLockboxFileIdAndRevision(file.getId(), file.getCurrentRevision())
+                .orElseThrow(() -> new IllegalStateException("Current Lockbox revision is missing."));
     }
 }

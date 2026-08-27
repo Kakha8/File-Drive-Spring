@@ -50,6 +50,6 @@ class LockboxRecipientPublicUuidTests {
     private static final class Fixture {
         final UserRepository users=mock(UserRepository.class);final LockboxKeyRepository keys=mock(LockboxKeyRepository.class);
         final ResourceAccessService access=mock(ResourceAccessService.class);
-        LockboxSharingService service(){return new LockboxSharingService(users,keys,access,mock(LockboxFileRepository.class),mock(LockboxShareRepository.class),mock(LockboxShareEnvelopeRepository.class),new LockboxShareEnvelopeParser(),mock(LockboxSignatureVerifier.class),mock(LockboxObjectStorage.class),mock(LockboxDeviceRepository.class));}
+        LockboxSharingService service(){return new LockboxSharingService(users,keys,access,mock(LockboxFileRepository.class),mock(LockboxFileRevisionRepository.class),mock(LockboxShareRepository.class),mock(LockboxShareEnvelopeRepository.class),new LockboxShareEnvelopeParser(),mock(LockboxSignatureVerifier.class),mock(LockboxObjectStorage.class),mock(LockboxDeviceRepository.class));}
     }
 }

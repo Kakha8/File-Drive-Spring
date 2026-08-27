@@ -2,6 +2,8 @@ package kakha.kudava.filedrivespring.repository;
 
 import kakha.kudava.filedrivespring.model.LockboxFile;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 
 import java.util.List;
 import java.util.Optional;
@@ -14,7 +16,7 @@ public interface LockboxFileRepository
 
     boolean existsByFileId(Long fileId);
 
-    boolean existsByProfileIdAndClientFileIdAndRevision(Long profileId, UUID clientFileId, long revision);
+    boolean existsByProfileIdAndClientFileId(Long profileId, UUID clientFileId);
 
     Optional<LockboxFile> findByIdAndProfileUserId(Long id, Long userId);
     List<LockboxFile> findAllByProfileUserIdOrderByCreatedAtDesc(
@@ -26,9 +28,7 @@ public interface LockboxFileRepository
             Long userId
     );
 
-    Optional<LockboxFile> findByProfileIdAndClientFileIdAndRevision(
-            Long profileId,
-            UUID clientFileId,
-            long revision
-    );
+    Optional<LockboxFile> findByProfileIdAndClientFileId(Long profileId, UUID clientFileId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<LockboxFile> findForUpdateByIdAndProfileUserId(Long id, Long userId);
 }

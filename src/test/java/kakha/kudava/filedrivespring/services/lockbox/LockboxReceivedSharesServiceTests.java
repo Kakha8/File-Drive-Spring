@@ -131,18 +131,20 @@ class LockboxReceivedSharesServiceTests {
         final LockboxKeyRepository keys = mock(LockboxKeyRepository.class);
         final ResourceAccessService access = mock(ResourceAccessService.class);
         final LockboxFileRepository files = mock(LockboxFileRepository.class);
+        final LockboxFileRevisionRepository revisions = mock(LockboxFileRevisionRepository.class);
         final LockboxShareRepository shares = mock(LockboxShareRepository.class);
         final LockboxShareEnvelopeRepository envelopes = mock(LockboxShareEnvelopeRepository.class);
         final LockboxObjectStorage storage = mock(LockboxObjectStorage.class);
         final LockboxDeviceRepository devices = mock(LockboxDeviceRepository.class);
         final LockboxShareEnvelopeParser parser = mock(LockboxShareEnvelopeParser.class);
         final LockboxSharingService service = new LockboxSharingService(users, keys, access, files,
-                shares, envelopes, parser, mock(LockboxSignatureVerifier.class), storage, devices);
+                revisions, shares, envelopes, parser, mock(LockboxSignatureVerifier.class), storage, devices);
         final UUID shareUuid = UUID.randomUUID();
         final UUID deviceUuid = UUID.randomUUID();
         final User recipient = mock(User.class), owner = mock(User.class), keyOwner = mock(User.class);
         final LockboxShare share = mock(LockboxShare.class);
         final LockboxFile file = mock(LockboxFile.class);
+        final LockboxFileRevision revision = mock(LockboxFileRevision.class);
         final LockboxShareEnvelope envelope = mock(LockboxShareEnvelope.class);
         final LockboxKey recipientKey = mock(LockboxKey.class), signingKey = mock(LockboxKey.class);
         final LockboxDevice device = mock(LockboxDevice.class);
@@ -157,11 +159,11 @@ class LockboxReceivedSharesServiceTests {
             when(share.getId()).thenReturn(9L); when(share.getShareUuid()).thenReturn(shareUuid);
             when(share.getRecipient()).thenReturn(recipient); when(share.getOwner()).thenReturn(owner);
             when(owner.getUsername()).thenReturn("owner"); when(share.getPermission()).thenReturn(LockboxShare.Permission.READ);
-            when(share.getLockboxFile()).thenReturn(file); when(file.getId()).thenReturn(10L);
+            when(share.getRevision()).thenReturn(revision); when(revision.getLockboxFile()).thenReturn(file); when(file.getId()).thenReturn(10L);
             when(share.getTargetDevice()).thenReturn(device);
-            when(file.getClientFileId()).thenReturn(UUID.randomUUID()); when(file.getRevision()).thenReturn(7L);
-            when(file.getManifestObjectKey()).thenReturn("manifest"); when(file.getSignatureObjectKey()).thenReturn("signature");
-            when(file.getContainerObjectKey()).thenReturn("container");
+            when(file.getClientFileId()).thenReturn(UUID.randomUUID()); when(revision.getRevision()).thenReturn(7L);
+            when(revision.getManifestObjectKey()).thenReturn("manifest"); when(revision.getSignatureObjectKey()).thenReturn("signature");
+            when(revision.getContainerObjectKey()).thenReturn("container");
             when(envelope.getRecipientKey()).thenReturn(recipientKey); when(recipientKey.getDevice()).thenReturn(device);
             when(device.getProfile()).thenReturn(profile); when(profile.getUser()).thenReturn(keyOwner); when(keyOwner.getId()).thenReturn(2L);
             when(envelope.getOwnerSigningKey()).thenReturn(signingKey); when(envelope.getEnvelope()).thenReturn(envelopeBytes);

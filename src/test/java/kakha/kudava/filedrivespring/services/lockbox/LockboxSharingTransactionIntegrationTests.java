@@ -6,6 +6,7 @@ import kakha.kudava.filedrivespring.exceptions.LockboxApiException;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.LockboxDevice;
 import kakha.kudava.filedrivespring.model.LockboxFile;
+import kakha.kudava.filedrivespring.model.LockboxFileRevision;
 import kakha.kudava.filedrivespring.model.LockboxKey;
 import kakha.kudava.filedrivespring.model.LockboxProfile;
 import kakha.kudava.filedrivespring.model.LockboxShare;
@@ -13,6 +14,7 @@ import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.repository.LockboxDeviceRepository;
 import kakha.kudava.filedrivespring.repository.LockboxFileRepository;
+import kakha.kudava.filedrivespring.repository.LockboxFileRevisionRepository;
 import kakha.kudava.filedrivespring.repository.LockboxKeyRepository;
 import kakha.kudava.filedrivespring.repository.LockboxProfileRepository;
 import kakha.kudava.filedrivespring.repository.LockboxShareEnvelopeRepository;
@@ -65,6 +67,7 @@ class LockboxSharingTransactionIntegrationTests {
     @Autowired LockboxDeviceRepository devices;
     @Autowired LockboxKeyRepository keys;
     @Autowired LockboxFileRepository files;
+    @Autowired LockboxFileRevisionRepository revisions;
     @Autowired LockboxShareRepository shares;
     @MockitoSpyBean LockboxShareEnvelopeRepository envelopes;
     @Autowired LockboxSharingService service;
@@ -87,6 +90,7 @@ class LockboxSharingTransactionIntegrationTests {
     private void setUpData() {
         envelopes.deleteAllInBatch();
         shares.deleteAllInBatch();
+        revisions.deleteAllInBatch();
         files.deleteAllInBatch();
         keys.deleteAllInBatch();
         devices.deleteAllInBatch();
@@ -118,11 +122,9 @@ class LockboxSharingTransactionIntegrationTests {
         metadata.setOwner(owner);
         metadata.setDriveSpace(DriveSpace.LOCKBOX);
         metadata = metadataRepository.saveAndFlush(metadata);
-        file = files.saveAndFlush(new LockboxFile(
-                metadata, ownerProfile, FILE_UUID, 7, 3, 1, 1,
-                HASH, RECIPIENT_KEY_ID, SIGNING_KEY_ID, ownerDevice.getDeviceUuid(),
-                1, 1, "container", "manifest", "signature"
-        ));
+        file = files.saveAndFlush(new LockboxFile(metadata, ownerProfile, FILE_UUID, 7));
+        revisions.saveAndFlush(new LockboxFileRevision(file,7,3,1,1,HASH,RECIPIENT_KEY_ID,
+                SIGNING_KEY_ID,ownerDevice.getDeviceUuid(),1,1,"container","manifest","signature"));
         when(access.currentUser()).thenReturn(owner);
     }
 

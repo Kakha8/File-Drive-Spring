@@ -6,12 +6,14 @@ import kakha.kudava.filedrivespring.exceptions.LockboxApiException;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.LockboxDevice;
 import kakha.kudava.filedrivespring.model.LockboxFile;
+import kakha.kudava.filedrivespring.model.LockboxFileRevision;
 import kakha.kudava.filedrivespring.model.LockboxKey;
 import kakha.kudava.filedrivespring.model.LockboxProfile;
 import kakha.kudava.filedrivespring.model.LockboxShare;
 import kakha.kudava.filedrivespring.model.LockboxShareEnvelope;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.repository.LockboxFileRepository;
+import kakha.kudava.filedrivespring.repository.LockboxFileRevisionRepository;
 import kakha.kudava.filedrivespring.repository.LockboxDeviceRepository;
 import kakha.kudava.filedrivespring.repository.LockboxKeyRepository;
 import kakha.kudava.filedrivespring.repository.LockboxShareEnvelopeRepository;
@@ -235,7 +237,7 @@ class LockboxSharingServiceCreateShareTests {
         assertError(duplicateId, duplicateId.request(), "LOCKBOX_SHARE_ID_EXISTS", HttpStatus.CONFLICT);
 
         Fixture duplicateRecipient = new Fixture();
-        when(duplicateRecipient.shares.existsByLockboxFileIdAndTargetDeviceId(any(), any()))
+        when(duplicateRecipient.shares.existsByRevisionIdAndTargetDeviceId(any(), any()))
                 .thenReturn(true);
         assertError(duplicateRecipient, duplicateRecipient.request(), "LOCKBOX_SHARE_ALREADY_EXISTS", HttpStatus.CONFLICT);
     }
@@ -321,19 +323,21 @@ class LockboxSharingServiceCreateShareTests {
         final LockboxKeyRepository keys = mock(LockboxKeyRepository.class);
         final ResourceAccessService access = mock(ResourceAccessService.class);
         final LockboxFileRepository files = mock(LockboxFileRepository.class);
+        final LockboxFileRevisionRepository revisions = mock(LockboxFileRevisionRepository.class);
         final LockboxShareRepository shares = mock(LockboxShareRepository.class);
         final LockboxShareEnvelopeRepository envelopes = mock(LockboxShareEnvelopeRepository.class);
         final LockboxSignatureVerifier verifier = mock(LockboxSignatureVerifier.class);
         final LockboxObjectStorage objectStorage = mock(LockboxObjectStorage.class);
         final LockboxDeviceRepository devices = mock(LockboxDeviceRepository.class);
         final LockboxSharingService service = new LockboxSharingService(
-                users, keys, access, files, shares, envelopes,
+                users, keys, access, files, revisions, shares, envelopes,
                 new LockboxShareEnvelopeParser(), verifier, objectStorage, devices
         );
         final User owner = user(1L, "owner", OWNER_UUID);
         final User recipient = user(2L, "recipient", RECIPIENT_UUID);
         final User otherUser = user(3L, "other", UUID.randomUUID());
         final LockboxFile file = mock(LockboxFile.class);
+        final LockboxFileRevision revision = mock(LockboxFileRevision.class);
         final FileMetaData metadata = mock(FileMetaData.class);
         final byte[] hash = filled(64, (byte) 3);
         final byte[] recipientKeyId = filled(32, (byte) 6);
@@ -349,8 +353,9 @@ class LockboxSharingServiceCreateShareTests {
             when(file.getId()).thenReturn(10L);
             when(file.getFile()).thenReturn(metadata);
             when(file.getClientFileId()).thenReturn(FILE_UUID);
-            when(file.getRevision()).thenReturn(7L);
-            when(file.getContainerHash()).thenReturn(hash.clone());
+            when(file.getCurrentRevision()).thenReturn(7L);
+            when(revisions.findByLockboxFileIdAndRevision(10L,7L)).thenReturn(Optional.of(revision));
+            when(revision.getRevision()).thenReturn(7L); when(revision.getContainerHash()).thenReturn(hash.clone());
             when(users.findByPublicUuid(RECIPIENT_UUID)).thenReturn(Optional.of(recipient));
             when(keys.findByKeyId(argThat(value -> Arrays.equals(value, recipientKeyId))))
                     .thenReturn(Optional.of(recipientKey));

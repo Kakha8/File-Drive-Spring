@@ -4,12 +4,14 @@ import kakha.kudava.filedrivespring.dto.lockbox.*;
 import kakha.kudava.filedrivespring.exceptions.LockboxApiException;
 import kakha.kudava.filedrivespring.model.LockboxDevice;
 import kakha.kudava.filedrivespring.model.LockboxFile;
+import kakha.kudava.filedrivespring.model.LockboxFileRevision;
 import kakha.kudava.filedrivespring.model.LockboxKey;
 import kakha.kudava.filedrivespring.model.LockboxShare;
 import kakha.kudava.filedrivespring.model.LockboxShareEnvelope;
 import kakha.kudava.filedrivespring.model.User;
 import kakha.kudava.filedrivespring.records.LockboxDownloadResult;
 import kakha.kudava.filedrivespring.repository.LockboxFileRepository;
+import kakha.kudava.filedrivespring.repository.LockboxFileRevisionRepository;
 import kakha.kudava.filedrivespring.repository.LockboxDeviceRepository;
 import kakha.kudava.filedrivespring.repository.LockboxKeyRepository;
 import kakha.kudava.filedrivespring.repository.LockboxShareEnvelopeRepository;
@@ -47,6 +49,7 @@ public class LockboxSharingService {
     private final LockboxKeyRepository keys;
     private final ResourceAccessService access;
     private final LockboxFileRepository files;
+    private final LockboxFileRevisionRepository revisions;
     private final LockboxShareRepository shares;
     private final LockboxShareEnvelopeRepository envelopes;
     private final LockboxShareEnvelopeParser parser;
@@ -65,6 +68,7 @@ public class LockboxSharingService {
             LockboxKeyRepository keys,
             ResourceAccessService access,
             LockboxFileRepository files,
+            LockboxFileRevisionRepository revisions,
             LockboxShareRepository shares,
             LockboxShareEnvelopeRepository envelopes,
             LockboxShareEnvelopeParser parser,
@@ -75,6 +79,7 @@ public class LockboxSharingService {
         this.keys = keys;
         this.access = access;
         this.files = files;
+        this.revisions = revisions;
         this.shares = shares;
         this.envelopes = envelopes;
         this.parser = parser;
@@ -160,6 +165,9 @@ public class LockboxSharingService {
         if (file.getFile().isDeleted() || file.getFile().isPermanentlyDeleted()) {
             throw fileNotFound();
         }
+        long requestedRevision=request.revision()==null?file.getCurrentRevision():request.revision();
+        LockboxFileRevision selectedRevision=revisions.findByLockboxFileIdAndRevision(file.getId(),requestedRevision)
+                .orElseThrow(LockboxSharingService::fileNotFound);
 
         byte[] packageBytes = decodeExact(
                 request.envelope(),
@@ -170,8 +178,8 @@ public class LockboxSharingService {
 
         if (!context.ownerPublicUuid().equals(owner.getPublicUuid())
                 || !context.clientFileUuid().equals(file.getClientFileId())
-                || context.revision() != file.getRevision()
-                || !MessageDigest.isEqual(context.containerHash(), file.getContainerHash())) {
+                || context.revision() != selectedRevision.getRevision()
+                || !MessageDigest.isEqual(context.containerHash(), selectedRevision.getContainerHash())) {
             throw invalid("The share envelope does not match the current Lockbox file.");
         }
 
@@ -222,8 +230,8 @@ public class LockboxSharingService {
         if (shares.existsByShareUuid(context.shareUuid())) {
             throw conflict("LOCKBOX_SHARE_ID_EXISTS", "The share ID already exists.");
         }
-        if (shares.existsByLockboxFileIdAndTargetDeviceId(
-                file.getId(), targetDevice.getId())) {
+        if (shares.existsByRevisionIdAndTargetDeviceId(
+                selectedRevision.getId(), targetDevice.getId())) {
             throw conflict(
                     "LOCKBOX_SHARE_ALREADY_EXISTS",
                     "This Lockbox file is already shared with that recipient."
@@ -233,7 +241,7 @@ public class LockboxSharingService {
         try {
             LockboxShare share = shares.save(new LockboxShare(
                     context.shareUuid(),
-                    file,
+                    selectedRevision,
                     owner,
                     recipient,
                     targetDevice,
@@ -254,6 +262,7 @@ public class LockboxSharingService {
             return new LockboxShareResponse(
                     share.getShareUuid().toString(),
                     file.getId(),
+                    selectedRevision.getRevision(),
                     owner.getUsername(),
                     recipient.getUsername(),
                     Base64.getEncoder().encodeToString(recipientKey.getKeyId()),
@@ -411,7 +420,8 @@ public class LockboxSharingService {
     private LockboxReceivedShareResponse buildReceivedShare(
             LockboxShare share, LockboxDevice selectedDevice)
             throws Exception {
-        LockboxFile file = share.getLockboxFile();
+        LockboxFileRevision revision = share.getRevision();
+        LockboxFile file = revision.getLockboxFile();
         LockboxShareEnvelope envelope = envelopes.findByShareId(share.getId())
                 .orElseThrow(LockboxSharingService::sharedArtifactUnavailable);
 
@@ -431,10 +441,10 @@ public class LockboxSharingService {
         }
 
         byte[] manifest = readBoundedObject(
-                file.getManifestObjectKey(), MAX_MANIFEST_SIZE, "manifest");
+                revision.getManifestObjectKey(), MAX_MANIFEST_SIZE, "manifest");
         byte[] fileSignature = readBoundedObject(
-                file.getSignatureObjectKey(), MAX_SIGNATURE_SIZE, "signature");
-        byte[] encryptedHeader = readContainerHeader(file.getContainerObjectKey());
+                revision.getSignatureObjectKey(), MAX_SIGNATURE_SIZE, "signature");
+        byte[] encryptedHeader = readContainerHeader(revision.getContainerObjectKey());
         LockboxKey ownerSigningKey = envelope.getOwnerSigningKey();
         Base64.Encoder base64 = Base64.getEncoder();
 
@@ -442,7 +452,7 @@ public class LockboxSharingService {
                 share.getShareUuid().toString(),
                 file.getId(),
                 file.getClientFileId().toString(),
-                file.getRevision(),
+                revision.getRevision(),
                 share.getOwner().getUsername(),
                 share.getPermission().name(),
                 share.getCreatedAt(),
@@ -602,20 +612,21 @@ public class LockboxSharingService {
             throw sharedArtifactUnavailable();
         }
 
-        LockboxFile file = share.getLockboxFile();
+        LockboxFileRevision revision = share.getRevision();
+        LockboxFile file = revision.getLockboxFile();
 
         long actualSize;
 
         try {
             actualSize = objectStorage.size(
-                    file.getContainerObjectKey()
+                    revision.getContainerObjectKey()
             );
         } catch (Exception exception) {
             throw sharedArtifactUnavailable();
         }
 
         if (actualSize < 1
-                || actualSize != file.getContainerSize()) {
+                || actualSize != revision.getContainerSize()) {
             throw sharedArtifactUnavailable();
         }
 
@@ -623,7 +634,7 @@ public class LockboxSharingService {
 
         try {
             inputStream = objectStorage.download(
-                    file.getContainerObjectKey()
+                    revision.getContainerObjectKey()
             );
         } catch (Exception exception) {
             throw sharedArtifactUnavailable();
