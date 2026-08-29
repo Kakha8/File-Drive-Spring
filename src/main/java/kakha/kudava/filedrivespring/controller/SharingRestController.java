@@ -1,6 +1,7 @@
 package kakha.kudava.filedrivespring.controller;
 
-import kakha.kudava.filedrivespring.dto.*;
+import kakha.kudava.filedrivespring.dto.share.ShareRequestDTO;
+import kakha.kudava.filedrivespring.dto.share.SharedItemDTO;
 import kakha.kudava.filedrivespring.services.SharingService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;

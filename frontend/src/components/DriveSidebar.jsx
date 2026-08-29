@@ -60,11 +60,12 @@ const Icons = {
             <path d="M12 3.5 14.7 9l6 .9-4.35 4.25 1.05 6L12 17.3l-5.4 2.85 1.05-6L3.3 9.9l6-.9z" />
         </Icon>
     ),
-    Archive: ({ className }) => (
+    Lockbox: ({ className }) => (
         <Icon className={className}>
-            <path d="M4 7h16v13H4z" />
-            <path d="M3 3h18v4H3z" />
-            <path d="M10 11h4" />
+            <rect x="3.5" y="3.5" width="17" height="17" rx="2.5" />
+            <circle cx="12" cy="12" r="3.25" />
+            <path d="M12 8.75v2M12 15.25v-2M8.75 12h2M15.25 12h-2" />
+            <path d="M6.5 20.5v1M17.5 20.5v1" />
         </Icon>
     ),
     Trash: ({ className }) => (
@@ -81,7 +82,7 @@ const navItems = [
     { key: "shared", label: "Shared", icon: Icons.Shared, path: "/shared" },
     { key: "recent", label: "Recent", icon: Icons.Clock, path: "/recent" },
     { key: "favorites", label: "Favorites", icon: Icons.Star, path: "/favorites",},
-    { key: "archived", label: "Archived", icon: Icons.Archive, path: null },
+    { key: "lockbox", label: "Lockbox", icon: Icons.Lockbox, path: "/lockbox" },
     { key: "trash", label: "Trash", icon: Icons.Trash, path: "/trashcan" },
 ];
 

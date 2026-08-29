@@ -1,9 +1,7 @@
 package kakha.kudava.filedrivespring.services.lockbox;
 
-import io.minio.GetObjectArgs;
-import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
-import io.minio.RemoveObjectArgs;
+import io.minio.*;
+import kakha.kudava.filedrivespring.services.objects.ObjectStorageService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -16,9 +14,6 @@ import java.util.Objects;
 @Component
 public class MinioLockboxObjectStorage
         implements LockboxObjectStorage {
-
-    private static final String LOCKBOX_CONTENT_TYPE =
-            "application/x-filedrive-lockbox";
 
     private final MinioClient minioClient;
     private final String lockboxBucket;
@@ -45,7 +40,8 @@ public class MinioLockboxObjectStorage
     @Override
     public void upload(
             String objectKey,
-            Path source
+            Path source,
+            ArtifactType artifactType
     ) throws Exception {
         requireObjectKey(objectKey);
         Objects.requireNonNull(source, "source");
@@ -67,14 +63,17 @@ public class MinioLockboxObjectStorage
                             .bucket(lockboxBucket)
                             .object(objectKey)
                             .stream(input, size, -1)
-                            .contentType(LOCKBOX_CONTENT_TYPE)
+                            .contentType(Objects.requireNonNull(artifactType).contentType())
                             .build()
             );
         }
     }
 
     @Override
-    public InputStream download(String objectKey) throws Exception {
+    public InputStream download(
+            String objectKey
+    ) throws Exception {
+
         requireObjectKey(objectKey);
 
         return minioClient.getObject(
@@ -86,7 +85,25 @@ public class MinioLockboxObjectStorage
     }
 
     @Override
-    public void delete(String objectKey) throws Exception {
+    public long size(
+            String objectKey
+    ) throws Exception {
+
+        requireObjectKey(objectKey);
+
+        return minioClient.statObject(
+                StatObjectArgs.builder()
+                        .bucket(lockboxBucket)
+                        .object(objectKey)
+                        .build()
+        ).size();
+    }
+
+    @Override
+    public void delete(
+            String objectKey
+    ) throws Exception {
+
         requireObjectKey(objectKey);
 
         minioClient.removeObject(
