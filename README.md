@@ -1,8 +1,11 @@
 # File Drive Spring
 
-A self-hosted secure file drive built with **Spring Boot**, **React**, **MinIO**, **MinIO KES**, and **ClamAV**.
+A self-hosted secure file drive built with **Spring Boot**, **React**, **MinIO**, **MinIO KES**, and **ClamAV**, with a companion Windows desktop client for end-to-end encrypted storage.
 
-The project provides a REST API for user authentication, folder/file management, object storage, malware scanning, quarantine handling, and encrypted S3-compatible storage. A React frontend is included and currently under active development.
+The project provides a REST API for user authentication, folder/file management, object storage, malware scanning, quarantine handling, encrypted S3-compatible storage, and **Lockbox** client-side encrypted files. A React web frontend is included, while the separate [FD-Client](https://github.com/Kakha8/FD-Client) desktop application provides the Lockbox GUI and performs encryption, signing, verification, and decryption on the user's device.
+
+> [!IMPORTANT]
+> This project is under active development and has not undergone an independent security audit. The Lockbox formats and APIs may change and should not yet be treated as production-ready cryptographic software.
 
 ---
 
@@ -14,9 +17,10 @@ Current focus:
 
 - Hardening the backend file-drive API
 - Building out the React frontend
-- Preparing the project for a future desktop GUI app
+- Developing the Lockbox backend protocol and the [FD-Client](https://github.com/Kakha8/FD-Client) desktop GUI
+- Expanding encrypted revision, device enrollment, and sharing workflows
 
-The backend is the most complete part of the project. The React frontend exists, but should still be considered a work in progress.
+The backend is the most complete part of this repository. The React frontend and the separate desktop client are both under active development.
 
 ---
 
@@ -59,8 +63,29 @@ The backend is the most complete part of the project. The React frontend exists,
 - KES-backed master key configuration
 - MinIO bucket encryption setup during container initialization
 - TLS configuration for backend and MinIO/KES communication
+- Lockbox storage for client-encrypted containers, signed manifests, and signatures
+- Device enrollment and public-key registration for Lockbox clients
+- Immutable, hash-linked encrypted file revisions
+- Revision-specific sharing with registered recipient devices
 
-> Note: current encryption is server-side object-storage encryption. Client-side encryption is planned for the future desktop GUI app.
+The two encryption layers serve different purposes: MinIO/KES protects stored objects at the infrastructure layer, while FD-Client's Lockbox mode encrypts files before upload so the backend never receives plaintext content or private client keys.
+
+### Lockbox Desktop Client
+
+The Windows desktop GUI lives in the separate [FD-Client repository](https://github.com/Kakha8/FD-Client). It currently includes:
+
+- JavaFX interface backed by a native Rust cryptographic core
+- Chunked `CSEMLK03` containers for streaming large files
+- AES-256-GCM content encryption
+- ML-KEM-1024 recipient key encapsulation
+- ML-DSA-87 artifact and share signatures
+- Windows DPAPI protection for device secrets and refresh tokens
+- Authenticated download, decryption, and plaintext export
+- Immutable revision history and historical revision export
+- Read-only sharing of a specific revision with another user or owned device
+- Upload/download progress and cancellation
+
+See the [FD-Client README](https://github.com/Kakha8/FD-Client#readme) for its security model, requirements, build instructions, and current limitations.
 
 ### Malware Scanning and Quarantine
 
@@ -113,6 +138,13 @@ The frontend is still under development and does not yet represent the final UI/
 - React Router
 - JavaScript
 
+### Desktop Client
+
+- Java 21 and JavaFX 21
+- Rust 2024 native cryptographic library exposed through JNI
+- Windows DPAPI
+- Maven and Cargo
+
 ### Infrastructure
 
 - Docker Compose
@@ -138,6 +170,18 @@ config       -> application, security, and storage configuration
 ```
 
 Files are stored in MinIO, while metadata such as file names, folder relationships, users, refresh tokens, logs, and quarantine records are stored in the database.
+
+Lockbox adds a client-encrypted path to this architecture:
+
+```text
+plaintext file
+    -> FD-Client encrypts and signs locally
+    -> backend validates and stores encrypted artifacts
+    -> MinIO stores the encrypted container, manifest, and signature
+    -> an enrolled FD-Client downloads, verifies, and decrypts locally
+```
+
+The backend manages authorization, enrolled devices, public keys, revision metadata, and shares. Plaintext, file keys, and private encryption/signing keys remain on client devices.
 
 ---
 
@@ -262,6 +306,25 @@ For real deployments, replace all default credentials and secrets.
 | `GET` | `/api/quarantine/{id}/download` | Download quarantined file as password-protected ZIP |
 | `DELETE` | `/api/quarantine/{id}` | Delete quarantined file |
 
+### Lockbox
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/lockbox/enrollments` | Begin enrollment of a Lockbox device |
+| `POST` | `/api/lockbox/enrollments/{enrollmentId}/complete` | Complete device enrollment and register public keys |
+| `GET` | `/api/lockbox/enrollments/status` | Get Lockbox status for a device |
+| `POST` | `/api/lockbox/files` | Upload an encrypted container, manifest, and signature |
+| `PUT` | `/api/lockbox/files/{fileId}/revisions` | Upload the next encrypted file revision |
+| `GET` | `/api/lockbox/files/{fileId}/revisions` | List immutable revision history |
+| `GET` | `/api/lockbox/folders` | View the Lockbox root folder |
+| `GET` | `/api/lockbox/folders/{folderId}` | View a Lockbox folder |
+| `GET` | `/api/lockbox/files/private-metadata` | List encrypted private metadata artifacts |
+| `DELETE` | `/api/lockbox/files/{fileId}` | Delete a Lockbox file and its stored artifacts |
+| `GET` | `/api/lockbox/devices` | List the current user's enrolled devices |
+| `GET` | `/api/lockbox/share-recipients/{username}/keys` | Get a recipient's active public encryption keys |
+| `POST` | `/api/lockbox/shares` | Publish client-created envelopes for a specific revision |
+| `GET` | `/api/lockbox/shares/received` | List shares received by an enrolled device |
+
 ---
 
 ## Running Without Docker
@@ -305,18 +368,14 @@ Then run:
 - Improve authentication state handling
 - Polish responsive layout and user experience
 
-### Desktop GUI App
+### Lockbox and Desktop Client
 
-A future goal is to build a desktop GUI app with two vault modes:
-
-- **Local vault**: files stored locally on the user's machine
-- **Remote vault**: files stored through the File Drive backend
-
-Planned GUI security features:
-
-- Optional client-side encryption
-- Local encryption keys controlled by the user
-- Ability to choose between normal remote storage and encrypted vault storage
+- Background synchronization between registered devices and encrypted web storage
+- File-system change detection and resumable transfers
+- Revision-aware conflict detection and resolution
+- Selective synchronization for chosen files and folders
+- Device and capability revocation with an auditable event history
+- Optional ESP32 hardware-backed signing, key protection, and TOTP authentication
 
 ---
 
@@ -336,10 +395,12 @@ It combines:
 - Quarantine workflows
 - Dockerized infrastructure
 - Frontend integration
-- Future desktop vault design
+- Client-side encrypted Lockbox storage
+- Device enrollment, encrypted revisions, and revision-specific sharing
+- JavaFX and native Rust desktop-client integration
 
 ---
 
 ## Notes
 
-The project is evolving quickly, so some implementation details may change as the backend, frontend, and planned desktop GUI app continue to improve.
+The project is evolving quickly, so some implementation details may change as the backend, web frontend, and [FD-Client](https://github.com/Kakha8/FD-Client) desktop application continue to improve.
