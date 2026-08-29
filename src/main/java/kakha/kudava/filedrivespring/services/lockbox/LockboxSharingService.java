@@ -370,6 +370,27 @@ public class LockboxSharingService {
     }
 
     @Transactional(readOnly = true)
+    public LockboxRevisionSharesResponse revisionShares(Long fileId,long revisionNumber){
+        User owner=access.currentUser();
+        LockboxFile file=files.findByIdAndProfileUserId(fileId,owner.getId())
+                .orElseThrow(LockboxSharingService::fileNotFound);
+        if(file.getFile().isDeleted()||file.getFile().isPermanentlyDeleted())throw fileNotFound();
+        LockboxFileRevision revision=revisions.findByLockboxFileIdAndRevision(file.getId(),revisionNumber)
+                .orElseThrow(LockboxSharingService::fileNotFound);
+        Map<String,LockboxRevisionShareRecipientResponse> unique=new LinkedHashMap<>();
+        for(LockboxShare share:shares.findActiveRevisionSharesForOwner(
+                revision.getId(),owner.getId(),LockboxShare.Status.ACTIVE,Instant.now())){
+            boolean selfShare=Objects.equals(share.getOwner().getId(),share.getRecipient().getId());
+            UUID targetDeviceId=selfShare?share.getTargetDevice().getDeviceUuid():null;
+            long expiry=share.getExpiresAt()==null?0:share.getExpiresAt().getEpochSecond();
+            var item=new LockboxRevisionShareRecipientResponse(
+                    share.getRecipient().getUsername(),targetDeviceId,expiry);
+            unique.putIfAbsent(item.recipientUsername()+"\u0000"+(targetDeviceId==null?"":targetDeviceId),item);
+        }
+        return new LockboxRevisionSharesResponse(file.getId(),revisionNumber,List.copyOf(unique.values()));
+    }
+
+    @Transactional(readOnly = true)
     public LockboxReceivedSharesResponse receivedShares(UUID deviceId)
             throws Exception {
 

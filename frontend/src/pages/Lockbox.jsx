@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import DriveSidebar from "../components/DriveSidebar";
 import NotificationMenu from "../components/NotificationMenu";
 import UserMenu from "../components/UserMenu";
-import { getLockboxStatus, getRegisteredDevices } from "../api/lockbox";
+import { getLockboxFiles, getLockboxRevisions, getLockboxStatus, getRegisteredDevices } from "../api/lockbox";
 
 function SafeIcon({ className = "" }) {
     return (
@@ -29,12 +29,39 @@ function formatDate(value, fallback = "Never") {
     }).format(date);
 }
 
+function formatBytes(bytes) {
+    if (bytes == null || Number.isNaN(Number(bytes))) return "—";
+    if (Number(bytes) === 0) return "0 B";
+
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let value = Number(bytes);
+    let unit = 0;
+
+    while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit += 1;
+    }
+
+    return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+function encryptedFileName(file) {
+    return `${file.clientFileId}.fdlock`;
+}
+
 export default function Lockbox({ sidebarOpen, onToggleSidebar, onLogout }) {
     const [status, setStatus] = useState(null);
     const [statusError, setStatusError] = useState("");
     const [devices, setDevices] = useState([]);
     const [devicesLoading, setDevicesLoading] = useState(true);
     const [devicesError, setDevicesError] = useState("");
+    const [files, setFiles] = useState([]);
+    const [filesLoading, setFilesLoading] = useState(true);
+    const [filesError, setFilesError] = useState("");
+    const [expandedFileId, setExpandedFileId] = useState(null);
+    const [revisionsByFile, setRevisionsByFile] = useState({});
+    const [revisionLoadingId, setRevisionLoadingId] = useState(null);
+    const [revisionErrors, setRevisionErrors] = useState({});
 
     useEffect(() => {
         let cancelled = false;
@@ -58,6 +85,17 @@ export default function Lockbox({ sidebarOpen, onToggleSidebar, onLogout }) {
                 if (!cancelled) setDevicesLoading(false);
             });
 
+        getLockboxFiles()
+            .then((result) => {
+                if (!cancelled) setFiles(result);
+            })
+            .catch((error) => {
+                if (!cancelled) setFilesError(error.message || "Unable to load encrypted files");
+            })
+            .finally(() => {
+                if (!cancelled) setFilesLoading(false);
+            });
+
         return () => {
             cancelled = true;
         };
@@ -65,6 +103,35 @@ export default function Lockbox({ sidebarOpen, onToggleSidebar, onLogout }) {
 
     const isActivated = status?.lockboxStatus === "ENABLED";
     const isSuspended = status?.lockboxStatus === "SUSPENDED";
+    const totalEncryptedSize = files.reduce(
+        (total, file) => total + (Number(file.containerSize) || 0),
+        0
+    );
+
+    async function toggleRevisions(fileId) {
+        if (expandedFileId === fileId) {
+            setExpandedFileId(null);
+            return;
+        }
+
+        setExpandedFileId(fileId);
+        if (revisionsByFile[fileId]) return;
+
+        setRevisionLoadingId(fileId);
+        setRevisionErrors((current) => ({ ...current, [fileId]: "" }));
+
+        try {
+            const revisions = await getLockboxRevisions(fileId);
+            setRevisionsByFile((current) => ({ ...current, [fileId]: revisions }));
+        } catch (error) {
+            setRevisionErrors((current) => ({
+                ...current,
+                [fileId]: error.message || "Unable to load revisions",
+            }));
+        } finally {
+            setRevisionLoadingId((current) => current === fileId ? null : current);
+        }
+    }
 
     return (
         <div className="drive-page">
@@ -108,6 +175,74 @@ export default function Lockbox({ sidebarOpen, onToggleSidebar, onLogout }) {
                             )}
                         </div>
                     </div>
+
+                    <section className="lockbox-files" aria-labelledby="encrypted-files-title">
+                        <div className="lockbox-section-heading">
+                            <div>
+                                <p className="lockbox-eyebrow">Encrypted storage</p>
+                                <h2 id="encrypted-files-title">Files</h2>
+                            </div>
+                            {!filesLoading && !filesError && (
+                                <span>
+                                    {files.length} {files.length === 1 ? "file" : "files"}
+                                    <span className="lockbox-summary-divider">•</span>
+                                    {formatBytes(totalEncryptedSize)} total
+                                </span>
+                            )}
+                        </div>
+
+                        <div className="lockbox-file-table">
+                            <div className="lockbox-file-row lockbox-file-head">
+                                <span>Encrypted filename</span><span>Size</span><span>Time uploaded</span>
+                            </div>
+                            {filesLoading && <div className="lockbox-table-message">Loading encrypted files…</div>}
+                            {!filesLoading && filesError && <div className="lockbox-table-message error">{filesError}</div>}
+                            {!filesLoading && !filesError && files.length === 0 && <div className="lockbox-table-message">No encrypted files uploaded yet.</div>}
+                            {!filesLoading && !filesError && files.map((file) => {
+                                const expanded = expandedFileId === file.id;
+                                const revisions = revisionsByFile[file.id] || [];
+
+                                return <div className="lockbox-file-entry" key={file.id}>
+                                    <div className={`lockbox-file-row ${expanded ? "expanded" : ""}`}>
+                                        <div className="lockbox-file-name">
+                                            {Number(file.revision) > 1 ? (
+                                                <button
+                                                    type="button"
+                                                    className="lockbox-revision-toggle"
+                                                    onClick={() => toggleRevisions(file.id)}
+                                                    aria-expanded={expanded}
+                                                    aria-label={`${expanded ? "Hide" : "Show"} revisions for ${encryptedFileName(file)}`}
+                                                >
+                                                    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 5 5 5-5 5" /></svg>
+                                                </button>
+                                            ) : null}
+                                            <strong title={encryptedFileName(file)}>{encryptedFileName(file)}</strong>
+                                        </div>
+                                        <span>{formatBytes(file.containerSize)}</span>
+                                        <span>{formatDate(file.createdAt, "Unknown")}</span>
+                                    </div>
+
+                                    {expanded && (
+                                        <div className="lockbox-revisions">
+                                            {revisionLoadingId === file.id && <div className="lockbox-revision-message">Loading revisions…</div>}
+                                            {revisionErrors[file.id] && <div className="lockbox-revision-message error">{revisionErrors[file.id]}</div>}
+                                            {revisionLoadingId !== file.id && !revisionErrors[file.id] && revisions.map((revision) => (
+                                                <div className="lockbox-revision-row" key={revision.revision}>
+                                                    <span>
+                                                        Revision {revision.revision}
+                                                        {revision.current && <small>Current</small>}
+                                                    </span>
+                                                    <span>{formatBytes(revision.containerSize)}</span>
+                                                    <span>{formatDate(revision.createdAt, "Unknown")}</span>
+                                                </div>
+                                            ))}
+                                            {revisionLoadingId !== file.id && !revisionErrors[file.id] && revisions.length === 0 && <div className="lockbox-revision-message">No revisions found.</div>}
+                                        </div>
+                                    )}
+                                </div>
+                            })}
+                        </div>
+                    </section>
 
                     <section className="lockbox-devices" aria-labelledby="registered-devices-title">
                         <div className="lockbox-section-heading">

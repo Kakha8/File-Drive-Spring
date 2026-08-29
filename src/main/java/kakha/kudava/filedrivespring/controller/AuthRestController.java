@@ -90,7 +90,7 @@ public class AuthRestController {
         response.addHeader("Set-Cookie",
                 REFRESH_COOKIE + "=" + token
                         + "; Max-Age=" + maxAge
-                        + "; Path=/api/auth"
+                        + "; Path=/"
                         + "; Secure"
                         + "; HttpOnly"
                         + "; SameSite=None");

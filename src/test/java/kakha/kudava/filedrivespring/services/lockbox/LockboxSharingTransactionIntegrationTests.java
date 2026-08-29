@@ -27,6 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
@@ -44,6 +45,7 @@ import java.util.UUID;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -134,6 +136,23 @@ class LockboxSharingTransactionIntegrationTests {
         assertEquals(SHARE_UUID.toString(), response.shareId());
         assertEquals(1, shares.count());
         assertEquals(1, envelopes.count());
+    }
+
+    @Test
+    void ownerListsOnlyActiveSharesForTheRequestedImmutableRevision() {
+        service.createShare(request());
+        var response=service.revisionShares(file.getId(),7);
+        assertEquals(file.getId(),response.fileId());
+        assertEquals(7,response.revision());
+        assertEquals(1,response.shares().size());
+        assertEquals("recipient",response.shares().getFirst().recipientUsername());
+        assertNull(response.shares().getFirst().targetDeviceId());
+
+        LockboxShare persisted=shares.findAll().getFirst();
+        persisted.revoke();shares.saveAndFlush(persisted);
+        assertTrue(service.revisionShares(file.getId(),7).shares().isEmpty());
+        LockboxApiException missing=assertThrows(LockboxApiException.class,()->service.revisionShares(file.getId(),8));
+        assertEquals(HttpStatus.NOT_FOUND,missing.getStatus());
     }
 
     @Test

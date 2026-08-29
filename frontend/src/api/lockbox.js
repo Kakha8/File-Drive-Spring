@@ -34,3 +34,25 @@ export async function getRegisteredDevices() {
     const result = await response.json();
     return Array.isArray(result.devices) ? result.devices : [];
 }
+
+export async function getLockboxFiles() {
+    const response = await apiFetch("/api/lockbox/folders");
+
+    if (!response.ok) {
+        throw new Error("Failed to load encrypted files");
+    }
+
+    const result = await response.json();
+    return Array.isArray(result.files) ? result.files : [];
+}
+
+export async function getLockboxRevisions(fileId) {
+    const response = await apiFetch(`/api/lockbox/files/${fileId}/revisions`);
+
+    if (!response.ok) {
+        throw new Error("Failed to load file revisions");
+    }
+
+    const result = await response.json();
+    return Array.isArray(result.revisions) ? result.revisions : [];
+}

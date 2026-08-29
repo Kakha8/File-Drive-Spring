@@ -110,7 +110,7 @@ public class RefreshRestController {
         response.addHeader("Set-Cookie",
                 REFRESH_COOKIE + "=" + token
                         + "; Max-Age=" + maxAge
-                        + "; Path=/api/auth"
+                        + "; Path=/"
                         + "; Secure"
                         + "; HttpOnly"
                         + "; SameSite=None");
@@ -120,7 +120,7 @@ public class RefreshRestController {
         response.addHeader("Set-Cookie",
                 REFRESH_COOKIE
                         + "=; Max-Age=0"
-                        + "; Path=/api/auth"
+                        + "; Path=/"
                         + "; Secure"
                         + "; HttpOnly"
                         + "; SameSite=None");

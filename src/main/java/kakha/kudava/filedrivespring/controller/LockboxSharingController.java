@@ -6,6 +6,7 @@ import kakha.kudava.filedrivespring.dto.lockbox.LockboxReceivedShareResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxReceivedSharesResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxShareResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxOwnDevicesResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxRevisionSharesResponse;
 import kakha.kudava.filedrivespring.records.LockboxDownloadResult;
 import kakha.kudava.filedrivespring.services.lockbox.LockboxSharingService;
 import org.springframework.http.*;
@@ -67,6 +68,13 @@ public class LockboxSharingController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .cacheControl(CacheControl.noStore())
                 .body(sharingService.createShare(request));
+    }
+
+    @GetMapping(value="/files/{fileId}/revisions/{revision}/shares",produces=MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<LockboxRevisionSharesResponse> revisionShares(
+            @PathVariable Long fileId,@PathVariable long revision){
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(sharingService.revisionShares(fileId,revision));
     }
 
     @GetMapping(

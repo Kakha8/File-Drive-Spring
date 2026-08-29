@@ -8,6 +8,8 @@ import kakha.kudava.filedrivespring.dto.lockbox.LockboxShareResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxOwnDeviceKeyResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxOwnDeviceResponse;
 import kakha.kudava.filedrivespring.dto.lockbox.LockboxOwnDevicesResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxRevisionShareRecipientResponse;
+import kakha.kudava.filedrivespring.dto.lockbox.LockboxRevisionSharesResponse;
 import kakha.kudava.filedrivespring.exceptions.LockboxApiException;
 import kakha.kudava.filedrivespring.services.lockbox.LockboxSharingService;
 import org.junit.jupiter.api.Test;
@@ -148,6 +150,22 @@ class LockboxSharingControllerTests {
                 .andExpect(jsonPath("$.status").value("ACTIVE"));
 
         verify(sharingService).createShare(new LockboxCreateShareRequest(10L, "env", "key", "sig"));
+    }
+
+    @Test @WithMockUser(roles="USER")
+    void revisionSharesReturnsRoutingOnlyContractAndNoStore() throws Exception {
+        UUID target=UUID.randomUUID();
+        when(sharingService.revisionShares(42L,1L)).thenReturn(new LockboxRevisionSharesResponse(42L,1,List.of(
+                new LockboxRevisionShareRecipientResponse("owner",target,0))));
+        mvc.perform(get("/api/lockbox/files/42/revisions/1/shares"))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store"))
+                .andExpect(jsonPath("$.fileId").value(42)).andExpect(jsonPath("$.revision").value(1))
+                .andExpect(jsonPath("$.shares[0].recipientUsername").value("owner"))
+                .andExpect(jsonPath("$.shares[0].targetDeviceId").value(target.toString()))
+                .andExpect(jsonPath("$.shares[0].expiresAtUnixSeconds").value(0))
+                .andExpect(jsonPath("$.shares[0].envelope").doesNotExist())
+                .andExpect(jsonPath("$.shares[0].publicKey").doesNotExist())
+                .andExpect(jsonPath("$.shares[0].id").doesNotExist());
     }
 
     @Test

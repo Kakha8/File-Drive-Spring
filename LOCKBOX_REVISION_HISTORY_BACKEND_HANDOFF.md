@@ -14,6 +14,10 @@ be safely transformed by Hibernate `update`; back up any development data first.
 - `GET /api/lockbox/files/{fileId}/revisions` lists immutable revisions newest first.
 - `GET /api/lockbox/files/{fileId}/revisions/{revision}/{container|manifest|signature}`
   downloads an owner-authorized historical artifact.
+- `GET /api/lockbox/files/{fileId}/revisions/{revision}/shares` returns only the
+  active, non-expired recipient routing identities for that owned revision. It
+  exposes a target device UUID only for self-shares and never returns envelopes,
+  keys, signatures, database IDs, or email addresses.
 - Existing artifact and private-metadata endpoints resolve only the current revision.
 
 The next-revision manifest must contain the same `clientFileId`, the next contiguous

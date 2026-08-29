@@ -75,6 +75,23 @@ public interface LockboxShareRepository
     );
 
     @Query("""
+        select s from LockboxShare s
+        join fetch s.recipient
+        join fetch s.owner
+        join fetch s.targetDevice
+        where s.revision.id = :revisionId
+          and s.owner.id = :ownerId
+          and s.status = :status
+          and (s.expiresAt is null or s.expiresAt > :now)
+        order by s.createdAt asc, s.shareUuid asc
+        """)
+    List<LockboxShare> findActiveRevisionSharesForOwner(
+            @Param("revisionId") Long revisionId,
+            @Param("ownerId") Long ownerId,
+            @Param("status") LockboxShare.Status status,
+            @Param("now") Instant now);
+
+    @Query("""
         select s
         from LockboxShare s
         join fetch s.revision revision
