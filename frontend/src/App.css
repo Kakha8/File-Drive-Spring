@@ -515,6 +515,391 @@ body {
 
 /* Content layout */
 
+.lockbox-page-content {
+  flex: 1;
+  min-height: 0;
+  padding: 24px 36px 36px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.lockbox-page-content::-webkit-scrollbar {
+  width: 10px;
+}
+
+.lockbox-page-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lockbox-page-content::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: #344153;
+  background-clip: padding-box;
+}
+
+.lockbox-page-content::-webkit-scrollbar-thumb:hover {
+  background: #465a73;
+  background-clip: padding-box;
+}
+
+.lockbox-intro {
+  min-height: 0;
+  padding: 26px 28px;
+  border: 1px solid rgba(96, 165, 250, 0.1);
+  border-radius: 16px;
+  background: #171c23;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.lockbox-intro-copy {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.lockbox-intro-icon {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  color: #7db3f4;
+  display: grid;
+  place-items: center;
+}
+
+.lockbox-intro-icon svg {
+  width: 25px;
+  height: 25px;
+}
+
+.lockbox-eyebrow {
+  margin: 0 0 8px;
+  color: #7aa7df !important;
+  font-size: 12px !important;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.lockbox-intro h1 {
+  margin: 0 0 6px;
+  color: #fff;
+  font-size: 23px;
+  font-weight: 600;
+}
+
+.lockbox-intro p {
+  max-width: 500px;
+  margin: 0;
+  color: #9d9d9d;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.lockbox-status {
+  min-width: 310px;
+  margin-top: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 12px;
+  background: #1c232c;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lockbox-status-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #777;
+  box-shadow: 0 0 0 4px rgba(119, 119, 119, 0.12);
+}
+
+.lockbox-status.activated .lockbox-status-dot {
+  background: #72b889;
+  box-shadow: 0 0 0 4px rgba(114, 184, 137, 0.12);
+}
+
+.lockbox-status.suspended .lockbox-status-dot,
+.lockbox-status-dot.error {
+  background: #c68b72;
+  box-shadow: 0 0 0 4px rgba(198, 139, 114, 0.12);
+}
+
+.lockbox-status-dot.loading {
+  background: #60a5fa;
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.12);
+}
+
+.lockbox-status span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lockbox-status strong {
+  color: #eee;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lockbox-status small {
+  color: #8e8e8e;
+  font-size: 12px;
+}
+
+.lockbox-files,
+.lockbox-devices {
+  margin-top: 24px;
+  border: 1px solid rgba(96, 165, 250, 0.08);
+  border-radius: 16px;
+  background: #171c23;
+  overflow: hidden;
+}
+
+.lockbox-files {
+  margin-top: 24px;
+}
+
+.lockbox-section-heading {
+  padding: 24px 26px 20px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.lockbox-section-heading h2 {
+  margin: 0;
+  color: #f3f3f3;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.lockbox-section-heading > span {
+  color: #777;
+  font-size: 12px;
+}
+
+.lockbox-summary-divider {
+  margin: 0 8px;
+  color: #52667f;
+}
+
+.lockbox-device-row {
+  min-height: 62px;
+  padding: 0 26px;
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) minmax(170px, 1fr) minmax(170px, 1fr) 110px;
+  align-items: center;
+  gap: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  color: #a9a9a9;
+  font-size: 13px;
+}
+
+.lockbox-file-row {
+  min-height: 62px;
+  padding: 0 26px;
+  display: grid;
+  grid-template-columns: minmax(300px, 1.8fr) minmax(100px, 0.6fr) minmax(190px, 1fr);
+  align-items: center;
+  gap: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  color: #a9a9a9;
+  font-size: 13px;
+}
+
+.lockbox-file-row:not(.lockbox-file-head):hover {
+  background: rgba(59, 130, 246, 0.035);
+}
+
+.lockbox-file-row.expanded {
+  background: rgba(59, 130, 246, 0.04);
+}
+
+.lockbox-file-name {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lockbox-revision-toggle {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #75859a;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.lockbox-revision-toggle:hover {
+  background: rgba(96, 165, 250, 0.1);
+  color: #8bbcf7;
+}
+
+.lockbox-revision-toggle svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.16s ease;
+}
+
+.lockbox-revision-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+.lockbox-file-row strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: #dce7f5;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lockbox-revisions {
+  background: #141920;
+  border-top: 1px solid rgba(96, 165, 250, 0.08);
+}
+
+.lockbox-revision-row {
+  min-height: 50px;
+  padding: 0 26px 0 64px;
+  display: grid;
+  grid-template-columns: minmax(300px, 1.8fr) minmax(100px, 0.6fr) minmax(190px, 1fr);
+  align-items: center;
+  gap: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.035);
+  color: #8f9aab;
+  font-size: 12px;
+}
+
+.lockbox-revision-row:first-child {
+  border-top: 0;
+}
+
+.lockbox-revision-row > span:first-child {
+  color: #bdc8d7;
+  font-weight: 500;
+}
+
+.lockbox-revision-row small {
+  margin-left: 9px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.11);
+  color: #78adf0;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.lockbox-revision-message {
+  padding: 17px 26px 17px 64px;
+  color: #758195;
+  font-size: 12px;
+}
+
+.lockbox-revision-message.error {
+  color: #cf887c;
+}
+
+.lockbox-file-head {
+  min-height: 42px;
+  color: #777;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.lockbox-device-row:not(.lockbox-device-head):hover {
+  background: rgba(59, 130, 246, 0.035);
+}
+
+.lockbox-device-row strong {
+  color: #e8e8e8;
+  font-weight: 500;
+}
+
+.lockbox-device-head {
+  min-height: 42px;
+  color: #777;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.device-status-badge {
+  display: inline-flex;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(190, 111, 98, 0.1);
+  color: #cf887c;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.device-status-badge.active {
+  background: rgba(114, 184, 137, 0.1);
+  color: #82c597;
+}
+
+.lockbox-table-message,
+.lockbox-device-message {
+  padding: 28px 26px;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  color: #888;
+  font-size: 13px;
+}
+
+.lockbox-table-message.error,
+.lockbox-device-message.error {
+  color: #cf887c;
+}
+
+@media (max-width: 850px) {
+  .lockbox-intro {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .lockbox-status {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .lockbox-file-table,
+  .lockbox-device-table { overflow-x: auto; }
+  .lockbox-file-row { min-width: 680px; }
+  .lockbox-revision-row { min-width: 680px; }
+  .lockbox-device-row { min-width: 760px; }
+}
+
 .content-layout {
   flex: 1;
   min-height: 0;

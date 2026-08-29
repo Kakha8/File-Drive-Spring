@@ -3,8 +3,7 @@ import {
     getAccessToken,
     setAccessToken,
 } from "./tokenstore";
-
-const API_BASE = "https://localhost:8443";
+import { API_BASE_URL } from "./config";
 
 let refreshPromise = null;
 
@@ -12,7 +11,7 @@ let refreshPromise = null;
  * Signs the user in and stores the returned access token in memory.
  */
 export async function login(username, password) {
-    const response = await fetch(`${API_BASE}/api/auth/login`, {
+    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -48,7 +47,7 @@ export async function login(username, password) {
  * Requests a new access token using the refresh-token cookie.
  */
 async function doRefresh() {
-    const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+    const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
         method: "POST",
         credentials: "include",
     });
@@ -97,7 +96,7 @@ export async function logout() {
     clearAccessToken();
 
     try {
-        await fetch(`${API_BASE}/api/auth/logout`, {
+        await fetch(`${API_BASE_URL}/api/auth/logout`, {
             method: "POST",
             credentials: "include",
         });

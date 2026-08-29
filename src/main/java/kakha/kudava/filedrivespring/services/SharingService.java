@@ -1,7 +1,7 @@
 package kakha.kudava.filedrivespring.services;
 
-import kakha.kudava.filedrivespring.dto.ShareRequestDTO;
-import kakha.kudava.filedrivespring.dto.SharedItemDTO;
+import kakha.kudava.filedrivespring.dto.share.ShareRequestDTO;
+import kakha.kudava.filedrivespring.dto.share.SharedItemDTO;
 import kakha.kudava.filedrivespring.enums.EntityType;
 import kakha.kudava.filedrivespring.enums.SharingRole;
 import kakha.kudava.filedrivespring.model.FileMetaData;

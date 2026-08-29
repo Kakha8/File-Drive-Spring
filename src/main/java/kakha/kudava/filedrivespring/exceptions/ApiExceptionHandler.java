@@ -11,6 +11,11 @@ import org.springframework.web.server.ResponseStatusException;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    @ExceptionHandler(LockboxApiException.class)
+    public ResponseEntity<ApiErrorResponse> handleLockbox(LockboxApiException ex) {
+        return ResponseEntity.status(ex.getStatus()).body(ApiErrorResponse.of(ex.getCode(), ex.getMessage(), ex.getStatus().value()));
+    }
+
     @ExceptionHandler(MalwareDetectedException.class)
     public ResponseEntity<ApiErrorResponse> handleMalwareDetected(MalwareDetectedException ex) {
         log.warn("Malware upload blocked: {}", ex.getMessage());
