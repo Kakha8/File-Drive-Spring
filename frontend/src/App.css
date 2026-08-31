@@ -2345,6 +2345,38 @@ body,
   text-align: center;
 }
 
+.login-mfa-account {
+  margin: 0;
+  color: #c5ccd6;
+  overflow-wrap: anywhere;
+}
+
+.login-mfa-help {
+  margin: 10px 0 0;
+  color: #929dac;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.login-form-panel .login-form .login-totp-code {
+  text-align: center;
+  font-size: 24px;
+  letter-spacing: 0.3em;
+  font-variant-numeric: tabular-nums;
+}
+
+.login-form-panel .login-form .login-start-again {
+  margin-top: 10px;
+  background: transparent;
+  color: #a8caff;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: none;
+}
+
+.login-form-panel .login-form .login-start-again:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.1);
+}
+
 @media (max-width: 760px) {
   .login-page {
     padding: 18px;
