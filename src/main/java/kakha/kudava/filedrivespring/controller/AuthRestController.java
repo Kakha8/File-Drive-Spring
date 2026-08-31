@@ -3,45 +3,25 @@ package kakha.kudava.filedrivespring.controller;
 import jakarta.servlet.http.HttpServletResponse;
 import kakha.kudava.filedrivespring.dto.LoginRequest;
 import kakha.kudava.filedrivespring.dto.LoginResponse;
-import kakha.kudava.filedrivespring.model.User;
-import kakha.kudava.filedrivespring.services.jwt.JwtRefreshService;
-import kakha.kudava.filedrivespring.services.jwt.JwtService;
-import kakha.kudava.filedrivespring.services.users.UserService;
-import lombok.extern.slf4j.Slf4j;
+import kakha.kudava.filedrivespring.dto.totp.MfaLoginRequest;
+import kakha.kudava.filedrivespring.records.ApiErrorResponse;
+import kakha.kudava.filedrivespring.services.totp.TwoStageLoginService;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Duration;
-import java.util.UUID;
-
-@Slf4j
 @RestController
 @RequestMapping("/api/auth")
 public class AuthRestController {
-
-
-    private static final String REFRESH_COOKIE = "refresh_token";
+    private final TwoStageLoginService loginService;
     private final int refreshDays;
-    private final AuthenticationManager authenticationManager;
-    private final JwtService jwtService;
-    private final JwtRefreshService refreshService;
-    private final UserService userService;
 
-    public AuthRestController(@Value("${JWT_REFRESH_DAYS}") int refreshDays,
-                              AuthenticationManager authenticationManager,
-                              JwtService jwtService,
-                              JwtRefreshService refreshService, UserService userService) {
-
+    public AuthRestController(TwoStageLoginService loginService, @Value("${JWT_REFRESH_DAYS}") int refreshDays) {
+        this.loginService = loginService;
         this.refreshDays = refreshDays;
-        this.authenticationManager = authenticationManager;
-        this.jwtService = jwtService;
-        this.refreshService = refreshService;
-        this.userService = userService;
     }
 
     @GetMapping("/me")
@@ -50,50 +30,27 @@ public class AuthRestController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest req, HttpServletResponse response) throws Exception {
-        Authentication auth = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(req.getUsername(), req.getPassword())
-        );
-
-        UserDetails user = (UserDetails) auth.getPrincipal();
-
-        String username = user.getUsername();
-        User selectedUser = userService.getUserByEmail(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        UUID publicUuid = requirePublicUuid(selectedUser);
-
-        String token = jwtService.generateAccessToken(user); // includes roles claim
-
-        String refreshToken = refreshService.createToken(selectedUser, refreshDays);
-        setRefreshCookie(response, refreshToken, refreshDays);
-
-        return ResponseEntity.ok(new LoginResponse(
-                token,
-                selectedUser.getId(),
-                selectedUser.getUsername(),
-                publicUuid
-        ));
-    }
-
-    private UUID requirePublicUuid(User user) {
-        if (user.getPublicUuid() == null) {
-            throw new IllegalStateException("Authenticated account has no public UUID.");
+    public ResponseEntity<?> login(@RequestBody LoginRequest request, HttpServletResponse response) {
+        var result = loginService.login(request.getUsername(), request.getPassword());
+        // The service proxy has committed before any token is written to the response.
+        if (result.challenge() != null) {
+            AuthCookies.clearRefresh(response);
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result.challenge());
         }
-        return user.getPublicUuid();
+        AuthCookies.setRefresh(response, result.session().refreshToken(), refreshDays);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result.session().login());
     }
 
-    private void setRefreshCookie(HttpServletResponse response, String token, int days) {
-        int maxAge = (int) Duration.ofDays(days).getSeconds();
-
-        log.info("Setting refresh cookie days={}, maxAgeSeconds={}", days, maxAge);
-
-        response.addHeader("Set-Cookie",
-                REFRESH_COOKIE + "=" + token
-                        + "; Max-Age=" + maxAge
-                        + "; Path=/"
-                        + "; Secure"
-                        + "; HttpOnly"
-                        + "; SameSite=None");
+    @PostMapping("/mfa/totp")
+    public ResponseEntity<LoginResponse> verify(@RequestBody MfaLoginRequest request, HttpServletResponse response) {
+        var session = loginService.verify(request.challengeToken(), request.code());
+        AuthCookies.setRefresh(response, session.refreshToken(), refreshDays);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(session.login());
     }
 
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiErrorResponse> malformedRequest() {
+        return ResponseEntity.badRequest().cacheControl(CacheControl.noStore())
+                .body(ApiErrorResponse.of("INVALID_AUTH_REQUEST", "Invalid authentication request.", 400));
+    }
 }

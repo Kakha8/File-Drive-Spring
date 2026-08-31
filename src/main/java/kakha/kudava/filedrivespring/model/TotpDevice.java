@@ -46,6 +46,12 @@ public class TotpDevice {
 
     private Long lastAcceptedCounter;
 
+    @Column(nullable = false, columnDefinition = "integer default 0")
+    private int enrollmentFailedAttempts;
+
+    // Existing factor used for step-up when enrolling an additional device.
+    private Long enrollmentAuthorizingDeviceId;
+
     @Version
     private Long version;
 
