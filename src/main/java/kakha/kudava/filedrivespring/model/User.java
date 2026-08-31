@@ -35,6 +35,9 @@ public class User {
         USER, ADMIN
     }
 
+    @Column(nullable = false)
+    private boolean totpEnabled = false;
+
     @PrePersist
     private void beforeInsert() {
         if (publicUuid == null) {
