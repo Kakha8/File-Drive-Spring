@@ -2,6 +2,7 @@ package kakha.kudava.filedrivespring.controller;
 
 import kakha.kudava.filedrivespring.dto.totp.TotpEnrollmentConfirmRequest;
 import kakha.kudava.filedrivespring.dto.totp.TotpEnrollmentRequest;
+import kakha.kudava.filedrivespring.dto.totp.TotpDeviceRemovalRequest;
 import kakha.kudava.filedrivespring.records.ApiErrorResponse;
 import kakha.kudava.filedrivespring.services.totp.TotpEnrollmentService;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +31,14 @@ public class TotpEnrollmentController {
     @GetMapping("/status")
     public ResponseEntity<TotpEnrollmentService.Status> status() {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(enrollment.status());
+    }
+
+    @DeleteMapping(value = "/devices/{deviceId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<TotpEnrollmentService.Removal> remove(
+            @PathVariable Long deviceId, @RequestBody TotpDeviceRemovalRequest request) {
+        if (deviceId < 1) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid device ID.");
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(
+                enrollment.remove(deviceId, request.password(), request.authorizingDeviceId(), request.code()));
     }
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)

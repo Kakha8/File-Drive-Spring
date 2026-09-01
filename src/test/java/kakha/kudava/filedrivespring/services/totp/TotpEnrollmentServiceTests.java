@@ -180,6 +180,40 @@ class TotpEnrollmentServiceTests {
     }
 
     @Test
+    void removingLastDeviceDisablesTotpAndRevokesSessions() {
+        var enrollment = begin();
+        service.confirm(enrollment.deviceId(), "287082");
+        when(clock.instant()).thenReturn(Instant.ofEpochSecond(60));
+
+        var result = service.remove(enrollment.deviceId(), "password", enrollment.deviceId(), "359152");
+
+        assertFalse(result.enabled());
+        assertEquals(0, result.remainingDevices());
+        assertFalse(users.findById(owner.getId()).orElseThrow().isTotpEnabled());
+        assertEquals(TotpDevice.Status.REVOKED, device(enrollment.deviceId()).getStatus());
+        verify(refresh, times(2)).revokeAllForUser(owner.getId());
+    }
+
+    @Test
+    void multipleDevicesRequireAnotherDeviceToAuthorizeRemoval() {
+        var first = begin();
+        service.confirm(first.deviceId(), "287082");
+        when(clock.instant()).thenReturn(Instant.ofEpochSecond(60));
+        var second = service.begin("second", SEED, "password", first.deviceId(), "359152");
+        service.confirm(second.deviceId(), "359152");
+        when(clock.instant()).thenReturn(Instant.ofEpochSecond(90));
+
+        rejected(HttpStatus.BAD_REQUEST,
+                () -> service.remove(first.deviceId(), "password", first.deviceId(), "969429"));
+        var result = service.remove(first.deviceId(), "password", second.deviceId(), "969429");
+
+        assertTrue(result.enabled());
+        assertEquals(1, result.remainingDevices());
+        assertEquals(TotpDevice.Status.REVOKED, device(first.deviceId()).getStatus());
+        assertEquals(TotpDevice.Status.ACTIVE, device(second.deviceId()).getStatus());
+    }
+
+    @Test
     void revokingAuthorizingDeviceInvalidatesPendingAuthorization() {
         var first = begin();
         service.confirm(first.deviceId(), "287082");

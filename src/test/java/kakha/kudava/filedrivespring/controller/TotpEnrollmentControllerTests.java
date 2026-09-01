@@ -38,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -105,7 +106,7 @@ class TotpEnrollmentControllerTests {
     @Test
     void statusReturnsOnlyTheAuthenticatedAccountsEnabledFlag() throws Exception {
         when(enrollment.status()).thenReturn(new TotpEnrollmentService.Status(true,
-                List.of(new TotpEnrollmentService.DeviceSummary("Ledger Nano"))));
+                List.of(new TotpEnrollmentService.DeviceSummary(7L, "Ledger Nano"))));
 
         mvc.perform(get(PATH + "/status"))
                 .andExpect(status().isUnauthorized());
@@ -113,8 +114,23 @@ class TotpEnrollmentControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.devices[0].deviceId").value(7))
                 .andExpect(jsonPath("$.devices[0].displayName").value("Ledger Nano"))
                 .andExpect(jsonPath("$.secretBase32").doesNotExist());
+    }
+
+    @Test
+    void removalForwardsOnlyAuthenticatedDeviceProofAndReturnsSafeResult() throws Exception {
+        when(enrollment.remove(7L, "password", 8L, "012345"))
+                .thenReturn(new TotpEnrollmentService.Removal(7L, true, 1));
+        mvc.perform(delete(PATH + "/devices/7").header("Authorization", authorization)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"password\",\"authorizingDeviceId\":8,\"code\":\"012345\"}"))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.removedDeviceId").value(7))
+                .andExpect(jsonPath("$.remainingDevices").value(1))
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andExpect(jsonPath("$.code").doesNotExist());
     }
 
     @Test

@@ -3748,6 +3748,25 @@ body,
 .settings-device strong { color: var(--old-text, #e5e7eb); font-size: 14px; }
 .settings-device > div span { color: var(--old-muted, #9aa3af); font-size: 12px; }
 
+.settings-device-remove { margin-left: auto; color: #fca5a5; background: transparent; border: 0; cursor: pointer; }
+.settings-device-remove:hover { color: #fecaca; }
+
+.settings-removal-form {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 11px;
+  display: grid;
+  gap: 10px;
+}
+.settings-removal-form label { color: var(--old-muted, #9aa3af); font-size: 12px; font-weight: 700; }
+.settings-removal-form input,
+.settings-removal-form select { padding: 10px 12px; border: 1px solid var(--old-panel-border, rgba(255,255,255,.08)); border-radius: 8px; background: #111827; color: #e5e7eb; }
+.settings-removal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.settings-removal-actions button { padding: 9px 13px; border: 1px solid var(--old-panel-border, rgba(255,255,255,.08)); border-radius: 8px; background: transparent; color: #e5e7eb; cursor: pointer; }
+.settings-removal-actions .danger { background: #b91c1c; border-color: #b91c1c; }
+.settings-removal-actions button:disabled { cursor: not-allowed; opacity: .55; }
+
 /* =========================
    Notification dropdown
    ========================= */

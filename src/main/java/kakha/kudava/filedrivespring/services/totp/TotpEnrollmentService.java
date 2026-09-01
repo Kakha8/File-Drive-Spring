@@ -73,9 +73,40 @@ public class TotpEnrollmentService {
         List<DeviceSummary> activeDevices = devices
                 .findAllByUserIdAndStatus(user.getId(), TotpDevice.Status.ACTIVE)
                 .stream()
-                .map(device -> new DeviceSummary(device.getDisplayName()))
+                .map(device -> new DeviceSummary(device.getId(), device.getDisplayName()))
                 .toList();
         return new Status(user.isTotpEnabled(), activeDevices);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = EnrollmentRejected.class)
+    public Removal remove(Long targetDeviceId, String password, Long authorizingDeviceId, String code) {
+        User user = currentUserLocked();
+        TotpEnrollmentLimit limit = limit(user, clock.instant());
+        checkFailureLimit(limit);
+        if (password == null || password.length() > 1024 || !passwords.matches(password, user.getPassword())) {
+            fail(limit, "Device removal verification failed.");
+        }
+        List<TotpDevice> active = devices.findAllByUserIdAndStatus(user.getId(), TotpDevice.Status.ACTIVE);
+        TotpDevice target = active.stream().filter(device -> device.getId().equals(targetDeviceId))
+                .findFirst().orElseThrow(() -> rejected(HttpStatus.NOT_FOUND, "Active device not found."));
+        TotpDevice authorizer;
+        if (active.size() == 1) {
+            authorizer = target;
+        } else {
+            authorizer = active.stream()
+                    .filter(device -> device.getId().equals(authorizingDeviceId) && !device.getId().equals(targetDeviceId))
+                    .findFirst().orElse(null);
+            if (authorizer == null) fail(limit, "Another active device must authorize removal.");
+        }
+        OptionalLong matched = verifyStored(user, authorizer, code);
+        if (matched.isEmpty()) fail(limit, "Device removal verification failed.");
+        authorizer.setLastAcceptedCounter(matched.orElseThrow());
+        target.setStatus(TotpDevice.Status.REVOKED);
+        int remaining = active.size() - 1;
+        user.setTotpEnabled(remaining > 0);
+        refresh.revokeAllForUser(user.getId());
+        devices.flush();
+        return new Removal(target.getId(), user.isTotpEnabled(), remaining);
     }
 
     /**
@@ -249,5 +280,6 @@ public class TotpEnrollmentService {
             devices = List.copyOf(devices);
         }
     }
-    public record DeviceSummary(String displayName) {}
+    public record DeviceSummary(Long deviceId, String displayName) {}
+    public record Removal(Long removedDeviceId, boolean enabled, int remainingDevices) {}
 }
