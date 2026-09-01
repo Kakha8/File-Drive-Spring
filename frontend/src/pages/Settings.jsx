@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCurrentUsername } from "../api/auth";
+import { getTotpStatus } from "../api/totp";
 import UserMenu from "../components/UserMenu";
 
 function getInitials(username) {
@@ -18,6 +20,16 @@ function getInitials(username) {
 export default function Settings({ onLogout }) {
     const navigate = useNavigate();
     const username = getCurrentUsername();
+    const [totpStatus, setTotpStatus] = useState(null);
+    const [totpError, setTotpError] = useState(false);
+
+    useEffect(() => {
+        let active = true;
+        getTotpStatus()
+            .then((status) => active && setTotpStatus(status))
+            .catch(() => active && setTotpError(true));
+        return () => { active = false; };
+    }, []);
 
     return (
         <main className="settings-page">
@@ -53,6 +65,36 @@ export default function Settings({ onLogout }) {
                             <span>Signed-in account</span>
                         </div>
                     </div>
+
+                    <div className="settings-security-row">
+                        <div>
+                            <strong>Two-factor authentication</strong>
+                            <span>Authenticator app verification during sign in</span>
+                        </div>
+                        {totpError ? (
+                            <span className="settings-status settings-status-error">Unavailable</span>
+                        ) : totpStatus === null ? (
+                            <span className="settings-status">Loading…</span>
+                        ) : (
+                            <span className={`settings-status ${totpStatus.enabled ? "settings-status-enabled" : "settings-status-disabled"}`}>
+                                {totpStatus.enabled ? "Enabled" : "Disabled"}
+                            </span>
+                        )}
+                    </div>
+
+                    {totpStatus?.devices.length > 0 && (
+                        <div className="settings-device-list">
+                            {totpStatus.devices.map((device, index) => (
+                                <div className="settings-device" key={`${device.displayName}-${index}`}>
+                                    <span className="settings-device-icon" aria-hidden="true">◈</span>
+                                    <div>
+                                        <strong>{device.displayName}</strong>
+                                        <span>Hardware wallet</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </section>
 
                 <section className="settings-card">

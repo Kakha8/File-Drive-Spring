@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
 import java.util.OptionalLong;
 
 /** Enrollment activation is coordinated with two-stage login through the account lock. */
@@ -59,6 +60,22 @@ public class TotpEnrollmentService {
         this.verifier = verifier;
         this.refresh = refresh;
         this.clock = clock;
+    }
+
+    @Transactional(readOnly = true)
+    public Status status() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
+            throw rejected(HttpStatus.UNAUTHORIZED, "Authentication required.");
+        }
+        User user = users.findByUsername(auth.getName())
+                .orElseThrow(() -> rejected(HttpStatus.UNAUTHORIZED, "Authentication required."));
+        List<DeviceSummary> activeDevices = devices
+                .findAllByUserIdAndStatus(user.getId(), TotpDevice.Status.ACTIVE)
+                .stream()
+                .map(device -> new DeviceSummary(device.getDisplayName()))
+                .toList();
+        return new Status(user.isTotpEnabled(), activeDevices);
     }
 
     /**
@@ -227,4 +244,10 @@ public class TotpEnrollmentService {
     // Safe response projections: never return the JPA entity containing the encrypted seed.
     public record Enrollment(Long deviceId, String displayName, Instant expiresAt) {}
     public record Confirmation(Long deviceId, String displayName, Instant confirmedAt) {}
+    public record Status(boolean enabled, List<DeviceSummary> devices) {
+        public Status {
+            devices = List.copyOf(devices);
+        }
+    }
+    public record DeviceSummary(String displayName) {}
 }

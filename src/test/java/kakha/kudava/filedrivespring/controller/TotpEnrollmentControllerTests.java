@@ -30,12 +30,14 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -98,6 +100,21 @@ class TotpEnrollmentControllerTests {
                 .andExpect(jsonPath("$.deviceId").value(10)).andExpect(jsonPath("$.confirmedAt").exists())
                 .andExpect(jsonPath("$.code").doesNotExist()).andExpect(jsonPath("$.accessToken").doesNotExist());
         verify(enrollment).confirm(10L, "012345");
+    }
+
+    @Test
+    void statusReturnsOnlyTheAuthenticatedAccountsEnabledFlag() throws Exception {
+        when(enrollment.status()).thenReturn(new TotpEnrollmentService.Status(true,
+                List.of(new TotpEnrollmentService.DeviceSummary("Ledger Nano"))));
+
+        mvc.perform(get(PATH + "/status"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get(PATH + "/status").header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.devices[0].displayName").value("Ledger Nano"))
+                .andExpect(jsonPath("$.secretBase32").doesNotExist());
     }
 
     @Test

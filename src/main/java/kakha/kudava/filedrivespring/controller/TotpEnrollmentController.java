@@ -27,6 +27,11 @@ public class TotpEnrollmentController {
         this.enabled = enabled;
     }
 
+    @GetMapping("/status")
+    public ResponseEntity<TotpEnrollmentService.Status> status() {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(enrollment.status());
+    }
+
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<TotpEnrollmentService.Enrollment> begin(@RequestBody TotpEnrollmentRequest request) {
         requireEnabled();
