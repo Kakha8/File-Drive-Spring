@@ -2,15 +2,16 @@ import {
     clearAccessToken,
     getAccessToken,
     setAccessToken,
-} from "./tokenstore";
-import { API_BASE_URL } from "./config";
+} from "./tokenstore.js";
+import { API_BASE_URL } from "./config.js";
 
 let refreshPromise = null;
 
 /**
- * Signs the user in and stores the returned access token in memory.
+ * Password step: a challenge is not an authenticated session.
  */
 export async function login(username, password) {
+    clearAccessToken();
     const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
         credentials: "include",
@@ -24,15 +25,42 @@ export async function login(username, password) {
     });
 
     if (!response.ok) {
-        throw new Error(
-            await readApiError(response, "Login failed")
-        );
+        throw await authResponseError(response, "Login failed");
     }
 
     const data = await response.json();
+    if (data.mfaRequired === true) {
+        if (typeof data.challengeToken !== "string" || !data.challengeToken
+            || typeof data.expiresAt !== "string" || !Number.isFinite(Date.parse(data.expiresAt))) {
+            throw new Error("The server returned an invalid sign-in challenge. Please try again.");
+        }
+        return { mfaRequired: true, challengeToken: data.challengeToken, expiresAt: data.expiresAt };
+    }
+    return storeLoginSession(data);
+}
+
+/** Uses a direct request: MFA rejection must never trigger automatic token refresh. */
+export async function verifyTotpLogin(challengeToken, code) {
+    clearAccessToken();
+    if (typeof challengeToken !== "string" || !challengeToken
+        || typeof code !== "string" || !/^[0-9]{6}$/.test(code)) {
+        throw new Error("Enter the six-digit code from your authenticator.");
+    }
+    const response = await fetch(`${API_BASE_URL}/api/auth/mfa/totp`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeToken, code }),
+    });
+    if (!response.ok) throw await authResponseError(response, "Code verification failed");
+    return storeLoginSession(await response.json());
+}
+
+function storeLoginSession(data) {
+    if (data.mfaRequired === true) throw new Error("Sign-in verification has not completed.");
     const token = data.accessToken || data.token;
 
-    if (!token) {
+    if (typeof token !== "string" || !token) {
         throw new Error("Login response did not include an access token");
     }
 
@@ -41,6 +69,12 @@ export async function login(username, password) {
     return {
         accessToken: token,
     };
+}
+
+async function authResponseError(response, fallback) {
+    const error = new Error(await readApiError(response, fallback));
+    error.status = response.status;
+    return error;
 }
 
 /**

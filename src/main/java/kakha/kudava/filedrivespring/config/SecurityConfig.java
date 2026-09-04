@@ -81,6 +81,7 @@ public class SecurityConfig {
 
                         .requestMatchers(
                                 "/api/auth/login",
+                                "/api/auth/mfa/totp",
                                 "/api/auth/logout",
                                 "/api/auth/me",
                                 "/api/auth/refresh"

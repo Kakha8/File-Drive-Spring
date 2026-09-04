@@ -2345,6 +2345,38 @@ body,
   text-align: center;
 }
 
+.login-mfa-account {
+  margin: 0;
+  color: #c5ccd6;
+  overflow-wrap: anywhere;
+}
+
+.login-mfa-help {
+  margin: 10px 0 0;
+  color: #929dac;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.login-form-panel .login-form .login-totp-code {
+  text-align: center;
+  font-size: 24px;
+  letter-spacing: 0.3em;
+  font-variant-numeric: tabular-nums;
+}
+
+.login-form-panel .login-form .login-start-again {
+  margin-top: 10px;
+  background: transparent;
+  color: #a8caff;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: none;
+}
+
+.login-form-panel .login-form .login-start-again:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.1);
+}
+
 @media (max-width: 760px) {
   .login-page {
     padding: 18px;
@@ -3657,6 +3689,83 @@ body,
   color: var(--old-muted, #9aa3af);
   font-size: 12px;
 }
+
+.settings-security-row {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--old-panel-border, rgba(255, 255, 255, 0.06));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.settings-security-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.settings-security-row strong { color: var(--old-text, #e5e7eb); }
+.settings-security-row > div span { color: var(--old-muted, #9aa3af); font-size: 13px; }
+
+.settings-status {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.settings-status-enabled { background: rgba(34, 197, 94, 0.14); color: #86efac; }
+.settings-status-disabled { background: rgba(245, 158, 11, 0.14); color: #fcd34d; }
+.settings-status-error { background: rgba(239, 68, 68, 0.13); color: #fecaca; }
+
+.settings-device-list {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.settings-device {
+  padding: 13px 14px;
+  border: 1px solid var(--old-panel-border, rgba(255, 255, 255, 0.06));
+  border-radius: 11px;
+  background: rgba(15, 23, 42, 0.28);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-device-icon {
+  color: var(--old-accent, #3b82f6);
+  font-size: 22px;
+}
+
+.settings-device > div { display: flex; flex-direction: column; gap: 4px; }
+.settings-device strong { color: var(--old-text, #e5e7eb); font-size: 14px; }
+.settings-device > div span { color: var(--old-muted, #9aa3af); font-size: 12px; }
+
+.settings-device-remove { margin-left: auto; color: #fca5a5; background: transparent; border: 0; cursor: pointer; }
+.settings-device-remove:hover { color: #fecaca; }
+
+.settings-removal-form {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 11px;
+  display: grid;
+  gap: 10px;
+}
+.settings-removal-form label { color: var(--old-muted, #9aa3af); font-size: 12px; font-weight: 700; }
+.settings-removal-form input,
+.settings-removal-form select { padding: 10px 12px; border: 1px solid var(--old-panel-border, rgba(255,255,255,.08)); border-radius: 8px; background: #111827; color: #e5e7eb; }
+.settings-removal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.settings-removal-actions button { padding: 9px 13px; border: 1px solid var(--old-panel-border, rgba(255,255,255,.08)); border-radius: 8px; background: transparent; color: #e5e7eb; cursor: pointer; }
+.settings-removal-actions .danger { background: #b91c1c; border-color: #b91c1c; }
+.settings-removal-actions button:disabled { cursor: not-allowed; opacity: .55; }
 
 /* =========================
    Notification dropdown

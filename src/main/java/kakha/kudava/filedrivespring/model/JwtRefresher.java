@@ -32,6 +32,9 @@ public class JwtRefresher {
     @Column(nullable = false)
     private boolean revoked = false;
 
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean mfaVerified = false;
+
     private LocalDateTime lastUsedAt;
 
     @PrePersist
