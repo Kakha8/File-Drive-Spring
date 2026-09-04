@@ -28,6 +28,7 @@ export default function Settings({ onLogout }) {
     const [authorizingDeviceId, setAuthorizingDeviceId] = useState("");
     const [removalError, setRemovalError] = useState("");
     const [removing, setRemoving] = useState(false);
+    const removingDevice = totpStatus?.devices.find((device) => device.deviceId === removingId);
 
     useEffect(() => {
         let active = true;
@@ -58,6 +59,7 @@ export default function Settings({ onLogout }) {
             setCode("");
         } catch (error) {
             setRemovalError(error.message || "Could not remove the device.");
+            setPassword("");
             setCode("");
         } finally {
             setRemoving(false);
@@ -134,7 +136,7 @@ export default function Settings({ onLogout }) {
 
                     {removingId !== null && (
                         <form className="settings-removal-form" onSubmit={submitRemoval}>
-                            <strong>Remove this device?</strong>
+                            <strong>Remove “{removingDevice?.displayName || "this device"}”?</strong>
                             <p>Confirm with your password and a fresh authenticator code.</p>
                             {totpStatus.devices.length > 1 && (
                                 <>
