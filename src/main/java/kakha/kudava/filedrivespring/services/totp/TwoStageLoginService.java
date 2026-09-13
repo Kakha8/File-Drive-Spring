@@ -71,12 +71,12 @@ public class TwoStageLoginService {
         checkLimit(limit);
         if (!passwords.matches(password, user.getPassword())) fail(limit);
         if (user.getPublicUuid() == null) throw new IllegalStateException("Authenticated account has no public UUID.");
-        if (!user.isTotpEnabled()) {
+        if (!user.isTotpEnabled() && !user.isWebauthnEnabled()) {
             challenges.consumeOutstanding(user.getId(), now);
             return new LoginResult(refresh.issueSession(user, refreshDays, false), null);
         }
         if (limit.getChallenges() >= MAX_CHALLENGES) throw throttled();
-        if (devices.findAllByUserIdAndStatus(user.getId(), TotpDevice.Status.ACTIVE).isEmpty()) throw rejected();
+        if (!user.isWebauthnEnabled() && devices.findAllByUserIdAndStatus(user.getId(), TotpDevice.Status.ACTIVE).isEmpty()) throw rejected();
         limit.setChallenges(limit.getChallenges() + 1);
         // A new successful password step replaces any previous outstanding challenge.
         challenges.consumeOutstanding(user.getId(), now);
@@ -90,7 +90,7 @@ public class TwoStageLoginService {
         challenge.setExpiresAt(now.plus(CHALLENGE_TTL));
         challenge.setPasswordFingerprint(TokenHashUtil.sha256(user.getPassword()));
         challenges.saveAndFlush(challenge);
-        return new LoginResult(null, new MfaRequired(true, raw, challenge.getExpiresAt()));
+        return new LoginResult(null, new MfaRequired(true, raw, challenge.getExpiresAt(), user.isWebauthnEnabled() ? "webauthn" : "totp"));
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = LoginRejected.class)
@@ -104,7 +104,7 @@ public class TwoStageLoginService {
         checkLimit(limit);
         MfaLoginChallenge challenge = challenges.findForUpdate(hash, userId).orElseThrow(TwoStageLoginService::rejected);
         if (challenge.getConsumedAt() != null) throw rejected();
-        if (!now.isBefore(challenge.getExpiresAt()) || !user.isTotpEnabled()
+        if (!now.isBefore(challenge.getExpiresAt()) || !user.isTotpEnabled() || user.isWebauthnEnabled()
                 || !TokenHashUtil.sha256(user.getPassword()).equals(challenge.getPasswordFingerprint())) {
             challenge.setConsumedAt(now);
             throw rejected();
@@ -153,7 +153,10 @@ public class TwoStageLoginService {
     public static final class LoginRejected extends ResponseStatusException {
         private LoginRejected(HttpStatus status, String message) { super(status, message); }
     }
-    public record MfaRequired(boolean mfaRequired, String challengeToken, Instant expiresAt) {
+    public record MfaRequired(boolean mfaRequired, String challengeToken, Instant expiresAt, String method) {
+        public MfaRequired(boolean mfaRequired, String challengeToken, Instant expiresAt) {
+            this(mfaRequired, challengeToken, expiresAt, "totp");
+        }
         @Override public String toString() { return "MfaRequired[redacted]"; }
     }
     public record LoginResult(AuthenticatedSession session, MfaRequired challenge) {

@@ -38,6 +38,9 @@ public class User {
     @Column(nullable = false)
     private boolean totpEnabled = false;
 
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean webauthnEnabled = false;
+
     @PrePersist
     private void beforeInsert() {
         if (publicUuid == null) {
