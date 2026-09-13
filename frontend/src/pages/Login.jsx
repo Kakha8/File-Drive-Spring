@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { login, verifyTotpLogin } from "../api/auth";
+import { login, verifyTotpLogin, verifyWebAuthnLogin } from "../api/auth";
 import logo from "../assets/logo.png";
 
 function Login({ onLogin }) {
@@ -13,6 +13,7 @@ function Login({ onLogin }) {
     const codeInput = useRef(null);
     const submitting = useRef(false);
     const expired = challenge && now >= Date.parse(challenge.expiresAt);
+    const securityKey = challenge?.method === 'webauthn';
 
     useEffect(() => {
         if (!challenge) return;
@@ -43,7 +44,8 @@ function Login({ onLogin }) {
 
         try {
             if (challenge) {
-                await verifyTotpLogin(challenge.challengeToken, code);
+                if (securityKey) await verifyWebAuthnLogin(challenge.challengeToken);
+                else await verifyTotpLogin(challenge.challengeToken, code);
                 setCode("");
             } else {
                 const result = await login(username, password);
@@ -58,7 +60,8 @@ function Login({ onLogin }) {
             if (error.status === 429) {
                 setMessage("Too many sign-in attempts. Wait 15 minutes before trying again.");
             } else if (challenge && error.status === 401) {
-                setMessage("That code is invalid, already used, or the request has expired. Try the next code, or start again.");
+                setMessage(securityKey ? "Verification failed or expired. Start again to sign in."
+                    : "That code is invalid, already used, or the request has expired. Try the next code, or start again.");
             } else {
                 setMessage(error.message || "Login failed");
             }
@@ -97,7 +100,7 @@ function Login({ onLogin }) {
                         <span>{challenge ? "Two-step sign in" : "Welcome back"}</span>
                         <h1>{challenge ? "Verify your identity" : "Sign in to File Drive"}</h1>
                         <p>{challenge
-                            ? "Enter the six-digit code shown on your authenticator device."
+                            ? (securityKey ? "Use your registered security key or passkey to continue." : "Enter the six-digit code shown on your authenticator device.")
                             : "Enter your account details to continue."}</p>
                     </div>
 
@@ -105,6 +108,7 @@ function Login({ onLogin }) {
                         {challenge ? (
                             <>
                                 <p className="login-mfa-account">Signing in as <strong>{username}</strong></p>
+                                {!securityKey && <>
                                 <label htmlFor="totp-code">Authenticator code</label>
                                 <input
                                     ref={codeInput}
@@ -125,6 +129,7 @@ function Login({ onLogin }) {
                                 <p id="totp-help" className="login-mfa-help">
                                     Use a fresh code. Codes used to register the device cannot be reused.
                                 </p>
+                                </>}
                                 {expired && <p className="message error login-error" role="alert">
                                     This sign-in request has expired. Start again to request a new one.
                                 </p>}
@@ -159,8 +164,8 @@ function Login({ onLogin }) {
 
                         {message && <p className="message error login-error" role="alert">{message}</p>}
 
-                        <button type="submit" disabled={loading || Boolean(expired) || (challenge && code.length !== 6)}>
-                            {loading ? (challenge ? "Verifying..." : "Signing in...") : (challenge ? "Verify and sign in" : "Sign in")}
+                        <button type="submit" disabled={loading || Boolean(expired) || (challenge && !securityKey && code.length !== 6)}>
+                            {loading ? (challenge ? "Verifying..." : "Signing in...") : (securityKey ? "Use security key or passkey" : challenge ? "Verify and sign in" : "Sign in")}
                         </button>
                         {challenge && <button type="button" className="login-start-again" disabled={loading} onClick={startAgain}>
                             Start again

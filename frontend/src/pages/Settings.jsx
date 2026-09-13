@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { getCurrentUsername } from "../api/auth";
 import { getTotpStatus, removeTotpDevice } from "../api/totp";
 import UserMenu from "../components/UserMenu";
+import SecurityKeySettings from "../components/SecurityKeySettings";
 
 function getInitials(username) {
     const parts = username
@@ -166,6 +167,8 @@ export default function Settings({ onLogout }) {
                         </form>
                     )}
                 </section>
+
+                <SecurityKeySettings totpStatus={totpStatus} onLogout={onLogout} />
 
                 <section className="settings-card">
                     <h2>Appearance</h2>
