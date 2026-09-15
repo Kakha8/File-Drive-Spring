@@ -60,6 +60,21 @@ class WebAuthnControllerTests {
                 .andExpect(status().isUnauthorized()).andExpect(header().doesNotExist("Set-Cookie"));
         verify(service).beginLogin("bad");
     }
+    @Test void rejectedEnrollmentDoesNotPretendTheSessionExpired() throws Exception {
+        when(service.beginRegistration("alice", "wrong", "ESP32", null, null))
+                .thenThrow(new WebAuthnService.Rejected());
+        mvc.perform(post("/api/webauthn/registration/options").with(user("alice"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"password\":\"wrong\",\"displayName\":\"ESP32\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value(containsString("account password")))
+                .andExpect(header().string("Cache-Control", "no-store"));
+        when(service.finishRegistration(eq("alice"), any(), any(), any()))
+                .thenThrow(new WebAuthnService.Rejected());
+        mvc.perform(post("/api/webauthn/registration/finish").with(user("alice"))
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
+    }
     @Test void successfulLoginReturnsOnlyAccessTokenAndHttpOnlyRefreshCookie() throws Exception {
         var id = UUID.randomUUID();
         when(service.finishLogin(eq("challenge"), eq(id), any())).thenReturn(new AuthenticatedSession(

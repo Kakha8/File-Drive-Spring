@@ -3,6 +3,7 @@ package kakha.kudava.filedrivespring.controller;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import kakha.kudava.filedrivespring.dto.LoginResponse;
 import kakha.kudava.filedrivespring.records.ApiErrorResponse;
 import kakha.kudava.filedrivespring.services.webauthn.WebAuthnService;
@@ -57,5 +58,19 @@ public class WebAuthnController {
     public ResponseEntity<ApiErrorResponse> malformedRequest() {
         return ResponseEntity.badRequest().cacheControl(CacheControl.noStore())
                 .body(ApiErrorResponse.of("INVALID_WEBAUTHN_REQUEST", "Invalid WebAuthn request.", 400));
+    }
+
+    @ExceptionHandler(WebAuthnService.Rejected.class)
+    public ResponseEntity<ApiErrorResponse> rejected(HttpServletRequest request) {
+        // These routes already require an authenticated session. A rejected
+        // ceremony must not trigger the client's token refresh/logout logic.
+        boolean enrollment = request.getServletPath().startsWith("/api/webauthn/registration/")
+                || request.getRequestURI().startsWith(request.getContextPath() + "/api/webauthn/registration/");
+        int status = enrollment ? 403 : 401;
+        String message = enrollment
+                ? "Enrollment verification failed. Check your account password and any existing security-key or authenticator verification, then start again."
+                : "Invalid or expired WebAuthn request.";
+        return ResponseEntity.status(status).cacheControl(CacheControl.noStore())
+                .body(ApiErrorResponse.of(enrollment ? "WEBAUTHN_ENROLLMENT_REJECTED" : "WEBAUTHN_REJECTED", message, status));
     }
 }
