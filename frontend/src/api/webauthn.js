@@ -1,5 +1,37 @@
-import { apiFetch } from './http';
+import { apiFetch } from './http.js';
 import { requestCredential } from './webauthn-browser.js';
+
+export async function getSecurityKeyStatus() {
+    const response = await apiFetch('/api/webauthn/credentials');
+    if (!response.ok) throw new Error('Could not load registered security keys.');
+    const data = await response.json();
+    if (typeof data.enabled !== 'boolean' || !Array.isArray(data.devices)
+        || data.devices.some(device => !Number.isInteger(device?.credentialRecordId)
+            || typeof device.displayName !== 'string')) {
+        throw new Error('The server returned an invalid security-key status.');
+    }
+    return data;
+}
+
+export async function removeSecurityKey(credentialRecordId, password, totpDeviceId, totpCode, onProgress) {
+    async function post(path, body) {
+        const response = await apiFetch(path, { method: 'POST',
+            headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.message || 'Could not remove the security key.');
+        }
+        return response.json();
+    }
+    const base = `/api/webauthn/credentials/${credentialRecordId}/removal`;
+    const options = await post(`${base}/options`, { password, totpDeviceId, totpCode });
+    let authorizationCredential = null;
+    if (options.authorizationPublicKey) {
+        onProgress('Confirm removal with a registered security key.');
+        authorizationCredential = await requestCredential(options.authorizationPublicKey);
+    }
+    return post(`${base}/finish`, { requestId: options.requestId, authorizationCredential });
+}
 
 export async function registerSecurityKey(details, onProgress) {
     async function post(path, body) {

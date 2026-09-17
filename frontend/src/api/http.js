@@ -1,9 +1,9 @@
-import { refresh } from "./auth";
+import { refresh } from "./auth.js";
 import {
     clearAccessToken,
     getAccessToken,
-} from "./tokenstore";
-import { API_BASE_URL } from "./config";
+} from "./tokenstore.js";
+import { API_BASE_URL } from "./config.js";
 
 function createAuthError(
     message = "Session expired. Please log in again."

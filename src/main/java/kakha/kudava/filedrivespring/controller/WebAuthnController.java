@@ -34,10 +34,36 @@ public class WebAuthnController {
     public record LoginFinish(@JsonProperty(access = JsonProperty.Access.WRITE_ONLY) String challengeToken, UUID requestId, JsonNode credential) {
         @Override public String toString() { return "LoginFinish[redacted]"; }
     }
+    public record RemovalStart(@JsonProperty(access = JsonProperty.Access.WRITE_ONLY) String password,
+            Long totpDeviceId, @JsonProperty(access = JsonProperty.Access.WRITE_ONLY) String totpCode) {
+        @Override public String toString() { return "RemovalStart[redacted]"; }
+    }
+    public record RemovalFinish(UUID requestId, JsonNode authorizationCredential) {
+        @Override public String toString() { return "RemovalFinish[redacted]"; }
+    }
     @PostMapping(value = "/api/webauthn/registration/options", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<WebAuthnService.Options> registrationOptions(Authentication auth, @RequestBody RegistrationStart request) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.beginRegistration(
                 auth == null ? null : auth.getName(), request.password(), request.displayName(), request.existingDeviceId(), request.existingCode()));
+    }
+    @GetMapping(value = "/api/webauthn/credentials", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<WebAuthnService.CredentialStatus> credentials(Authentication auth) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(service.credentialStatus(auth == null ? null : auth.getName()));
+    }
+    @PostMapping(value = "/api/webauthn/credentials/{credentialId}/removal/options", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<WebAuthnService.RemovalOptions> removalOptions(Authentication auth,
+            @PathVariable Long credentialId, @RequestBody RemovalStart request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.beginRemoval(
+                auth == null ? null : auth.getName(), credentialId, request.password(),
+                request.totpDeviceId(), request.totpCode()));
+    }
+    @PostMapping(value = "/api/webauthn/credentials/{credentialId}/removal/finish", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<WebAuthnService.Removed> removalFinish(Authentication auth,
+            @PathVariable Long credentialId, @RequestBody RemovalFinish request) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.finishRemoval(
+                auth == null ? null : auth.getName(), credentialId, request.requestId(),
+                request.authorizationCredential()));
     }
     @PostMapping(value = "/api/webauthn/registration/finish", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<WebAuthnService.Registered> registrationFinish(Authentication auth, @RequestBody RegistrationFinish request) {
@@ -64,13 +90,16 @@ public class WebAuthnController {
     public ResponseEntity<ApiErrorResponse> rejected(HttpServletRequest request) {
         // These routes already require an authenticated session. A rejected
         // ceremony must not trigger the client's token refresh/logout logic.
-        boolean enrollment = request.getServletPath().startsWith("/api/webauthn/registration/")
-                || request.getRequestURI().startsWith(request.getContextPath() + "/api/webauthn/registration/");
-        int status = enrollment ? 403 : 401;
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        boolean enrollment = path.startsWith("/api/webauthn/registration/");
+        boolean management = enrollment || path.startsWith("/api/webauthn/credentials/");
+        int status = management ? 403 : 401;
         String message = enrollment
                 ? "Enrollment verification failed. Check your account password and any existing security-key or authenticator verification, then start again."
+                : management ? "Security-key removal verification failed. Check your account password and verification method, then start again."
                 : "Invalid or expired WebAuthn request.";
         return ResponseEntity.status(status).cacheControl(CacheControl.noStore())
-                .body(ApiErrorResponse.of(enrollment ? "WEBAUTHN_ENROLLMENT_REJECTED" : "WEBAUTHN_REJECTED", message, status));
+                .body(ApiErrorResponse.of(enrollment ? "WEBAUTHN_ENROLLMENT_REJECTED"
+                        : management ? "WEBAUTHN_REMOVAL_REJECTED" : "WEBAUTHN_REJECTED", message, status));
     }
 }

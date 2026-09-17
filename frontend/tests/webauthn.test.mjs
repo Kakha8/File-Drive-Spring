@@ -2,6 +2,7 @@ import test, { afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { prepareOptions, serializeCredential } from '../src/api/webauthn-browser.js';
 import { login, verifyWebAuthnLogin } from '../src/api/auth.js';
+import { getSecurityKeyStatus, removeSecurityKey } from '../src/api/webauthn.js';
 import { clearAccessToken, getAccessToken } from '../src/api/tokenstore.js';
 
 afterEach(() => { mock.restoreAll(); clearAccessToken(); });
@@ -37,4 +38,25 @@ test('WebAuthn option rejection never attempts refresh or establishes a session'
     await assert.rejects(verifyWebAuthnLogin('challenge'), error => error.status === 401);
     assert.equal(request.mock.callCount(), 1);
     assert.equal(getAccessToken(), null);
+});
+
+test('security-key status returns registered device metadata', async () => {
+    const expected = { enabled: true, devices: [{ credentialRecordId: 7, displayName: 'Enigma Wallet',
+        createdAt: '2026-09-15T10:00:00Z', lastUsedAt: null }] };
+    mock.method(globalThis, 'fetch', async () => Response.json(expected));
+    assert.deepEqual(await getSecurityKeyStatus(), expected);
+});
+
+test('TOTP-authorized security-key removal completes without a browser assertion', async () => {
+    const requests = [];
+    mock.method(globalThis, 'fetch', async (_url, options) => {
+        requests.push(JSON.parse(options.body));
+        return requests.length === 1
+            ? Response.json({ requestId: 'request-1', authorizationPublicKey: null })
+            : Response.json({ removedCredentialRecordId: 7, enabled: false, remainingDevices: 0 });
+    });
+    const result = await removeSecurityKey(7, 'password', 3, '123456', () => assert.fail());
+    assert.equal(result.remainingDevices, 0);
+    assert.deepEqual(requests[0], { password: 'password', totpDeviceId: 3, totpCode: '123456' });
+    assert.deepEqual(requests[1], { requestId: 'request-1', authorizationCredential: null });
 });

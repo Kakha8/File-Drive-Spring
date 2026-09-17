@@ -2,6 +2,7 @@ package kakha.kudava.filedrivespring.services.webauthn;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yubico.webauthn.*;
 import com.yubico.webauthn.data.*;
 import kakha.kudava.filedrivespring.model.*;
@@ -22,6 +23,9 @@ import java.util.*;
 @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = WebAuthnService.Rejected.class)
 public class WebAuthnService {
     private static final ObjectMapper JSON = new ObjectMapper();
+    // Added only to the browser-facing allowCredentials list. It is not a real
+    // credential and is not part of server-side assertion verification.
+    private static final String REMOVAL_MARKER = "RU5JR01BX1JFTU9WQUxfVjE"; // ENIGMA_REMOVAL_V1
     private final WebAuthnEngine engine;
     private final UserRepository users;
     private final WebAuthnCredentialRepository credentials;
@@ -47,6 +51,13 @@ public class WebAuthnService {
 
     public record Options(UUID requestId, Instant expiresAt, JsonNode publicKey, JsonNode authorizationPublicKey) {}
     public record Registered(Long credentialRecordId, String displayName) {}
+    public record CredentialSummary(Long credentialRecordId, String displayName,
+            String createdAt, String lastUsedAt) {}
+    public record CredentialStatus(boolean enabled, List<CredentialSummary> devices) {
+        public CredentialStatus { devices = List.copyOf(devices); }
+    }
+    public record RemovalOptions(UUID requestId, Instant expiresAt, JsonNode authorizationPublicKey) {}
+    public record Removed(Long removedCredentialRecordId, boolean enabled, int remainingDevices) {}
     public static class Rejected extends ResponseStatusException {
         public Rejected() { super(HttpStatus.UNAUTHORIZED, "Invalid or expired WebAuthn request."); }
     }
@@ -85,6 +96,85 @@ public class WebAuthnService {
         return engine.relyingParty().startAssertion(StartAssertionOptions.builder()
                 .userHandle(WebAuthnCredentials.handle(user)).userVerification(UserVerificationRequirement.PREFERRED)
                 .timeout(180000).build());
+    }
+
+    @Transactional(readOnly = true)
+    public CredentialStatus credentialStatus(String username) {
+        if (username == null || username.isBlank()) throw new Rejected();
+        User user = users.findByUsername(username).orElseThrow(Rejected::new);
+        List<CredentialSummary> devices = credentials.findAllByUserId(user.getId()).stream()
+                .sorted(Comparator.comparing(WebAuthnCredential::getCreatedAt))
+                .map(device -> new CredentialSummary(device.getId(), device.getDisplayName(),
+                        device.getCreatedAt().toString(),
+                        device.getLastUsedAt() == null ? null : device.getLastUsedAt().toString()))
+                .toList();
+        return new CredentialStatus(user.isWebauthnEnabled(), devices);
+    }
+
+    public RemovalOptions beginRemoval(String username, Long credentialRecordId, String password,
+            Long totpDeviceId, String totpCode) {
+        var rp = engine.relyingParty();
+        User user = locked(username);
+        var limit = limit(user);
+        if (password == null || password.length() > 1024 || !passwords.matches(password, user.getPassword())) fail(limit);
+        WebAuthnCredential target = credentialRecordId == null ? null
+                : credentials.findById(credentialRecordId).orElse(null);
+        if (target == null || !target.getUser().getId().equals(user.getId())) throw new Rejected();
+
+        var c = start(user, WebAuthnCeremony.Kind.REMOVAL);
+        c.setTargetCredentialId(target.getId());
+        JsonNode authorizationPublicKey = null;
+        if (totpDeviceId != null) {
+            var device = totpDevices.findForEnrollmentUpdate(totpDeviceId, user.getId()).orElse(null);
+            if (device == null || device.getStatus() != TotpDevice.Status.ACTIVE) fail(limit);
+            byte[] secret = encryption.decrypt(user.getPublicUuid(), device.getEncryptedSecret(),
+                    device.getEncryptionNonce(), device.getEncryptionKeyId());
+            try {
+                var counter = totpVerifier.verify(secret, totpCode, device.getLastAcceptedCounter());
+                if (counter.isEmpty()) fail(limit);
+                device.setLastAcceptedCounter(counter.orElseThrow());
+                c.setTotpAuthorized(true);
+                c.setRequestJson("{}");
+            } finally { Arrays.fill(secret, (byte) 0); }
+        } else {
+            try {
+                var request = assertion(user);
+                c.setRequestJson(request.toJson());
+                authorizationPublicKey = publicKey(request.toCredentialsGetJson());
+                ObjectNode marker = JSON.createObjectNode();
+                marker.put("type", "public-key");
+                marker.put("id", REMOVAL_MARKER);
+                // Keep the marker first. Browsers may split an allow-list into CTAP
+                // requests, so a trailing marker is not guaranteed to reach the key
+                // in the request that asks for user presence.
+                ((ObjectNode) authorizationPublicKey).withArray("allowCredentials").insert(0, marker);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException("Could not serialize WebAuthn removal authorization.");
+            }
+        }
+        ceremonies.saveAndFlush(c);
+        return new RemovalOptions(c.getId(), c.getExpiresAt(), authorizationPublicKey);
+    }
+
+    public Removed finishRemoval(String username, Long credentialRecordId, UUID requestId, JsonNode authorization) {
+        engine.relyingParty();
+        User user = locked(username);
+        var limit = limit(user);
+        var c = consume(user, requestId, WebAuthnCeremony.Kind.REMOVAL, limit);
+        if (credentialRecordId == null || !credentialRecordId.equals(c.getTargetCredentialId())) fail(limit);
+        WebAuthnCredential target = credentials.findById(credentialRecordId).orElse(null);
+        if (target == null || !target.getUser().getId().equals(user.getId())) fail(limit);
+        if (!c.isTotpAuthorized()) {
+            try { verifyAssertion(user, c.getRequestJson(), authorization); }
+            catch (Exception e) { fail(limit); }
+        }
+        credentials.delete(target);
+        credentials.flush();
+        int remaining = credentials.findAllByUserId(user.getId()).size();
+        user.setWebauthnEnabled(remaining > 0);
+        challenges.consumeOutstanding(user.getId(), Instant.now());
+        refresh.revokeAllForUser(user.getId());
+        return new Removed(credentialRecordId, user.isWebauthnEnabled(), remaining);
     }
 
     public Options beginRegistration(String username, String password, String name, Long totpDeviceId, String code) {

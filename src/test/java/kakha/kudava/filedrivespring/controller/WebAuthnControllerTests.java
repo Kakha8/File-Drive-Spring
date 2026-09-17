@@ -54,6 +54,43 @@ class WebAuthnControllerTests {
                 .andExpect(header().string("Cache-Control", "no-store"));
         verify(service).beginRegistration("alice", "password", "ESP32", null, null);
     }
+    @Test void credentialStatusRequiresAuthenticationAndReturnsOwnedDevices() throws Exception {
+        mvc.perform(get("/api/webauthn/credentials")).andExpect(status().isUnauthorized());
+        verifyNoInteractions(service);
+
+        Instant created = Instant.parse("2026-09-15T10:00:00Z");
+        var status = new WebAuthnService.CredentialStatus(true, java.util.List.of(
+                new WebAuthnService.CredentialSummary(7L, "Enigma Wallet", created.toString(), null)));
+        when(service.credentialStatus("alice")).thenReturn(status);
+        mvc.perform(get("/api/webauthn/credentials").with(user("alice")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.devices[0].credentialRecordId").value(7))
+                .andExpect(jsonPath("$.devices[0].displayName").value("Enigma Wallet"))
+                .andExpect(jsonPath("$.devices[0].createdAt").value("2026-09-15T10:00:00Z"))
+                .andExpect(jsonPath("$.devices[0].lastUsedAt").doesNotExist());
+        verify(service).credentialStatus("alice");
+    }
+    @Test void removalRoutesUseAuthenticatedOwner() throws Exception {
+        Long credentialId = 7L;
+        UUID requestId = UUID.randomUUID();
+        var options = new WebAuthnService.RemovalOptions(requestId, Instant.now().plusSeconds(180), null);
+        when(service.beginRemoval("alice", credentialId, "password", 3L, "123456")).thenReturn(options);
+        mvc.perform(post("/api/webauthn/credentials/7/removal/options").with(user("alice"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"password\":\"password\",\"totpDeviceId\":3,\"totpCode\":\"123456\"}"))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.requestId").value(requestId.toString()));
+        verify(service).beginRemoval("alice", credentialId, "password", 3L, "123456");
+
+        when(service.finishRemoval(eq("alice"), eq(credentialId), eq(requestId), any()))
+                .thenReturn(new WebAuthnService.Removed(credentialId, false, 0));
+        mvc.perform(post("/api/webauthn/credentials/7/removal/finish").with(user("alice"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"requestId\":\"" + requestId + "\",\"authorizationCredential\":null}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.remainingDevices").value(0));
+    }
     @Test void loginOptionsArePublicButRequireServiceChallengeValidation() throws Exception {
         when(service.beginLogin("bad")).thenThrow(new WebAuthnService.Rejected());
         mvc.perform(post("/api/auth/webauthn/options").contentType(MediaType.APPLICATION_JSON).content("{\"challengeToken\":\"bad\"}"))

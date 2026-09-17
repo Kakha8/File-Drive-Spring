@@ -13,14 +13,19 @@ public class WebAuthnCeremony {
     @Id private UUID id;
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false) private User user;
-    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 16) private Kind kind;
+    // Use VARCHAR instead of H2's closed native ENUM so adding a ceremony kind
+    // does not require deleting existing credentials or rebuilding the database.
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16, columnDefinition = "varchar(16)")
+    private Kind kind;
     @Lob @Column(nullable = false) private String requestJson;
     @Lob private String authorizationJson;
     @Column(nullable = false, length = 64) private String passwordFingerprint;
     @Column(length = 64) private String loginTokenHash;
     @Column(length = 100) private String displayName;
+    private Long targetCredentialId;
     @Column(nullable = false) private boolean totpAuthorized;
     @Column(nullable = false) private Instant expiresAt;
     private Instant consumedAt;
-    public enum Kind { REGISTRATION, LOGIN }
+    public enum Kind { REGISTRATION, LOGIN, REMOVAL }
 }

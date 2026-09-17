@@ -486,7 +486,7 @@ export default function SharedWithMe({ onLogout }) {
     }
 
     return (
-        <main className="drive-page">
+        <main className="drive-page shared-page">
             <aside className={`drive-sidebar ${sidebarOpen ? "open" : "closed"}`}>
                 <div className="sidebar-top">
                     <div className="sidebar-logo" aria-label="File Drive">
@@ -742,11 +742,21 @@ function SharedFileRow({
     }
 
     return (
-        <button
+        <div
             onClick={onSelect}
             onDoubleClick={onOpen}
+            onKeyDown={(event) => {
+                if (event.target !== event.currentTarget) return;
+                if (event.key === "Enter") onOpen();
+                if (event.key === " ") {
+                    event.preventDefault();
+                    onSelect(event);
+                }
+            }}
             className={`file-row ${selected ? "selected" : ""}`}
-            type="button"
+            role="group"
+            aria-label={`${item.name}, shared by ${item.owner}`}
+            tabIndex={0}
         >
             <div className="name-cell">
                 <span className="file-icon">
@@ -821,6 +831,6 @@ function SharedFileRow({
                     </div>
                 )}
             </div>
-        </button>
+        </div>
     );
 }

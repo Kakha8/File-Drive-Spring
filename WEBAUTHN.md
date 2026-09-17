@@ -66,4 +66,8 @@ Tables: `webauthn_credentials`, `webauthn_ceremonies`; account flag: `users.weba
 
 Credential registration validates with Yubico java-webauthn-server 2.9.0. No requests are sent to Yubico. Attestation preference is none; this accepts compliant authenticators without requiring manufacturer certification. A browser virtual authenticator is suitable for development. Real hardware/browser end-to-end testing remains required.
 
-There is no credential removal/recovery API in this change. Register a spare authenticator before depending on this for an important account.
+## Credential management
+
+`GET /api/webauthn/credentials` lists the authenticated user's registered credentials with their display name, creation time, and last-use time.
+
+Removal is a two-step authenticated ceremony. Start it with `POST /api/webauthn/credentials/{id}/removal/options`, supplying the account password and, optionally, an active TOTP device ID and fresh code. Without TOTP authorization, the response contains a WebAuthn assertion challenge that any registered credential on the account may sign. Complete removal with `POST /api/webauthn/credentials/{id}/removal/finish` and the returned request ID plus that assertion. TOTP authorization permits removal of a credential whose physical key was lost or erased. Successful removal revokes refresh sessions and disables WebAuthn when no credentials remain.

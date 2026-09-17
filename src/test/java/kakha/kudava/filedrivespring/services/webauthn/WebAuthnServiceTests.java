@@ -105,6 +105,43 @@ class WebAuthnServiceTests {
         var o = service.beginRegistration("alice", "password", "ESP32", null, null);
         service.finishRegistration("alice", o.requestId(), registration(o, "http://localhost:5173"), null);
     }
+    @Test void credentialStatusListsOnlyTheAuthenticatedUsersCredentials() throws Exception {
+        enroll();
+        var status = service.credentialStatus("alice");
+        assertTrue(status.enabled());
+        assertEquals(1, status.devices().size());
+        assertEquals("ESP32", status.devices().getFirst().displayName());
+        assertNotNull(status.devices().getFirst().createdAt());
+        assertNull(status.devices().getFirst().lastUsedAt());
+        assertThrows(WebAuthnService.Rejected.class, () -> service.credentialStatus("missing"));
+    }
+    @Test void registeredKeyCanAuthorizeItsRemoval() throws Exception {
+        enroll();
+        Long credentialId = credentials.findAll().getFirst().getId();
+        var options = service.beginRemoval("alice", credentialId, "password", null, null);
+        assertNotNull(options.authorizationPublicKey());
+        var allowCredentials = options.authorizationPublicKey().path("allowCredentials");
+        assertEquals("RU5JR01BX1JFTU9WQUxfVjE", allowCredentials.path(0).path("id").asText());
+        assertEquals("public-key", allowCredentials.path(0).path("type").asText());
+        var removed = service.finishRemoval("alice", credentialId, options.requestId(),
+                assertion(options.authorizationPublicKey(), "http://localhost:5173", "localhost", 1, false));
+        assertEquals(credentialId, removed.removedCredentialRecordId());
+        assertEquals(0, removed.remainingDevices());
+        assertFalse(removed.enabled());
+        assertEquals(0, credentials.count());
+        assertFalse(users.findById(owner.getId()).orElseThrow().isWebauthnEnabled());
+    }
+
+    @Test void removalRejectsAnotherUsersCredentialAndWrongPassword() throws Exception {
+        enroll();
+        Long credentialId = credentials.findAll().getFirst().getId();
+        user("bob");
+        assertThrows(WebAuthnService.Rejected.class,
+                () -> service.beginRemoval("bob", credentialId, "password", null, null));
+        assertThrows(WebAuthnService.Rejected.class,
+                () -> service.beginRemoval("alice", credentialId, "wrong", null, null));
+        assertEquals(1, credentials.count());
+    }
     @Test void realRegistrationAndSignatureProduceSessionAndConsumeChallenge() throws Exception {
         enroll(); assertTrue(users.findById(owner.getId()).orElseThrow().isWebauthnEnabled());
         var passwordStep = login.login("alice", "password"); assertNull(passwordStep.session());
