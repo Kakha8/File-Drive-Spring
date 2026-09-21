@@ -395,8 +395,22 @@ export default function Favorites({
     }
 
     return (
-        <div className="drive-page">
+        <div className="drive-page favorites-page">
             <style>{`
+                .favorites-page .file-row {
+                    grid-template-columns:
+                        minmax(240px, 2.1fr)
+                        minmax(120px, 1.2fr)
+                        minmax(100px, 1fr)
+                        minmax(110px, 0.7fr)
+                        minmax(80px, 0.5fr)
+                        36px;
+                }
+
+                .favorites-page .size-cell {
+                    white-space: nowrap;
+                }
+
                 .favorites-header-location {
                     display: flex;
                     align-items: center;
@@ -655,7 +669,7 @@ export default function Favorites({
                                                     <ItemIcon className="svg-icon" />
                                                 </span>
 
-                                                <span>
+                                                <span className="file-name-text">
                                                     <strong>{row.name}</strong>
                                                     <small>{row.type}</small>
                                                 </span>

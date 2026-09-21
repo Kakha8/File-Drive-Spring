@@ -1,0 +1,123 @@
+.security-key-settings-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.security-key-settings-summary h2 { margin-bottom: 8px; }
+.security-key-settings-summary p { margin: 0; }
+
+.security-key-add-button,
+.security-key-modal-submit {
+    border: 1px solid #478eff;
+    border-radius: 10px;
+    background: var(--old-accent, #3b82f6);
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+.security-key-add-button {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 15px;
+}
+.security-key-add-button span { font-size: 19px; line-height: 16px; }
+.security-key-add-button:hover,
+.security-key-modal-submit:hover:not(:disabled) { filter: brightness(1.1); }
+
+.security-key-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: grid;
+    place-items: center;
+    overflow-y: auto;
+    padding: 24px;
+    background: rgba(2, 6, 23, .75);
+    backdrop-filter: blur(8px);
+}
+.security-key-modal {
+    width: min(500px, 100%);
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    border: 1px solid var(--old-panel-border, rgba(255,255,255,.12));
+    border-radius: 18px;
+    background: var(--old-panel, #1c2026);
+    color: var(--old-text, #e5e7eb);
+    box-shadow: 0 24px 70px rgba(0,0,0,.5);
+}
+.security-key-modal-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    padding: 24px 24px 19px;
+    border-bottom: 1px solid var(--old-panel-border, rgba(255,255,255,.08));
+}
+.security-key-modal-icon {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: rgba(59,130,246,.16);
+    color: var(--old-accent, #3b82f6);
+    font-size: 25px;
+}
+.security-key-modal-icon svg { width: 24px; height: 24px; }
+.security-key-modal-header > div { flex: 1; }
+.security-key-modal-header h2 { margin: 0 0 5px; font-size: 20px; }
+.security-key-modal-header p,
+.security-key-modal-note { margin: 0; color: var(--old-muted, #9aa3af); font-size: 13px; line-height: 1.5; }
+.security-key-modal-close {
+    border: 0;
+    background: transparent;
+    color: var(--old-muted, #9aa3af);
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+}
+.security-key-modal-close:hover { color: #fff; }
+.security-key-modal-form { display: grid; gap: 9px; padding: 22px 24px 24px; }
+.security-key-modal-form label { margin-top: 7px; color: #cbd5e1; font-size: 13px; font-weight: 700; }
+.security-key-modal-form input,
+.security-key-modal-form select {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid var(--old-panel-border, rgba(255,255,255,.12));
+    border-radius: 10px;
+    outline: none;
+    background: #111827;
+    color: var(--old-text, #e5e7eb);
+    font: inherit;
+}
+.security-key-modal-form input:focus,
+.security-key-modal-form select:focus {
+    border-color: var(--old-accent, #3b82f6);
+    box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+}
+.security-key-modal-form > p { margin: 3px 0 0; }
+.security-key-modal-status { color: #93c5fd; font-size: 13px; }
+.security-key-modal-error { color: #fca5a5; font-size: 13px; }
+.security-key-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.security-key-modal-actions button { min-height: 42px; padding: 0 16px; font: inherit; font-weight: 700; cursor: pointer; }
+.security-key-modal-cancel { border: 1px solid var(--old-panel-border, rgba(255,255,255,.12)); border-radius: 10px; background: transparent; color: var(--old-text, #e5e7eb); }
+.security-key-modal-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.security-key-removal-modal .security-key-modal-icon { background: rgba(239, 68, 68, .13); color: #fca5a5; }
+.security-key-removal-modal .security-key-modal-submit { background: #b91c1c; border-color: #b91c1c; }
+.security-key-add-button:focus-visible,
+.security-key-modal button:focus-visible { outline: 2px solid #93c5fd; outline-offset: 3px; }
+
+@media (max-width: 560px) {
+    .security-key-settings-summary { align-items: stretch; flex-direction: column; }
+    .security-key-add-button { justify-content: center; }
+    .security-key-modal-backdrop { padding: 12px; }
+    .security-key-modal { max-height: calc(100vh - 24px); }
+    .security-key-modal-header { padding: 20px; }
+    .security-key-modal-form { padding: 18px 20px 20px; }
+}

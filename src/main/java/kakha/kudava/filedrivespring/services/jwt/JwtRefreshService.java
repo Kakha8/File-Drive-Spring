@@ -38,7 +38,7 @@ public class JwtRefreshService {
     }
 
     private String createToken(User user, int daysValid, boolean mfaVerified) {
-        if (user.isTotpEnabled() && !mfaVerified) throw new IllegalStateException("MFA verification required.");
+        if ((user.isTotpEnabled() || user.isWebauthnEnabled()) && !mfaVerified) throw new IllegalStateException("MFA verification required.");
         String refreshToken = generateRandomToken();
         String hash = TokenHashUtil.sha256(refreshToken);
 
@@ -57,7 +57,7 @@ public class JwtRefreshService {
     @Transactional(propagation = Propagation.MANDATORY)
     public AuthenticatedSession issueSession(User user, int daysValid, boolean mfaVerified) {
         if (user.getPublicUuid() == null) throw new IllegalStateException("Authenticated account has no public UUID.");
-        if (user.isTotpEnabled() && !mfaVerified) throw new IllegalStateException("MFA verification required.");
+        if ((user.isTotpEnabled() || user.isWebauthnEnabled()) && !mfaVerified) throw new IllegalStateException("MFA verification required.");
         var details = org.springframework.security.core.userdetails.User.withUsername(user.getUsername())
                 .password(user.getPassword()).roles(user.getRole().name()).build();
         String access = jwt.generateAccessToken(details);
@@ -65,7 +65,7 @@ public class JwtRefreshService {
         return new AuthenticatedSession(new LoginResponse(access, user.getId(), user.getUsername(), user.getPublicUuid()), refresh);
     }
 
-    /** User -> refresh lock order coordinates rotation with TOTP activation/revocation. */
+    /** User -> refresh lock order coordinates rotation with second-factor activation/revocation. */
     @Transactional(noRollbackFor = RefreshRejected.class)
     public AuthenticatedSession rotate(String rawToken, int daysValid) {
         if (rawToken == null || !rawToken.matches("[A-Za-z0-9_-]{86}")) throw new RefreshRejected();
@@ -74,7 +74,7 @@ public class JwtRefreshService {
         User user = users.findForAuthenticationUpdate(ownerId).orElseThrow(RefreshRejected::new);
         JwtRefresher stored = repo.findForRotation(hash, ownerId).orElseThrow(RefreshRejected::new);
         if (stored.isRevoked()) throw new RefreshRejected();
-        if (!stored.getExpiresAt().isAfter(LocalDateTime.now()) || (user.isTotpEnabled() && !stored.isMfaVerified())) {
+        if (!stored.getExpiresAt().isAfter(LocalDateTime.now()) || ((user.isTotpEnabled() || user.isWebauthnEnabled()) && !stored.isMfaVerified())) {
             stored.setRevoked(true);
             throw new RefreshRejected();
         }

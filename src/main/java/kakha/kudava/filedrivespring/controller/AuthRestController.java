@@ -3,7 +3,6 @@ package kakha.kudava.filedrivespring.controller;
 import jakarta.servlet.http.HttpServletResponse;
 import kakha.kudava.filedrivespring.dto.LoginRequest;
 import kakha.kudava.filedrivespring.dto.LoginResponse;
-import kakha.kudava.filedrivespring.dto.totp.MfaLoginRequest;
 import kakha.kudava.filedrivespring.records.ApiErrorResponse;
 import kakha.kudava.filedrivespring.services.totp.TwoStageLoginService;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,13 +38,6 @@ public class AuthRestController {
         }
         AuthCookies.setRefresh(response, result.session().refreshToken(), refreshDays);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result.session().login());
-    }
-
-    @PostMapping("/mfa/totp")
-    public ResponseEntity<LoginResponse> verify(@RequestBody MfaLoginRequest request, HttpServletResponse response) {
-        var session = loginService.verify(request.challengeToken(), request.code());
-        AuthCookies.setRefresh(response, session.refreshToken(), refreshDays);
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(session.login());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

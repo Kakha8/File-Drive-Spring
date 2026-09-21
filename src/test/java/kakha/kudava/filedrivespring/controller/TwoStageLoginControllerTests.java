@@ -58,18 +58,6 @@ class TwoStageLoginControllerTests {
                 .andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
     }
 
-    @Test void verificationIsReachableWithoutJwtAndOnlyReturnsCommittedSession() throws Exception {
-        when(login.verify("A".repeat(43), "012345")).thenReturn(session());
-        mvc.perform(post("/api/auth/mfa/totp").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"challengeToken\":\"" + "A".repeat(43) + "\",\"code\":\"012345\"}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.accessToken").value("access"))
-                .andExpect(jsonPath("$.publicUuid").exists()).andExpect(jsonPath("$.refreshToken").doesNotExist())
-                .andExpect(header().string("Cache-Control", "no-store"))
-                .andExpect(header().string("Set-Cookie", allOf(containsString("refresh_token=refresh"),
-                        containsString("Secure"), containsString("HttpOnly"), containsString("SameSite=None"))));
-        verify(login).verify("A".repeat(43), "012345");
-    }
-
     @Test void challengeCannotAccessFilesOrRefreshSession() throws Exception {
         mvc.perform(get("/api/files").header("Authorization", "Bearer " + "A".repeat(43)))
                 .andExpect(status().isUnauthorized());
@@ -78,19 +66,10 @@ class TwoStageLoginControllerTests {
                 .andExpect(status().isUnauthorized()).andExpect(header().string("Set-Cookie", containsString("Max-Age=0")));
     }
 
-    @Test void rejectionDoesNotSetSessionCookiesOrTokens() throws Exception {
-        when(login.verify("challenge", "000000")).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials."));
-        mvc.perform(post("/api/auth/mfa/totp").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"challengeToken\":\"challenge\",\"code\":\"000000\"}"))
-                .andExpect(status().isUnauthorized()).andExpect(header().doesNotExist("Set-Cookie"))
-                .andExpect(jsonPath("$.accessToken").doesNotExist());
-    }
-
     @Test void malformedCredentialBodiesAreNotEchoed() throws Exception {
-        for (String route : new String[]{"/api/auth/login", "/api/auth/mfa/totp"}) {
-            mvc.perform(post(route).contentType(MediaType.APPLICATION_JSON).content("{\"password\":\"private-secret\""))
-                    .andExpect(status().isBadRequest()).andExpect(content().string(not(containsString("private-secret"))));
-        }
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"private-secret\""))
+                .andExpect(status().isBadRequest()).andExpect(content().string(not(containsString("private-secret"))));
         verifyNoInteractions(login);
     }
 

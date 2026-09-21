@@ -2351,20 +2351,6 @@ body,
   overflow-wrap: anywhere;
 }
 
-.login-mfa-help {
-  margin: 10px 0 0;
-  color: #929dac;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.login-form-panel .login-form .login-totp-code {
-  text-align: center;
-  font-size: 24px;
-  letter-spacing: 0.3em;
-  font-variant-numeric: tabular-nums;
-}
-
 .login-form-panel .login-form .login-start-again {
   margin-top: 10px;
   background: transparent;
@@ -3163,6 +3149,44 @@ body,
   font-size: 13px;
 }
 
+.trash-page .file-row {
+  grid-template-columns:
+    minmax(240px, 2.1fr)
+    minmax(100px, 0.8fr)
+    minmax(90px, 0.7fr)
+    minmax(160px, 1.4fr)
+    minmax(80px, 0.5fr)
+    36px;
+}
+
+/* The shared table has six cells, including its action column. */
+.shared-page .file-row {
+  grid-template-columns:
+    minmax(240px, 2.1fr)
+    minmax(130px, 1.2fr)
+    minmax(125px, 1.1fr)
+    minmax(115px, 0.8fr)
+    minmax(78px, 0.5fr)
+    36px;
+}
+
+.shared-page .size-cell {
+  white-space: nowrap;
+}
+
+.shared-page .file-row:not(.table-head):focus-visible {
+  outline: 2px solid var(--old-accent, #3b82f6);
+  outline-offset: -2px;
+}
+
+.trash-page .trash-location-cell {
+  min-width: 0;
+}
+
+.trash-page .size-cell {
+  white-space: nowrap;
+}
+
 .trash-file-row {
   cursor: default;
 }
@@ -3743,6 +3767,7 @@ body,
   color: var(--old-accent, #3b82f6);
   font-size: 22px;
 }
+.settings-device-icon svg { display: block; width: 22px; height: 22px; }
 
 .settings-device > div { display: flex; flex-direction: column; gap: 4px; }
 .settings-device strong { color: var(--old-text, #e5e7eb); font-size: 14px; }

@@ -12,6 +12,7 @@ import ConfirmPermanentDeleteModal from "../components/ConfirmPermanentDeleteMod
 import ConfirmClearTrashModal from "../components/ConfirmClearTrashModal";
 import ConfirmRestoreModal from "../components/ConfirmRestoreModal";
 import "../App.css";
+import { trashDisplayParent } from "../utils/trash";
 
 function Icon({ children, className = "" }) {
     return (
@@ -347,7 +348,9 @@ export default function Trashcan({
         const prefix = currentNormalizedPrefix;
 
         return trash.folders
-            .filter((folder) => folderParentPrefix(folder) === prefix)
+            .filter((folder) =>
+                trashDisplayParent(folderParentPrefix(folder), trash.folders, rootPrefix) === prefix
+            )
             .map((folder) => ({
                 id: `folder-${folder.id}`,
                 rawId: folder.id,
@@ -359,13 +362,15 @@ export default function Trashcan({
                 owner: "You",
                 originalPath: cleanOriginalPath(folder.prefix, folder.name),
             }));
-    }, [trash.folders, currentNormalizedPrefix]);
+    }, [trash.folders, currentNormalizedPrefix, rootPrefix]);
 
     const visibleFiles = useMemo(() => {
         const prefix = currentNormalizedPrefix;
 
         return trash.files
-            .filter((file) => fileOriginalParentPrefix(file) === prefix)
+            .filter((file) =>
+                trashDisplayParent(fileOriginalParentPrefix(file), trash.folders, rootPrefix) === prefix
+            )
             .map((file) => {
                 const displayName =
                     file.fileName || originalNameFromKey(file.originalObjectKey);
@@ -386,7 +391,7 @@ export default function Trashcan({
                     ),
                 };
             });
-    }, [trash.files, currentNormalizedPrefix]);
+    }, [trash.files, trash.folders, currentNormalizedPrefix, rootPrefix]);
 
     const visibleItems = useMemo(() => {
         const combined = [...visibleFolders, ...visibleFiles];
@@ -711,7 +716,7 @@ export default function Trashcan({
     }
 
     return (
-        <div className="drive-page">
+        <div className="drive-page trash-page">
             <DriveSidebar
                 active="trash"
                 sidebarOpen={sidebarOpen}
@@ -885,7 +890,7 @@ export default function Trashcan({
                                                     <ItemIcon className="svg-icon" />
                                                 </span>
 
-                                                <span>
+                                                <span className="file-name-text">
                                                     <strong>{item.name}</strong>
                                                     <small>{item.displayType}</small>
                                                 </span>
@@ -902,8 +907,8 @@ export default function Trashcan({
                                                 </span>
                                             </div>
 
-                                            <div>
-                                                <span className="trash-path">
+                                            <div className="trash-location-cell">
+                                                <span className="trash-path" title={item.originalPath}>
                                                     {item.originalPath || "—"}
                                                 </span>
                                                 <small>Original path</small>

@@ -3,10 +3,11 @@ FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
 
 COPY pom.xml .
-RUN mvn -q -DskipTests dependency:go-offline
 
 COPY src ./src
-RUN mvn -q -DskipTests package
+# Resolve through the project build; go-offline separately traverses dependency
+# ranges and can select unavailable snapshots. Cache downloads across builds.
+RUN --mount=type=cache,target=/root/.m2 mvn -q -DskipTests package
 
 # ---- Run stage ----
 FROM eclipse-temurin:21-jre

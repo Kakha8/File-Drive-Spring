@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { login, verifyTotpLogin } from "../api/auth";
+import { login, verifyWebAuthnLogin } from "../api/auth";
 import logo from "../assets/logo.png";
 
 function Login({ onLogin }) {
@@ -8,15 +8,12 @@ function Login({ onLogin }) {
     const [message, setMessage] = useState("");
     const [loading, setLoading] = useState(false);
     const [challenge, setChallenge] = useState(null);
-    const [code, setCode] = useState("");
     const [now, setNow] = useState(() => Date.now());
-    const codeInput = useRef(null);
     const submitting = useRef(false);
     const expired = challenge && now >= Date.parse(challenge.expiresAt);
 
     useEffect(() => {
         if (!challenge) return;
-        codeInput.current?.focus();
         const timer = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(timer);
     }, [challenge]);
@@ -24,7 +21,6 @@ function Login({ onLogin }) {
     function startAgain() {
         if (submitting.current) return;
         setChallenge(null);
-        setCode("");
         setPassword("");
         setMessage("");
     }
@@ -43,8 +39,7 @@ function Login({ onLogin }) {
 
         try {
             if (challenge) {
-                await verifyTotpLogin(challenge.challengeToken, code);
-                setCode("");
+                await verifyWebAuthnLogin(challenge.challengeToken);
             } else {
                 const result = await login(username, password);
                 if (result.mfaRequired) {
@@ -58,12 +53,10 @@ function Login({ onLogin }) {
             if (error.status === 429) {
                 setMessage("Too many sign-in attempts. Wait 15 minutes before trying again.");
             } else if (challenge && error.status === 401) {
-                setMessage("That code is invalid, already used, or the request has expired. Try the next code, or start again.");
+                setMessage("Verification failed or expired. Start again to sign in.");
             } else {
                 setMessage(error.message || "Login failed");
             }
-            setCode("");
-            codeInput.current?.focus();
         } finally {
             setPassword("");
             setLoading(false);
@@ -97,7 +90,7 @@ function Login({ onLogin }) {
                         <span>{challenge ? "Two-step sign in" : "Welcome back"}</span>
                         <h1>{challenge ? "Verify your identity" : "Sign in to File Drive"}</h1>
                         <p>{challenge
-                            ? "Enter the six-digit code shown on your authenticator device."
+                            ? "Use your registered security key or passkey to continue."
                             : "Enter your account details to continue."}</p>
                     </div>
 
@@ -105,26 +98,6 @@ function Login({ onLogin }) {
                         {challenge ? (
                             <>
                                 <p className="login-mfa-account">Signing in as <strong>{username}</strong></p>
-                                <label htmlFor="totp-code">Authenticator code</label>
-                                <input
-                                    ref={codeInput}
-                                    id="totp-code"
-                                    className="login-totp-code"
-                                    type="text"
-                                    inputMode="numeric"
-                                    autoComplete="one-time-code"
-                                    pattern="[0-9]{6}"
-                                    maxLength={6}
-                                    placeholder="000000"
-                                    required
-                                    disabled={loading || expired}
-                                    value={code}
-                                    aria-describedby="totp-help"
-                                    onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
-                                />
-                                <p id="totp-help" className="login-mfa-help">
-                                    Use a fresh code. Codes used to register the device cannot be reused.
-                                </p>
                                 {expired && <p className="message error login-error" role="alert">
                                     This sign-in request has expired. Start again to request a new one.
                                 </p>}
@@ -159,8 +132,10 @@ function Login({ onLogin }) {
 
                         {message && <p className="message error login-error" role="alert">{message}</p>}
 
-                        <button type="submit" disabled={loading || Boolean(expired) || (challenge && code.length !== 6)}>
-                            {loading ? (challenge ? "Verifying..." : "Signing in...") : (challenge ? "Verify and sign in" : "Sign in")}
+                        <button type="submit" disabled={loading || Boolean(expired)}>
+                            {loading
+                                ? (challenge ? "Verifying..." : "Signing in...")
+                                : (challenge ? "Use security key or passkey" : "Sign in")}
                         </button>
                         {challenge && <button type="button" className="login-start-again" disabled={loading} onClick={startAgain}>
                             Start again
