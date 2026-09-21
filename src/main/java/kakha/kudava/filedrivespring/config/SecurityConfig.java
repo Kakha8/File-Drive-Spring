@@ -81,7 +81,6 @@ public class SecurityConfig {
 
                         .requestMatchers(
                                 "/api/auth/login",
-                                "/api/auth/mfa/totp",
                                 "/api/auth/webauthn/options",
                                 "/api/auth/webauthn/finish",
                                 "/api/auth/logout",

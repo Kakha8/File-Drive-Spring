@@ -26,12 +26,9 @@ public class TwoStageLoginService {
     private static final Duration LIMIT_WINDOW = Duration.ofMinutes(15);
     private static final int MAX_FAILURES = 10, MAX_CHALLENGES = 10;
     private final UserRepository users;
-    private final TotpDeviceRepository devices;
     private final MfaLoginChallengeRepository challenges;
     private final LoginAttemptLimitRepository limits;
     private final PasswordEncoder passwords;
-    private final TotpSecretEncryptionService encryption;
-    private final TotpVerificationService verifier;
     private final JwtRefreshService refresh;
     private final int refreshDays;
     private final Clock clock;
@@ -39,20 +36,18 @@ public class TwoStageLoginService {
     private final String dummyPasswordHash;
 
     @Autowired
-    public TwoStageLoginService(UserRepository users, TotpDeviceRepository devices,
+    public TwoStageLoginService(UserRepository users,
             MfaLoginChallengeRepository challenges, LoginAttemptLimitRepository limits,
-            PasswordEncoder passwords, TotpSecretEncryptionService encryption,
-            TotpVerificationService verifier, JwtRefreshService refresh,
+            PasswordEncoder passwords, JwtRefreshService refresh,
             @Value("${JWT_REFRESH_DAYS}") int refreshDays) {
-        this(users, devices, challenges, limits, passwords, encryption, verifier, refresh, refreshDays, Clock.systemUTC());
+        this(users, challenges, limits, passwords, refresh, refreshDays, Clock.systemUTC());
     }
 
-    public TwoStageLoginService(UserRepository users, TotpDeviceRepository devices,
+    public TwoStageLoginService(UserRepository users,
             MfaLoginChallengeRepository challenges, LoginAttemptLimitRepository limits,
-            PasswordEncoder passwords, TotpSecretEncryptionService encryption,
-            TotpVerificationService verifier, JwtRefreshService refresh, int refreshDays, Clock clock) {
-        this.users = users; this.devices = devices; this.challenges = challenges; this.limits = limits;
-        this.passwords = passwords; this.encryption = encryption; this.verifier = verifier;
+            PasswordEncoder passwords, JwtRefreshService refresh, int refreshDays, Clock clock) {
+        this.users = users; this.challenges = challenges; this.limits = limits;
+        this.passwords = passwords;
         this.refresh = refresh; this.refreshDays = refreshDays; this.clock = clock;
         dummyPasswordHash = passwords.encode(UUID.randomUUID().toString());
     }
@@ -61,7 +56,7 @@ public class TwoStageLoginService {
     public LoginResult login(String username, String password) {
         if (username == null || username.isBlank() || username.length() > 255
                 || password == null || password.isEmpty() || password.length() > 1024) throw rejected();
-        User user = users.findForTotpEnrollment(username).orElse(null);
+        User user = users.findForAuthenticationByUsername(username).orElse(null);
         if (user == null) {
             passwords.matches(password, dummyPasswordHash);
             throw rejected();
@@ -71,12 +66,15 @@ public class TwoStageLoginService {
         checkLimit(limit);
         if (!passwords.matches(password, user.getPassword())) fail(limit);
         if (user.getPublicUuid() == null) throw new IllegalStateException("Authenticated account has no public UUID.");
-        if (!user.isTotpEnabled() && !user.isWebauthnEnabled()) {
+        // Legacy TOTP-only accounts must not silently fall back to password-only
+        // authentication after the TOTP API is removed. They remain locked until
+        // an administrator completes an explicit WebAuthn migration.
+        if (user.isTotpEnabled() && !user.isWebauthnEnabled()) throw rejected();
+        if (!user.isWebauthnEnabled()) {
             challenges.consumeOutstanding(user.getId(), now);
             return new LoginResult(refresh.issueSession(user, refreshDays, false), null);
         }
         if (limit.getChallenges() >= MAX_CHALLENGES) throw throttled();
-        if (!user.isWebauthnEnabled() && devices.findAllByUserIdAndStatus(user.getId(), TotpDevice.Status.ACTIVE).isEmpty()) throw rejected();
         limit.setChallenges(limit.getChallenges() + 1);
         // A new successful password step replaces any previous outstanding challenge.
         challenges.consumeOutstanding(user.getId(), now);
@@ -90,47 +88,7 @@ public class TwoStageLoginService {
         challenge.setExpiresAt(now.plus(CHALLENGE_TTL));
         challenge.setPasswordFingerprint(TokenHashUtil.sha256(user.getPassword()));
         challenges.saveAndFlush(challenge);
-        return new LoginResult(null, new MfaRequired(true, raw, challenge.getExpiresAt(), user.isWebauthnEnabled() ? "webauthn" : "totp"));
-    }
-
-    @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = LoginRejected.class)
-    public AuthenticatedSession verify(String challengeToken, String code) {
-        if (challengeToken == null || !challengeToken.matches("[A-Za-z0-9_-]{43}")) throw rejected();
-        String hash = TokenHashUtil.sha256(challengeToken);
-        Long userId = challenges.findOwnerId(hash).orElseThrow(TwoStageLoginService::rejected);
-        User user = users.findForAuthenticationUpdate(userId).orElseThrow(TwoStageLoginService::rejected);
-        Instant now = clock.instant();
-        LoginAttemptLimit limit = limit(user, now);
-        checkLimit(limit);
-        MfaLoginChallenge challenge = challenges.findForUpdate(hash, userId).orElseThrow(TwoStageLoginService::rejected);
-        if (challenge.getConsumedAt() != null) throw rejected();
-        if (!now.isBefore(challenge.getExpiresAt()) || !user.isTotpEnabled() || user.isWebauthnEnabled()
-                || !TokenHashUtil.sha256(user.getPassword()).equals(challenge.getPasswordFingerprint())) {
-            challenge.setConsumedAt(now);
-            throw rejected();
-        }
-        if (code == null || !code.matches("[0-9]{6}")) fail(limit);
-        boolean matched = false;
-        // The account lock serializes this with enrollment. Device locks also coordinate
-        // counter consumption with any other OTP-verifying operation.
-        var active = devices.findAllByUserIdAndStatus(userId, TotpDevice.Status.ACTIVE);
-        active.sort(Comparator.comparing(TotpDevice::getId));
-        for (TotpDevice candidate : active) {
-            TotpDevice device = devices.findForEnrollmentUpdate(candidate.getId(), userId).orElseThrow(TwoStageLoginService::rejected);
-            if (device.getStatus() != TotpDevice.Status.ACTIVE) continue;
-            byte[] seed = encryption.decrypt(user.getPublicUuid(), device.getEncryptedSecret(),
-                    device.getEncryptionNonce(), device.getEncryptionKeyId());
-            try {
-                OptionalLong counter = verifier.verify(seed, code, device.getLastAcceptedCounter());
-                if (counter.isPresent()) {
-                    device.setLastAcceptedCounter(counter.getAsLong());
-                    matched = true;
-                }
-            } finally { Arrays.fill(seed, (byte) 0); }
-        }
-        if (!matched) fail(limit);
-        challenge.setConsumedAt(now);
-        return refresh.issueSession(user, refreshDays, true);
+        return new LoginResult(null, new MfaRequired(true, raw, challenge.getExpiresAt(), "webauthn"));
     }
 
     private LoginAttemptLimit limit(User user, Instant now) {
@@ -155,7 +113,7 @@ public class TwoStageLoginService {
     }
     public record MfaRequired(boolean mfaRequired, String challengeToken, Instant expiresAt, String method) {
         public MfaRequired(boolean mfaRequired, String challengeToken, Instant expiresAt) {
-            this(mfaRequired, challengeToken, expiresAt, "totp");
+            this(mfaRequired, challengeToken, expiresAt, "webauthn");
         }
         @Override public String toString() { return "MfaRequired[redacted]"; }
     }

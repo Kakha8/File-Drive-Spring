@@ -65,7 +65,7 @@ public class JwtRefreshService {
         return new AuthenticatedSession(new LoginResponse(access, user.getId(), user.getUsername(), user.getPublicUuid()), refresh);
     }
 
-    /** User -> refresh lock order coordinates rotation with TOTP activation/revocation. */
+    /** User -> refresh lock order coordinates rotation with second-factor activation/revocation. */
     @Transactional(noRollbackFor = RefreshRejected.class)
     public AuthenticatedSession rotate(String rawToken, int daysValid) {
         if (rawToken == null || !rawToken.matches("[A-Za-z0-9_-]{86}")) throw new RefreshRejected();

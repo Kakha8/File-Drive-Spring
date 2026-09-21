@@ -47,7 +47,7 @@ test('security-key status returns registered device metadata', async () => {
     assert.deepEqual(await getSecurityKeyStatus(), expected);
 });
 
-test('TOTP-authorized security-key removal completes without a browser assertion', async () => {
+test('security-key removal no longer sends legacy TOTP credentials', async () => {
     const requests = [];
     mock.method(globalThis, 'fetch', async (_url, options) => {
         requests.push(JSON.parse(options.body));
@@ -55,8 +55,8 @@ test('TOTP-authorized security-key removal completes without a browser assertion
             ? Response.json({ requestId: 'request-1', authorizationPublicKey: null })
             : Response.json({ removedCredentialRecordId: 7, enabled: false, remainingDevices: 0 });
     });
-    const result = await removeSecurityKey(7, 'password', 3, '123456', () => assert.fail());
+    const result = await removeSecurityKey(7, 'password', () => assert.fail());
     assert.equal(result.remainingDevices, 0);
-    assert.deepEqual(requests[0], { password: 'password', totpDeviceId: 3, totpCode: '123456' });
+    assert.deepEqual(requests[0], { password: 'password' });
     assert.deepEqual(requests[1], { requestId: 'request-1', authorizationCredential: null });
 });

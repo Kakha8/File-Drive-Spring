@@ -6,7 +6,7 @@ import com.upokecenter.cbor.CBORObject;
 import kakha.kudava.filedrivespring.model.*;
 import kakha.kudava.filedrivespring.repository.*;
 import kakha.kudava.filedrivespring.services.jwt.*;
-import kakha.kudava.filedrivespring.services.totp.*;
+import kakha.kudava.filedrivespring.services.totp.TwoStageLoginService;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -102,7 +102,7 @@ class WebAuthnServiceTests {
                 .put("userHandle", WebAuthnCredentials.handle(owner).getBase64Url())); return r;
     }
     void enroll() throws Exception {
-        var o = service.beginRegistration("alice", "password", "ESP32", null, null);
+        var o = service.beginRegistration("alice", "password", "ESP32");
         service.finishRegistration("alice", o.requestId(), registration(o, "http://localhost:5173"), null);
     }
     @Test void credentialStatusListsOnlyTheAuthenticatedUsersCredentials() throws Exception {
@@ -118,7 +118,7 @@ class WebAuthnServiceTests {
     @Test void registeredKeyCanAuthorizeItsRemoval() throws Exception {
         enroll();
         Long credentialId = credentials.findAll().getFirst().getId();
-        var options = service.beginRemoval("alice", credentialId, "password", null, null);
+        var options = service.beginRemoval("alice", credentialId, "password");
         assertNotNull(options.authorizationPublicKey());
         var allowCredentials = options.authorizationPublicKey().path("allowCredentials");
         assertEquals("RU5JR01BX1JFTU9WQUxfVjE", allowCredentials.path(0).path("id").asText());
@@ -137,9 +137,9 @@ class WebAuthnServiceTests {
         Long credentialId = credentials.findAll().getFirst().getId();
         user("bob");
         assertThrows(WebAuthnService.Rejected.class,
-                () -> service.beginRemoval("bob", credentialId, "password", null, null));
+                () -> service.beginRemoval("bob", credentialId, "password"));
         assertThrows(WebAuthnService.Rejected.class,
-                () -> service.beginRemoval("alice", credentialId, "wrong", null, null));
+                () -> service.beginRemoval("alice", credentialId, "wrong"));
         assertEquals(1, credentials.count());
     }
     @Test void realRegistrationAndSignatureProduceSessionAndConsumeChallenge() throws Exception {
@@ -154,7 +154,7 @@ class WebAuthnServiceTests {
         assertThrows(WebAuthnService.Rejected.class, () -> service.finishLogin(token, o.requestId(), response));
     }
     @Test void wrongOriginRegistrationDoesNotActivateAndCannotReplay() throws Exception {
-        var o = service.beginRegistration("alice", "password", "ESP32", null, null);
+        var o = service.beginRegistration("alice", "password", "ESP32");
         assertThrows(WebAuthnService.Rejected.class, () -> service.finishRegistration("alice", o.requestId(), registration(o, "https://evil.example"), null));
         assertFalse(users.findById(owner.getId()).orElseThrow().isWebauthnEnabled()); assertEquals(0, credentials.count());
         assertThrows(WebAuthnService.Rejected.class, () -> service.finishRegistration("alice", o.requestId(), registration(o, "http://localhost:5173"), null));
@@ -172,42 +172,40 @@ class WebAuthnServiceTests {
         assertEquals(0, tokens.count());
     }
     @Test void rejectsCrossAccountExpiredAndPasswordChangedRegistration() throws Exception {
-        user("bob"); var o = service.beginRegistration("alice", "password", "ESP32", null, null);
+        user("bob"); var o = service.beginRegistration("alice", "password", "ESP32");
         assertThrows(WebAuthnService.Rejected.class, () -> service.finishRegistration("bob", o.requestId(), registration(o, "http://localhost:5173"), null));
         new TransactionTemplate(transactions).executeWithoutResult(s -> {
             var c = ceremonies.findById(o.requestId()).orElseThrow(); c.setExpiresAt(Instant.now().minusSeconds(1));
         });
         assertThrows(WebAuthnService.Rejected.class, () -> service.finishRegistration("alice", o.requestId(), registration(o, "http://localhost:5173"), null));
-        var next = service.beginRegistration("alice", "password", "ESP32", null, null);
+        var next = service.beginRegistration("alice", "password", "ESP32");
         owner.setPassword(passwords.encode("changed")); users.saveAndFlush(owner);
         assertThrows(WebAuthnService.Rejected.class, () -> service.finishRegistration("alice", next.requestId(), registration(next, "http://localhost:5173"), null));
     }
     @Test void enrollmentRequiresPasswordAndExistingFactor() throws Exception {
-        assertThrows(WebAuthnService.Rejected.class, () -> service.beginRegistration("alice", "wrong", "ESP32", null, null));
-        enroll(); var o = service.beginRegistration("alice", "password", "second", null, null);
+        assertThrows(WebAuthnService.Rejected.class, () -> service.beginRegistration("alice", "wrong", "ESP32"));
+        enroll(); var o = service.beginRegistration("alice", "password", "second");
         assertNotNull(o.authorizationPublicKey());
         assertThrows(WebAuthnService.Rejected.class, () -> service.finishRegistration("alice", o.requestId(), registration(o, "http://localhost:5173"), null));
         assertEquals(1, credentials.count());
     }
     @Test void additionalCredentialRequiresValidExistingSignature() throws Exception {
-        enroll(); var o = service.beginRegistration("alice", "password", "second", null, null);
+        enroll(); var o = service.beginRegistration("alice", "password", "second");
         var authorization = assertion(o.authorizationPublicKey(), "http://localhost:5173", "localhost", 1, false);
         id = new byte[32]; new SecureRandom().nextBytes(id);
         service.finishRegistration("alice", o.requestId(), registration(o, "http://localhost:5173"), authorization);
         assertEquals(2, credentials.count());
     }
-    @Test void expiredLoginAndTotpCannotBypassWebauthn() throws Exception {
+    @Test void expiredLoginCannotIssueSession() throws Exception {
         enroll(); String token = login.login("alice", "password").challenge().challengeToken(); var o = service.beginLogin(token);
         new TransactionTemplate(transactions).executeWithoutResult(s -> ceremonies.findById(o.requestId()).orElseThrow().setExpiresAt(Instant.now().minusSeconds(1)));
         assertThrows(WebAuthnService.Rejected.class, () -> service.finishLogin(token, o.requestId(), assertion(o.publicKey(), "http://localhost:5173", "localhost", 1, false)));
-        String next = login.login("alice", "password").challenge().challengeToken();
-        assertThrows(TwoStageLoginService.LoginRejected.class, () -> login.verify(next, "123456"));
         assertThrows(IllegalStateException.class, () -> refresh.createToken(users.findById(owner.getId()).orElseThrow(), 7));
         assertEquals(0, tokens.count());
     }
     @Test void replacingOptionsInvalidatesPreviousCeremony() throws Exception {
-        var first = service.beginRegistration("alice", "password", "ESP32", null, null);
-        service.beginRegistration("alice", "password", "ESP32", null, null);
+        var first = service.beginRegistration("alice", "password", "ESP32");
+        service.beginRegistration("alice", "password", "ESP32");
         assertThrows(WebAuthnService.Rejected.class, () -> service.finishRegistration("alice", first.requestId(), registration(first, "http://localhost:5173"), null));
     }
     @Test void simultaneousFinishIssuesOnlyOneSession() throws Exception {
@@ -233,7 +231,5 @@ class WebAuthnServiceTests {
     @TestConfiguration static class Config {
         @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(4); }
         @Bean JwtService jwtService() { return new JwtService("test-only-signing-key-at-least-32-bytes-long", 15); }
-        @Bean TotpSecretEncryptionService encryption() { return mock(TotpSecretEncryptionService.class); }
-        @Bean TotpVerificationService verifier() { return new TotpVerificationService(); }
     }
 }

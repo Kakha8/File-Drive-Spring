@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { getCurrentUsername } from "../api/auth";
-import { getTotpStatus, removeTotpDevice } from "../api/totp";
 import UserMenu from "../components/UserMenu";
 import SecurityKeySettings from "../components/SecurityKeySettings";
 import SecurityKeyIcon from "../components/SecurityKeyIcon";
@@ -25,26 +24,15 @@ function getInitials(username) {
 export default function Settings({ onLogout }) {
     const navigate = useNavigate();
     const username = getCurrentUsername();
-    const [totpStatus, setTotpStatus] = useState(null);
-    const [totpError, setTotpError] = useState(false);
     const [securityKeyStatus, setSecurityKeyStatus] = useState(null);
     const [securityKeyError, setSecurityKeyError] = useState(false);
     const [removingKeyId, setRemovingKeyId] = useState(null);
     const [keyRemovalPassword, setKeyRemovalPassword] = useState("");
-    const [keyRemovalMethod, setKeyRemovalMethod] = useState("fido");
-    const [keyRemovalCode, setKeyRemovalCode] = useState("");
     const [keyRemovalMessage, setKeyRemovalMessage] = useState("");
     const [keyRemovalError, setKeyRemovalError] = useState("");
     const [keyRemoving, setKeyRemoving] = useState(false);
     const keyRemovalDialog = useRef(null);
     const keyRemovalTrigger = useRef(null);
-    const [removingId, setRemovingId] = useState(null);
-    const [password, setPassword] = useState("");
-    const [code, setCode] = useState("");
-    const [authorizingDeviceId, setAuthorizingDeviceId] = useState("");
-    const [removalError, setRemovalError] = useState("");
-    const [removing, setRemoving] = useState(false);
-    const removingDevice = totpStatus?.devices.find((device) => device.deviceId === removingId);
 
     useEffect(() => {
         if (removingKeyId === null) return undefined;
@@ -70,11 +58,6 @@ export default function Settings({ onLogout }) {
 
     useEffect(() => {
         let active = true;
-        getTotpStatus()
-            .then((status) => active && setTotpStatus(status))
-            .catch(() => {
-                if (active) { setTotpError(true); setTotpStatus({ enabled: false, devices: [] }); }
-            });
         getSecurityKeyStatus()
             .then((status) => active && setSecurityKeyStatus(status))
             .catch(() => {
@@ -83,40 +66,10 @@ export default function Settings({ onLogout }) {
         return () => { active = false; };
     }, []);
 
-    function beginRemoval(deviceId) {
-        const alternative = totpStatus.devices.find((device) => device.deviceId !== deviceId);
-        setRemovingId(deviceId);
-        setAuthorizingDeviceId(alternative ? String(alternative.deviceId) : String(deviceId));
-        setPassword("");
-        setCode("");
-        setRemovalError("");
-    }
-
-    async function submitRemoval(event) {
-        event.preventDefault();
-        setRemoving(true);
-        setRemovalError("");
-        try {
-            await removeTotpDevice(removingId, password, Number(authorizingDeviceId), code);
-            setTotpStatus(await getTotpStatus());
-            setRemovingId(null);
-            setPassword("");
-            setCode("");
-        } catch (error) {
-            setRemovalError(error.message || "Could not remove the device.");
-            setPassword("");
-            setCode("");
-        } finally {
-            setRemoving(false);
-        }
-    }
-
     function beginKeyRemoval(credentialRecordId) {
         keyRemovalTrigger.current = document.activeElement;
         setRemovingKeyId(credentialRecordId);
         setKeyRemovalPassword("");
-        setKeyRemovalMethod("fido");
-        setKeyRemovalCode("");
         setKeyRemovalMessage("");
         setKeyRemovalError("");
     }
@@ -125,7 +78,6 @@ export default function Settings({ onLogout }) {
         if (keyRemoving) return;
         setRemovingKeyId(null);
         setKeyRemovalPassword("");
-        setKeyRemovalCode("");
         setKeyRemovalMessage("");
         setKeyRemovalError("");
         requestAnimationFrame(() => keyRemovalTrigger.current?.focus());
@@ -137,17 +89,13 @@ export default function Settings({ onLogout }) {
         setKeyRemovalError("");
         setKeyRemovalMessage("Preparing removal…");
         try {
-            const totpDeviceId = keyRemovalMethod.startsWith("totp:")
-                ? Number(keyRemovalMethod.slice(5)) : null;
-            await removeSecurityKey(removingKeyId, keyRemovalPassword, totpDeviceId,
-                totpDeviceId ? keyRemovalCode : null, setKeyRemovalMessage);
+            await removeSecurityKey(removingKeyId, keyRemovalPassword, setKeyRemovalMessage);
             onLogout();
         } catch (error) {
             setKeyRemovalMessage("");
             setKeyRemovalError(error.message || "Could not remove the security key.");
         } finally {
             setKeyRemovalPassword("");
-            setKeyRemovalCode("");
             setKeyRemoving(false);
         }
     }
@@ -189,36 +137,19 @@ export default function Settings({ onLogout }) {
 
                     <div className="settings-security-row">
                         <div>
-                            <strong>Two-factor authentication</strong>
-                            <span>Authenticator apps and security keys used during sign in</span>
+                            <strong>FIDO2 authentication</strong>
+                            <span>Security keys and passkeys used during sign in</span>
                         </div>
-                        {totpError && securityKeyError ? (
+                        {securityKeyError ? (
                             <span className="settings-status settings-status-error">Unavailable</span>
-                        ) : totpStatus === null || securityKeyStatus === null ? (
+                        ) : securityKeyStatus === null ? (
                             <span className="settings-status">Loading…</span>
                         ) : (
-                            <span className={`settings-status ${totpStatus.enabled || securityKeyStatus.enabled ? "settings-status-enabled" : "settings-status-disabled"}`}>
-                                {totpStatus.enabled || securityKeyStatus.enabled ? "Enabled" : "Disabled"}
+                            <span className={`settings-status ${securityKeyStatus.enabled ? "settings-status-enabled" : "settings-status-disabled"}`}>
+                                {securityKeyStatus.enabled ? "Enabled" : "Disabled"}
                             </span>
                         )}
                     </div>
-
-                    {totpStatus?.devices.length > 0 && (
-                        <div className="settings-device-list">
-                            {totpStatus.devices.map((device, index) => (
-                                <div className="settings-device" key={`${device.displayName}-${index}`}>
-                                    <span className="settings-device-icon" aria-hidden="true">◈</span>
-                                    <div>
-                                        <strong>{device.displayName}</strong>
-                                        <span>Hardware wallet</span>
-                                    </div>
-                                    <button type="button" className="settings-device-remove" onClick={() => beginRemoval(device.deviceId)}>
-                                        Remove
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
 
                     {securityKeyStatus?.devices.length > 0 && (
                         <div className="settings-device-list">
@@ -238,40 +169,9 @@ export default function Settings({ onLogout }) {
                         </div>
                     )}
 
-                    {removingId !== null && (
-                        <form className="settings-removal-form" onSubmit={submitRemoval}>
-                            <strong>Remove “{removingDevice?.displayName || "this device"}”?</strong>
-                            <p>Confirm with your password and a fresh authenticator code.</p>
-                            {totpStatus.devices.length > 1 && (
-                                <>
-                                    <label htmlFor="removal-authorizer">Confirm using another device</label>
-                                    <select id="removal-authorizer" value={authorizingDeviceId}
-                                        onChange={(event) => setAuthorizingDeviceId(event.target.value)} disabled={removing}>
-                                        {totpStatus.devices.filter((device) => device.deviceId !== removingId).map((device) => (
-                                            <option key={device.deviceId} value={device.deviceId}>{device.displayName}</option>
-                                        ))}
-                                    </select>
-                                </>
-                            )}
-                            <label htmlFor="removal-password">Current password</label>
-                            <input id="removal-password" type="password" autoComplete="current-password" required
-                                value={password} onChange={(event) => setPassword(event.target.value)} disabled={removing} />
-                            <label htmlFor="removal-code">Authenticator code</label>
-                            <input id="removal-code" type="text" inputMode="numeric" autoComplete="one-time-code"
-                                pattern="[0-9]{6}" maxLength={6} required value={code} disabled={removing}
-                                onChange={(event) => setCode(event.target.value.replace(/[^0-9]/g, "").slice(0, 6))} />
-                            {removalError && <p className="message error" role="alert">{removalError}</p>}
-                            <div className="settings-removal-actions">
-                                <button type="button" onClick={() => setRemovingId(null)} disabled={removing}>Cancel</button>
-                                <button type="submit" className="danger" disabled={removing || code.length !== 6}>
-                                    {removing ? "Removing…" : "Remove device"}
-                                </button>
-                            </div>
-                        </form>
-                    )}
                 </section>
 
-                <SecurityKeySettings totpStatus={totpStatus} onLogout={onLogout} />
+                <SecurityKeySettings onLogout={onLogout} />
 
                 <section className="settings-card">
                     <h2>Appearance</h2>
@@ -294,31 +194,16 @@ export default function Settings({ onLogout }) {
                             <button type="button" className="security-key-modal-close" aria-label="Close" disabled={keyRemoving} onClick={closeKeyRemoval}>×</button>
                         </div>
                         <form className="security-key-modal-form" onSubmit={submitKeyRemoval}>
-                            <p className="security-key-modal-note">Confirm with your account password and a registered verification method.</p>
+                            <p className="security-key-modal-note">Confirm with your account password and a registered security key.</p>
                             <label htmlFor="key-removal-password">Current password</label>
                             <input id="key-removal-password" type="password" autoComplete="current-password" required
                                 value={keyRemovalPassword} disabled={keyRemoving}
                                 onChange={(event) => setKeyRemovalPassword(event.target.value)} />
-                            <label htmlFor="key-removal-method">Confirm using</label>
-                            <select id="key-removal-method" value={keyRemovalMethod} disabled={keyRemoving}
-                                onChange={(event) => { setKeyRemovalMethod(event.target.value); setKeyRemovalCode(""); }}>
-                                <option value="fido">Registered security key</option>
-                                {totpStatus?.devices.map(device => <option key={device.deviceId} value={`totp:${device.deviceId}`}>
-                                    {device.displayName} (authenticator code)
-                                </option>)}
-                            </select>
-                            {keyRemovalMethod.startsWith("totp:") && <>
-                                <label htmlFor="key-removal-code">Fresh authenticator code</label>
-                                <input id="key-removal-code" inputMode="numeric" autoComplete="one-time-code"
-                                    pattern="[0-9]{6}" maxLength={6} required value={keyRemovalCode} disabled={keyRemoving}
-                                    onChange={(event) => setKeyRemovalCode(event.target.value.replace(/[^0-9]/g, "").slice(0, 6))} />
-                            </>}
                             {keyRemovalMessage && <p className="security-key-modal-status" role="status">{keyRemovalMessage}</p>}
                             {keyRemovalError && <p className="security-key-modal-error" role="alert">{keyRemovalError}</p>}
                             <div className="security-key-modal-actions">
                                 <button type="button" className="security-key-modal-cancel" disabled={keyRemoving} onClick={closeKeyRemoval}>Cancel</button>
-                                <button type="submit" className="security-key-modal-submit" disabled={keyRemoving
-                                    || (keyRemovalMethod.startsWith("totp:") && keyRemovalCode.length !== 6)}>
+                                <button type="submit" className="security-key-modal-submit" disabled={keyRemoving}>
                                     {keyRemoving ? "Removing…" : "Remove security key"}
                                 </button>
                             </div>

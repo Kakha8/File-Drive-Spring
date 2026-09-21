@@ -13,7 +13,7 @@ export async function getSecurityKeyStatus() {
     return data;
 }
 
-export async function removeSecurityKey(credentialRecordId, password, totpDeviceId, totpCode, onProgress) {
+export async function removeSecurityKey(credentialRecordId, password, onProgress) {
     async function post(path, body) {
         const response = await apiFetch(path, { method: 'POST',
             headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -24,7 +24,7 @@ export async function removeSecurityKey(credentialRecordId, password, totpDevice
         return response.json();
     }
     const base = `/api/webauthn/credentials/${credentialRecordId}/removal`;
-    const options = await post(`${base}/options`, { password, totpDeviceId, totpCode });
+    const options = await post(`${base}/options`, { password });
     let authorizationCredential = null;
     if (options.authorizationPublicKey) {
         onProgress('Confirm removal with a registered security key.');

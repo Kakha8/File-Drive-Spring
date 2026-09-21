@@ -35,30 +35,13 @@ export async function login(username, password) {
             || typeof data.expiresAt !== "string" || !Number.isFinite(Date.parse(data.expiresAt))) {
             throw new Error("The server returned an invalid sign-in challenge. Please try again.");
         }
-        if (data.method && !['totp', 'webauthn'].includes(data.method)) {
+        if (data.method && data.method !== 'webauthn') {
             throw new Error('Unsupported sign-in verification method.');
         }
         return { mfaRequired: true, challengeToken: data.challengeToken, expiresAt: data.expiresAt,
             ...(data.method ? { method: data.method } : {}) };
     }
     return storeLoginSession(data);
-}
-
-/** Uses a direct request: MFA rejection must never trigger automatic token refresh. */
-export async function verifyTotpLogin(challengeToken, code) {
-    clearAccessToken();
-    if (typeof challengeToken !== "string" || !challengeToken
-        || typeof code !== "string" || !/^[0-9]{6}$/.test(code)) {
-        throw new Error("Enter the six-digit code from your authenticator.");
-    }
-    const response = await fetch(`${API_BASE_URL}/api/auth/mfa/totp`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ challengeToken, code }),
-    });
-    if (!response.ok) throw await authResponseError(response, "Code verification failed");
-    return storeLoginSession(await response.json());
 }
 
 export async function verifyWebAuthnLogin(challengeToken) {

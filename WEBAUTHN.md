@@ -23,10 +23,10 @@ Both routes require an access-token Authorization header. The account comes excl
 1. POST `/api/webauthn/registration/options`:
 
 ```json
-{"password":"current account password","displayName":"My ESP32","existingDeviceId":null,"existingCode":null}
+{"password":"current account password","displayName":"My ESP32"}
 ```
 
-For a TOTP-only account, supply an active TOTP device ID and a fresh code. The code is consumed. For an account with WebAuthn already enabled, the response includes a separate WebAuthn assertion request authorizing the additional credential. Password reauthentication is always required.
+For an account with WebAuthn already enabled, the response includes a separate WebAuthn assertion request authorizing the additional credential. Password reauthentication is always required. Legacy TOTP-only accounts are locked until an explicit administrator-assisted migration; they are never downgraded to password-only authentication.
 
 Response:
 
@@ -49,14 +49,14 @@ Success: HTTP 201 with `{ "credentialRecordId": 123, "displayName": "My ESP32" }
 ## Login
 
 1. POST the existing `/api/auth/login` with username/password.
-2. A WebAuthn-enabled account returns `{ "mfaRequired":true, "method":"webauthn", "challengeToken":"...", "expiresAt":"..." }`, with no session token. Existing TOTP accounts return method `totp`.
+2. A WebAuthn-enabled account returns `{ "mfaRequired":true, "method":"webauthn", "challengeToken":"...", "expiresAt":"..." }`, with no session token.
 3. POST `/api/auth/webauthn/options` with `{ "challengeToken":"..." }`.
 4. Decode its `publicKey` options and call `navigator.credentials.get({publicKey})`.
 5. POST `/api/auth/webauthn/finish` with `{ "challengeToken":"...", "requestId":"uuid", "credential":{} }`.
 
 Successful verification returns the existing LoginResponse access token and sets the existing HttpOnly/Secure refresh cookie. The two WebAuthn login endpoints do not require a JWT: the password-step challenge is their authorization. They are not passwordless endpoints.
 
-WebAuthn-enabled accounts cannot use `/api/auth/mfa/totp` to bypass the security key. Refresh issuance also checks the new account flag. The current frontend/FD-Client must handle method=webauthn before enrolling accounts through this API; their old TOTP screen cannot complete this flow.
+The legacy TOTP login endpoint has been removed. Refresh issuance continues to require a session that completed the account's configured second factor.
 
 ## Expiry and storage
 
@@ -70,4 +70,4 @@ Credential registration validates with Yubico java-webauthn-server 2.9.0. No req
 
 `GET /api/webauthn/credentials` lists the authenticated user's registered credentials with their display name, creation time, and last-use time.
 
-Removal is a two-step authenticated ceremony. Start it with `POST /api/webauthn/credentials/{id}/removal/options`, supplying the account password and, optionally, an active TOTP device ID and fresh code. Without TOTP authorization, the response contains a WebAuthn assertion challenge that any registered credential on the account may sign. Complete removal with `POST /api/webauthn/credentials/{id}/removal/finish` and the returned request ID plus that assertion. TOTP authorization permits removal of a credential whose physical key was lost or erased. Successful removal revokes refresh sessions and disables WebAuthn when no credentials remain.
+Removal is a two-step authenticated ceremony. Start it with `POST /api/webauthn/credentials/{id}/removal/options`, supplying the account password. The response contains a WebAuthn assertion challenge that any registered credential on the account may sign. Complete removal with `POST /api/webauthn/credentials/{id}/removal/finish` and the returned request ID plus that assertion. Successful removal revokes refresh sessions and disables WebAuthn when no credentials remain. Lost-key recovery requires a separate administrator-assisted process; there is no TOTP bypass.

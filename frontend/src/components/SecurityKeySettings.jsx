@@ -4,11 +4,9 @@ import { registerSecurityKey } from '../api/webauthn';
 import SecurityKeyIcon from './SecurityKeyIcon';
 import './SecurityKeySettings.css';
 
-export default function SecurityKeySettings({ totpStatus, onLogout }) {
+export default function SecurityKeySettings({ onLogout }) {
     const [name, setName] = useState('');
     const [password, setPassword] = useState('');
-    const [deviceId, setDeviceId] = useState('');
-    const [code, setCode] = useState('');
     const [busy, setBusy] = useState(false);
     const [open, setOpen] = useState(false);
     const [message, setMessage] = useState('');
@@ -42,7 +40,7 @@ export default function SecurityKeySettings({ totpStatus, onLogout }) {
     function close() {
         if (submitting.current) return;
         setOpen(false);
-        setName(''); setPassword(''); setDeviceId(''); setCode(''); setMessage(''); setError('');
+        setName(''); setPassword(''); setMessage(''); setError('');
         requestAnimationFrame(() => trigger.current?.focus());
     }
 
@@ -54,8 +52,7 @@ export default function SecurityKeySettings({ totpStatus, onLogout }) {
         setError('');
         setMessage('Preparing registration…');
         try {
-            await registerSecurityKey({ displayName: name.trim(), password,
-                existingDeviceId: deviceId ? Number(deviceId) : null, existingCode: code || null }, setMessage);
+            await registerSecurityKey({ displayName: name.trim(), password }, setMessage);
             setMessage('Security key registered. Signing out…');
             onLogout?.();
         } catch (failure) {
@@ -63,7 +60,6 @@ export default function SecurityKeySettings({ totpStatus, onLogout }) {
             setError(failure.message || 'Registration failed. Please try again.');
         } finally {
             setPassword('');
-            setCode('');
             setBusy(false);
             submitting.current = false;
         }
@@ -96,26 +92,12 @@ export default function SecurityKeySettings({ totpStatus, onLogout }) {
             <label htmlFor="key-password">Current password</label>
             <input id="key-password" type="password" autoComplete="current-password" required
                 value={password} disabled={busy} onChange={event => setPassword(event.target.value)} />
-            {totpStatus?.enabled && <>
-                <label htmlFor="key-authorizer">Existing verification method</label>
-                <select id="key-authorizer" value={deviceId} disabled={busy} onChange={event => setDeviceId(event.target.value)}>
-                    <option value="">Already registered security key or passkey</option>
-                    {totpStatus.devices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.displayName} (authenticator code)</option>)}
-                </select>
-                <p>For your first security key, select an authenticator device. If you already registered a security key, use it to confirm.</p>
-                {deviceId && <>
-                    <label htmlFor="key-code">Fresh authenticator code</label>
-                    <input id="key-code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}"
-                        maxLength={6} required disabled={busy} value={code}
-                        onChange={event => setCode(event.target.value.replace(/[^0-9]/g, '').slice(0, 6))} />
-                </>}
-            </>}
             <p className="security-key-modal-note">If you already have a security key, your browser may ask you to verify it first.</p>
             {message && <p className="security-key-modal-status" role="status">{message}</p>}
             {error && <p className="security-key-modal-error" role="alert">{error}</p>}
             <div className="security-key-modal-actions">
                 <button type="button" className="security-key-modal-cancel" disabled={busy} onClick={close}>Cancel</button>
-                <button type="submit" className="security-key-modal-submit" disabled={busy || !name.trim() || !totpStatus}>
+                <button type="submit" className="security-key-modal-submit" disabled={busy || !name.trim()}>
                     {busy ? 'Waiting for verification…' : 'Register key'}
                 </button>
             </div>

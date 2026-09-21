@@ -19,7 +19,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from User u where u.username = :username")
-    Optional<User> findForTotpEnrollment(@Param("username") String username);
+    Optional<User> findForAuthenticationByUsername(@Param("username") String username);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from User u where u.id = :id")

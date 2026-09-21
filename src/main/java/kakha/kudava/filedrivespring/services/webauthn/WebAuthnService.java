@@ -9,7 +9,6 @@ import kakha.kudava.filedrivespring.model.*;
 import kakha.kudava.filedrivespring.repository.*;
 import kakha.kudava.filedrivespring.security.TokenHashUtil;
 import kakha.kudava.filedrivespring.services.jwt.*;
-import kakha.kudava.filedrivespring.services.totp.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -33,20 +32,16 @@ public class WebAuthnService {
     private final MfaLoginChallengeRepository challenges;
     private final LoginAttemptLimitRepository limits;
     private final PasswordEncoder passwords;
-    private final TotpDeviceRepository totpDevices;
-    private final TotpSecretEncryptionService encryption;
-    private final TotpVerificationService totpVerifier;
     private final JwtRefreshService refresh;
     private final int refreshDays;
 
     public WebAuthnService(WebAuthnEngine engine, UserRepository users, WebAuthnCredentialRepository credentials,
             WebAuthnCeremonyRepository ceremonies, MfaLoginChallengeRepository challenges,
-            LoginAttemptLimitRepository limits, PasswordEncoder passwords, TotpDeviceRepository totpDevices,
-            TotpSecretEncryptionService encryption, TotpVerificationService totpVerifier, JwtRefreshService refresh,
+            LoginAttemptLimitRepository limits, PasswordEncoder passwords, JwtRefreshService refresh,
             @Value("${JWT_REFRESH_DAYS}") int refreshDays) {
         this.engine = engine; this.users = users; this.credentials = credentials; this.ceremonies = ceremonies;
-        this.challenges = challenges; this.limits = limits; this.passwords = passwords; this.totpDevices = totpDevices;
-        this.encryption = encryption; this.totpVerifier = totpVerifier; this.refresh = refresh; this.refreshDays = refreshDays;
+        this.challenges = challenges; this.limits = limits; this.passwords = passwords;
+        this.refresh = refresh; this.refreshDays = refreshDays;
     }
 
     public record Options(UUID requestId, Instant expiresAt, JsonNode publicKey, JsonNode authorizationPublicKey) {}
@@ -64,7 +59,7 @@ public class WebAuthnService {
 
     private User locked(String name) {
         if (name == null || name.isBlank()) throw new Rejected();
-        return users.findForTotpEnrollment(name).orElseThrow(Rejected::new);
+        return users.findForAuthenticationByUsername(name).orElseThrow(Rejected::new);
     }
     private LoginAttemptLimit limit(User user) {
         Instant now = Instant.now();
@@ -111,8 +106,7 @@ public class WebAuthnService {
         return new CredentialStatus(user.isWebauthnEnabled(), devices);
     }
 
-    public RemovalOptions beginRemoval(String username, Long credentialRecordId, String password,
-            Long totpDeviceId, String totpCode) {
+    public RemovalOptions beginRemoval(String username, Long credentialRecordId, String password) {
         var rp = engine.relyingParty();
         User user = locked(username);
         var limit = limit(user);
@@ -123,34 +117,20 @@ public class WebAuthnService {
 
         var c = start(user, WebAuthnCeremony.Kind.REMOVAL);
         c.setTargetCredentialId(target.getId());
-        JsonNode authorizationPublicKey = null;
-        if (totpDeviceId != null) {
-            var device = totpDevices.findForEnrollmentUpdate(totpDeviceId, user.getId()).orElse(null);
-            if (device == null || device.getStatus() != TotpDevice.Status.ACTIVE) fail(limit);
-            byte[] secret = encryption.decrypt(user.getPublicUuid(), device.getEncryptedSecret(),
-                    device.getEncryptionNonce(), device.getEncryptionKeyId());
-            try {
-                var counter = totpVerifier.verify(secret, totpCode, device.getLastAcceptedCounter());
-                if (counter.isEmpty()) fail(limit);
-                device.setLastAcceptedCounter(counter.orElseThrow());
-                c.setTotpAuthorized(true);
-                c.setRequestJson("{}");
-            } finally { Arrays.fill(secret, (byte) 0); }
-        } else {
-            try {
-                var request = assertion(user);
-                c.setRequestJson(request.toJson());
-                authorizationPublicKey = publicKey(request.toCredentialsGetJson());
-                ObjectNode marker = JSON.createObjectNode();
-                marker.put("type", "public-key");
-                marker.put("id", REMOVAL_MARKER);
-                // Keep the marker first. Browsers may split an allow-list into CTAP
-                // requests, so a trailing marker is not guaranteed to reach the key
-                // in the request that asks for user presence.
-                ((ObjectNode) authorizationPublicKey).withArray("allowCredentials").insert(0, marker);
-            } catch (java.io.IOException e) {
-                throw new IllegalStateException("Could not serialize WebAuthn removal authorization.");
-            }
+        JsonNode authorizationPublicKey;
+        try {
+            var request = assertion(user);
+            c.setRequestJson(request.toJson());
+            authorizationPublicKey = publicKey(request.toCredentialsGetJson());
+            ObjectNode marker = JSON.createObjectNode();
+            marker.put("type", "public-key");
+            marker.put("id", REMOVAL_MARKER);
+            // Keep the marker first. Browsers may split an allow-list into CTAP
+            // requests, so a trailing marker is not guaranteed to reach the key
+            // in the request that asks for user presence.
+            ((ObjectNode) authorizationPublicKey).withArray("allowCredentials").insert(0, marker);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Could not serialize WebAuthn removal authorization.");
         }
         ceremonies.saveAndFlush(c);
         return new RemovalOptions(c.getId(), c.getExpiresAt(), authorizationPublicKey);
@@ -164,10 +144,8 @@ public class WebAuthnService {
         if (credentialRecordId == null || !credentialRecordId.equals(c.getTargetCredentialId())) fail(limit);
         WebAuthnCredential target = credentials.findById(credentialRecordId).orElse(null);
         if (target == null || !target.getUser().getId().equals(user.getId())) fail(limit);
-        if (!c.isTotpAuthorized()) {
-            try { verifyAssertion(user, c.getRequestJson(), authorization); }
-            catch (Exception e) { fail(limit); }
-        }
+        try { verifyAssertion(user, c.getRequestJson(), authorization); }
+        catch (Exception e) { fail(limit); }
         credentials.delete(target);
         credentials.flush();
         int remaining = credentials.findAllByUserId(user.getId()).size();
@@ -177,7 +155,7 @@ public class WebAuthnService {
         return new Removed(credentialRecordId, user.isWebauthnEnabled(), remaining);
     }
 
-    public Options beginRegistration(String username, String password, String name, Long totpDeviceId, String code) {
+    public Options beginRegistration(String username, String password, String name) {
         var rp = engine.relyingParty();
         User user = locked(username);
         var limit = limit(user);
@@ -190,17 +168,6 @@ public class WebAuthnService {
             if (credentials.findAllByUserId(user.getId()).isEmpty()) fail(limit);
             try { c.setAuthorizationJson(assertion(user).toJson()); }
             catch (Exception e) { throw new IllegalStateException("Could not create authorization request."); }
-        } else if (user.isTotpEnabled()) {
-            if (totpDeviceId == null) fail(limit);
-            var device = totpDevices.findForEnrollmentUpdate(totpDeviceId, user.getId()).orElse(null);
-            if (device == null || device.getStatus() != TotpDevice.Status.ACTIVE) fail(limit);
-            byte[] secret = encryption.decrypt(user.getPublicUuid(), device.getEncryptedSecret(), device.getEncryptionNonce(), device.getEncryptionKeyId());
-            try {
-                var counter = totpVerifier.verify(secret, code, device.getLastAcceptedCounter());
-                if (counter.isEmpty()) fail(limit);
-                device.setLastAcceptedCounter(counter.orElseThrow());
-                c.setTotpAuthorized(true);
-            } finally { Arrays.fill(secret, (byte) 0); }
         }
         var request = rp.startRegistration(StartRegistrationOptions.builder()
                 .user(UserIdentity.builder().name(user.getUsername()).displayName(user.getUsername()).id(WebAuthnCredentials.handle(user)).build())
@@ -245,7 +212,7 @@ public class WebAuthnService {
             if (user.isWebauthnEnabled()) {
                 if (c.getAuthorizationJson() == null) throw new Rejected();
                 verifyAssertion(user, c.getAuthorizationJson(), authorization);
-            } else if (user.isTotpEnabled() && !c.isTotpAuthorized()) throw new Rejected();
+            }
             responseSize(response);
             result = engine.relyingParty().finishRegistration(FinishRegistrationOptions.builder()
                     .request(PublicKeyCredentialCreationOptions.fromJson(c.getRequestJson()))

@@ -19,8 +19,8 @@ Lockbox is used through the separate [FD-Client](https://github.com/Kakha8/FD-Cl
 ### File drive
 
 - Registration, login, JWT access tokens, and rotating refresh tokens
-- Optional TOTP two-factor authentication with hardware-device enrollment
-- Two-stage web login and authenticated device status/removal
+- FIDO2/WebAuthn second-factor authentication with security-key management
+- Two-stage web login and WebAuthn-authorized credential enrollment/removal
 - Per-user root folders
 - File upload, download, rename, move, copy, and deletion
 - Folder creation, browsing, download, rename, move, copy, and deletion
@@ -58,35 +58,26 @@ Lockbox is used through the separate [FD-Client](https://github.com/Kakha8/FD-Cl
 - Upload progress and cancellation
 - Recent files, favorites, shared items, trash, activity, and notifications
 - Lockbox browsing and device information
-- TOTP challenge entry during login
-- TOTP enabled/disabled status, enrolled hardware-device listing, and secure removal in account settings
+- Browser-native security-key/passkey verification during login
+- Registered FIDO2 credential status and secure management in account settings
 
-### TOTP two-factor authentication
+### FIDO2/WebAuthn authentication
 
-TOTP is optional per account. Accounts without an active TOTP device continue to use the normal password login. Enrollment is currently performed through the client and the web interface handles login verification and device management.
+Accounts can register FIDO2 security keys or platform passkeys. After a successful
+password check, WebAuthn-enabled accounts receive a short-lived, single-use
+challenge instead of an authenticated session. The browser completes a WebAuthn
+assertion and only then does the backend issue access and refresh tokens.
 
-The hardware device generates the TOTP seed. The client sends that seed to the authenticated enrollment endpoint over TLS, and the backend stores it encrypted with AES-256-GCM. The encryption key is supplied externally and is never stored in the database. The server must be able to decrypt the seed temporarily because TOTP verification requires the original shared secret; a one-way password hash cannot be used for this purpose.
+Adding another credential requires the account password and, when a credential is
+already registered, an assertion from an existing credential. Removing a
+credential likewise requires the password and a registered WebAuthn assertion.
+Successful enrollment or removal revokes existing refresh sessions.
 
-```text
-Hardware device generates seed
-    -> authenticated client begins enrollment over HTTPS
-    -> backend encrypts the seed and creates a pending device
-    -> client submits a fresh TOTP code
-    -> backend confirms the device and enables TOTP for the account
-
-Password login
-    -> account without TOTP: issue the normal session
-    -> account with TOTP: issue a short-lived, single-use MFA challenge
-    -> web client submits challenge token + six-digit code
-    -> backend verifies the code and issues the normal session
-```
-
-TOTP codes have replay protection and failed enrollment/login/removal attempts are rate-limited. A challenge is not an authenticated session, and the web client does not store an access token until the second stage succeeds.
-
-Device removal requires the current password and a fresh TOTP code. If multiple active devices exist, a different active device must authorize the removal. If the final device is removed, TOTP is disabled for the account. Removal marks the record `REVOKED` instead of deleting its history and revokes the account's refresh tokens. Existing access tokens remain valid until their normal expiration.
-
-> [!WARNING]
-> Lost-device recovery and recovery codes are not implemented yet. A user who loses their only active device cannot complete TOTP login or remove it through the normal flow. Email-based recovery is planned; do not rely on this implementation for production account recovery until that path exists.
+The old TOTP API and web interface have been removed. Legacy TOTP-only accounts
+remain fail-closed rather than silently becoming password-only accounts; they
+require an explicit administrator-assisted migration to WebAuthn. Legacy database
+columns and tables are retained temporarily so deployment does not destructively
+drop authentication history during an automatic schema update.
 
 ## Encryption Model
 
@@ -113,7 +104,7 @@ The current desktop implementation uses chunked `CSEMLK03` containers, AES-256-G
 | Area | Technology |
 | --- | --- |
 | Backend | Java 21, Spring Boot 3.5, Spring Security, Spring Data JPA |
-| Authentication | JWT access tokens, rotating refresh tokens, and optional TOTP 2FA |
+| Authentication | Password login, FIDO2/WebAuthn verification, JWT access tokens, and rotating refresh tokens |
 | Database | File-backed H2 for development |
 | Object storage | MinIO Java SDK, MinIO, MinIO KES |
 | Malware scanning | ClamAV |
@@ -192,10 +183,6 @@ S3_LOCKBOX_BUCKET=file-drive-lockbox
 APP_CORS_ALLOWED_ORIGINS=http://localhost:5173
 VITE_API_BASE_URL=https://localhost:8443
 
-# Optional TOTP enrollment and server-side seed encryption
-TOTP_ENROLLMENT_API_ENABLED=true
-TOTP_ENCRYPTION_KEY_ID=totp-v1
-TOTP_ENCRYPTION_KEY_BASE64=replace-with-a-random-base64-encoded-32-byte-key
 ```
 
 Additional backend settings include:
@@ -207,16 +194,6 @@ Additional backend settings include:
 - `CLAMAV_HOST`, `CLAMAV_PORT`, and `CLAMAV_TIMEOUT_MS`
 - SSE-C keystore settings prefixed with `S3_SSEC_`
 
-`TOTP_ENROLLMENT_API_ENABLED` controls whether new enrollment requests are accepted. `TOTP_ENCRYPTION_KEY_ID` is a non-secret identifier used to track the active encryption key. `TOTP_ENCRYPTION_KEY_BASE64` is the secret 32-byte AES key used to encrypt TOTP seeds at rest.
-
-Generate a development key with a cryptographically secure generator, for example:
-
-```bash
-openssl rand -base64 32
-```
-
-Preserve both the encryption key and its ID while enrolled devices exist. Replacing either value without migrating or re-enrolling devices makes their stored seeds undecryptable. In production, supply the key through a secrets manager rather than committing it to source control or an image.
-
 Never use the example credentials in a real deployment. Do not commit `.env`, private keys, keystores, or generated secrets.
 
 ## API Overview
@@ -225,8 +202,8 @@ All protected routes require an authenticated user. This is a compact overview r
 
 | Area | Base path | Capabilities |
 | --- | --- | --- |
-| Authentication | `/api/auth` | Password login, TOTP login verification, refresh, logout, and current-user lookup |
-| TOTP devices | `/api/mfa/totp/enrollments` | Enroll, confirm, list status/devices, and revoke TOTP hardware devices |
+| Authentication | `/api/auth` | Password login, WebAuthn challenge completion, refresh, logout, and current-user lookup |
+| WebAuthn credentials | `/api/webauthn` | Register, list, and remove FIDO2 security keys and passkeys |
 | Registration | `/api/register` | User registration |
 | Users | `/api/users` | User lookup, search, creation, and deletion |
 | Files | `/api/files` | Upload, download, rename, move, copy, delete, preview, and text updates |
@@ -263,19 +240,6 @@ All protected routes require an authenticated user. This is a compact overview r
 | `GET` | `/api/lockbox/shares/received/{shareUuid}` | Read one received share and its envelope |
 
 For artifact downloads, `{artifact}` is `container`, `manifest`, or `signature`.
-
-### TOTP API
-
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/auth/login` | Perform the password stage; returns a normal session or an MFA challenge |
-| `POST` | `/api/auth/mfa/totp` | Exchange a challenge token and fresh TOTP code for a normal session |
-| `POST` | `/api/mfa/totp/enrollments` | Begin authenticated hardware-device enrollment |
-| `POST` | `/api/mfa/totp/enrollments/{deviceId}/confirm` | Confirm a pending enrollment with a fresh code |
-| `GET` | `/api/mfa/totp/enrollments/status` | Return enabled status and safe summaries of active devices |
-| `DELETE` | `/api/mfa/totp/enrollments/devices/{deviceId}` | Revoke an active device after password and TOTP step-up verification |
-
-Enrollment, status, and removal routes require a normal authenticated session. API responses expose device IDs and display names but never return plaintext seeds, encrypted seed bytes, encryption nonces, passwords, or submitted TOTP codes.
 
 ## Development
 
@@ -315,7 +279,7 @@ Current priorities include:
 - Revision conflict handling and selective synchronization
 - Device/capability revocation and auditable security events
 - Optional hardware-backed key protection and signing
-- TOTP recovery codes and verified-email recovery for a lost final device
+- Administrator-assisted recovery for a lost final FIDO2 credential
 
 ## Security
 

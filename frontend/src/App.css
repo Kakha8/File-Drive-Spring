@@ -2351,20 +2351,6 @@ body,
   overflow-wrap: anywhere;
 }
 
-.login-mfa-help {
-  margin: 10px 0 0;
-  color: #929dac;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.login-form-panel .login-form .login-totp-code {
-  text-align: center;
-  font-size: 24px;
-  letter-spacing: 0.3em;
-  font-variant-numeric: tabular-nums;
-}
-
 .login-form-panel .login-form .login-start-again {
   margin-top: 10px;
   background: transparent;

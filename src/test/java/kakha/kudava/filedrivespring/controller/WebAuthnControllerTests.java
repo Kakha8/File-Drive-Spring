@@ -47,12 +47,12 @@ class WebAuthnControllerTests {
     }
     @Test void enrollmentUsesAuthenticatedOwnerAndReturnsNoStore() throws Exception {
         var options = new WebAuthnService.Options(UUID.randomUUID(), Instant.now().plusSeconds(180), new ObjectMapper().createObjectNode(), null);
-        when(service.beginRegistration("alice", "password", "ESP32", null, null)).thenReturn(options);
+        when(service.beginRegistration("alice", "password", "ESP32")).thenReturn(options);
         mvc.perform(post("/api/webauthn/registration/options").with(user("alice"))
                 .contentType(MediaType.APPLICATION_JSON).content("{\"password\":\"password\",\"displayName\":\"ESP32\",\"userId\":999}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.requestId").exists())
                 .andExpect(header().string("Cache-Control", "no-store"));
-        verify(service).beginRegistration("alice", "password", "ESP32", null, null);
+        verify(service).beginRegistration("alice", "password", "ESP32");
     }
     @Test void credentialStatusRequiresAuthenticationAndReturnsOwnedDevices() throws Exception {
         mvc.perform(get("/api/webauthn/credentials")).andExpect(status().isUnauthorized());
@@ -76,13 +76,13 @@ class WebAuthnControllerTests {
         Long credentialId = 7L;
         UUID requestId = UUID.randomUUID();
         var options = new WebAuthnService.RemovalOptions(requestId, Instant.now().plusSeconds(180), null);
-        when(service.beginRemoval("alice", credentialId, "password", 3L, "123456")).thenReturn(options);
+        when(service.beginRemoval("alice", credentialId, "password")).thenReturn(options);
         mvc.perform(post("/api/webauthn/credentials/7/removal/options").with(user("alice"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"password\":\"password\",\"totpDeviceId\":3,\"totpCode\":\"123456\"}"))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.requestId").value(requestId.toString()));
-        verify(service).beginRemoval("alice", credentialId, "password", 3L, "123456");
+        verify(service).beginRemoval("alice", credentialId, "password");
 
         when(service.finishRemoval(eq("alice"), eq(credentialId), eq(requestId), any()))
                 .thenReturn(new WebAuthnService.Removed(credentialId, false, 0));
@@ -98,7 +98,7 @@ class WebAuthnControllerTests {
         verify(service).beginLogin("bad");
     }
     @Test void rejectedEnrollmentDoesNotPretendTheSessionExpired() throws Exception {
-        when(service.beginRegistration("alice", "wrong", "ESP32", null, null))
+        when(service.beginRegistration("alice", "wrong", "ESP32"))
                 .thenThrow(new WebAuthnService.Rejected());
         mvc.perform(post("/api/webauthn/registration/options").with(user("alice"))
                 .contentType(MediaType.APPLICATION_JSON)
