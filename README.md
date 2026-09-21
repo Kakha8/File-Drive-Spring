@@ -63,21 +63,45 @@ Lockbox is used through the separate [FD-Client](https://github.com/Kakha8/FD-Cl
 
 ### FIDO2/WebAuthn authentication
 
-Accounts can register FIDO2 security keys or platform passkeys. After a successful
-password check, WebAuthn-enabled accounts receive a short-lived, single-use
-challenge instead of an authenticated session. The browser completes a WebAuthn
-assertion and only then does the backend issue access and refresh tokens.
+File Drive uses password authentication followed by FIDO2/WebAuthn verification.
+Accounts can register roaming security keys, such as the ESP32 authenticator, or
+platform passkeys supported by the browser and operating system.
 
-Adding another credential requires the account password and, when a credential is
-already registered, an assertion from an existing credential. Removing a
-credential likewise requires the password and a registered WebAuthn assertion.
-Successful enrollment or removal revokes existing refresh sessions.
+```text
+Password login
+    -> backend validates the username and password
+    -> an account without registered credentials receives a normal session
+    -> a protected account receives a short-lived, single-use challenge
+    -> browser calls navigator.credentials.get()
+    -> authenticator asks for user presence or its configured PIN
+    -> authenticator signs the challenge with its private credential key
+    -> backend verifies the credential, signature, origin, RP ID, and user presence
+    -> backend issues a JWT access token and rotating refresh-token cookie
+```
 
-The old TOTP API and web interface have been removed. Legacy TOTP-only accounts
-remain fail-closed rather than silently becoming password-only accounts; they
-require an explicit administrator-assisted migration to WebAuthn. Legacy database
-columns and tables are retained temporarily so deployment does not destructively
-drop authentication history during an automatic schema update.
+The WebAuthn challenge is not an authenticated session. The frontend stores no
+access token until the signed assertion succeeds. Requests expire after at most
+three minutes, are tied to the account and ceremony purpose, and are consumed on
+the first verification attempt. Starting another ceremony of the same type
+invalidates the previous one.
+
+Credential enrollment starts from an authenticated account-settings session and
+requires the current password. The browser obtains creation options, calls
+`navigator.credentials.create()`, and sends the resulting public credential to
+the backend. If the account already has a credential, an assertion from an
+existing credential must also authorize the new one.
+
+Credential removal requires the current password and a valid assertion from a
+registered credential. Successful enrollment or removal revokes existing refresh
+sessions. Removing the final credential disables WebAuthn for subsequent logins.
+
+The backend stores credential IDs, public keys, ownership data, display names,
+and timestamps. Authenticator private keys never leave the security key or
+platform authenticator. Attestation is set to `none`; the server verifies the
+ceremony and signature without requiring manufacturer attestation.
+
+> [!WARNING]
+> Self-service recovery after losing every registered credential is not implemented. Such an account requires an administrator-assisted recovery process.
 
 ## Encryption Model
 
@@ -183,6 +207,9 @@ S3_LOCKBOX_BUCKET=file-drive-lockbox
 APP_CORS_ALLOWED_ORIGINS=http://localhost:5173
 VITE_API_BASE_URL=https://localhost:8443
 
+WEBAUTHN_ENABLED=true
+WEBAUTHN_RP_ID=localhost
+WEBAUTHN_ORIGINS=http://localhost:5173
 ```
 
 Additional backend settings include:
@@ -193,6 +220,14 @@ Additional backend settings include:
 - `LOCKBOX_MAX_CONTAINER_SIZE`, `LOCKBOX_MAX_MANIFEST_SIZE`, and `LOCKBOX_MAX_SIGNATURE_SIZE`
 - `CLAMAV_HOST`, `CLAMAV_PORT`, and `CLAMAV_TIMEOUT_MS`
 - SSE-C keystore settings prefixed with `S3_SSEC_`
+
+`WEBAUTHN_RP_ID` scopes credentials to the relying-party domain.
+`WEBAUTHN_ORIGINS` is a comma-separated list of exact frontend origins without
+trailing slashes; it is not the backend API address. Credentials registered for
+`localhost` cannot be used for an unrelated deployment domain. Production
+deployments should explicitly configure the HTTPS frontend origin and matching
+RP domain. Setting `WEBAUTHN_ENABLED=false` blocks WebAuthn ceremonies but does
+not downgrade an already-protected account to password-only authentication.
 
 Never use the example credentials in a real deployment. Do not commit `.env`, private keys, keystores, or generated secrets.
 
@@ -240,6 +275,23 @@ All protected routes require an authenticated user. This is a compact overview r
 | `GET` | `/api/lockbox/shares/received/{shareUuid}` | Read one received share and its envelope |
 
 For artifact downloads, `{artifact}` is `container`, `manifest`, or `signature`.
+
+### FIDO2/WebAuthn API
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/auth/login` | Validate the password and return a session or WebAuthn challenge |
+| `POST` | `/api/auth/webauthn/options` | Obtain assertion options for a password-stage challenge |
+| `POST` | `/api/auth/webauthn/finish` | Verify the assertion and issue the authenticated session |
+| `POST` | `/api/webauthn/registration/options` | Begin credential enrollment with password reauthentication |
+| `POST` | `/api/webauthn/registration/finish` | Verify and store a newly created public credential |
+| `GET` | `/api/webauthn/credentials` | List safe metadata for the authenticated user's credentials |
+| `POST` | `/api/webauthn/credentials/{id}/removal/options` | Begin credential removal with password reauthentication |
+| `POST` | `/api/webauthn/credentials/{id}/removal/finish` | Authorize and complete removal with a WebAuthn assertion |
+
+Registration, listing, and removal require an authenticated access token. The
+two login assertion endpoints instead use the short-lived password-stage
+challenge as authorization. Binary WebAuthn fields are Base64URL encoded in JSON.
 
 ## Development
 
