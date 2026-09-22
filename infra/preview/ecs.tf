@@ -23,6 +23,23 @@ resource "aws_iam_role_policy_attachment" "ecs_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+resource "aws_iam_role_policy" "ecs_execution_secrets" {
+  name = "read-preview-runtime-secrets"
+  role = aws_iam_role.ecs_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
+      Resource = [
+        aws_db_instance.preview.master_user_secret[0].secret_arn,
+        aws_secretsmanager_secret.api_runtime.arn
+      ]
+    }]
+  })
+}
+
 resource "aws_iam_role" "api_task" {
   name               = "file-drive-preview-api-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
@@ -46,9 +63,32 @@ resource "aws_ecs_task_definition" "api" {
     image     = var.container_image
     essential = true
     portMappings = [{
-      containerPort = 8443
+      containerPort = 8080
       protocol      = "tcp"
     }]
+    secrets = [
+      {
+        name      = "DB_PASSWORD"
+        valueFrom = "${aws_db_instance.preview.master_user_secret[0].secret_arn}:password::"
+      },
+      {
+        name      = "ADMIN_PASSWORD"
+        valueFrom = "${aws_secretsmanager_secret.api_runtime.arn}:ADMIN_PASSWORD::"
+      },
+      {
+        name      = "JWT_SECRET"
+        valueFrom = "${aws_secretsmanager_secret.api_runtime.arn}:JWT_SECRET::"
+      }
+    ]
+    environment = [
+      { name = "SPRING_PROFILES_ACTIVE", value = "aws-preview" },
+      { name = "DB_URL", value = "jdbc:postgresql://${aws_db_instance.preview.address}:${aws_db_instance.preview.port}/${aws_db_instance.preview.db_name}" },
+      { name = "DB_USERNAME", value = aws_db_instance.preview.username },
+      { name = "S3_ENDPOINT", value = "http://127.0.0.1:9000" },
+      { name = "S3_ACCESS_KEY", value = "disabled" },
+      { name = "S3_SECRET_KEY", value = "disabled" },
+      { name = "S3_BUCKET", value = "file-drive-preview-disabled" }
+    ]
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -64,7 +104,7 @@ resource "aws_ecs_service" "api" {
   name            = "file-drive-preview-api"
   cluster         = aws_ecs_cluster.preview.id
   task_definition = aws_ecs_task_definition.api.arn
-  desired_count   = 0
+  desired_count   = var.desired_count
   launch_type     = "FARGATE"
 
   network_configuration {

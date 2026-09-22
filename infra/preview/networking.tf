@@ -53,16 +53,8 @@ resource "aws_route_table_association" "public" {
 
 resource "aws_security_group" "api" {
   name        = "file-drive-preview-api"
-  description = "Preview API access from one IPv4 address"
+  description = "Private preview task egress; add HTTPS ingress with a load balancer later"
   vpc_id      = aws_vpc.preview.id
-
-  ingress {
-    description = "API from developer IP"
-    from_port   = 8443
-    to_port     = 8443
-    protocol    = "tcp"
-    cidr_blocks = [var.allowed_api_cidr]
-  }
 
   egress {
     from_port   = 0

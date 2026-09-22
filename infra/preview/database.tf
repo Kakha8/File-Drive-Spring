@@ -22,3 +22,27 @@ resource "aws_db_instance" "preview" {
   skip_final_snapshot         = true
   apply_immediately           = true
 }
+
+resource "random_password" "api_admin" {
+  length  = 40
+  special = false
+}
+
+resource "random_password" "api_jwt" {
+  length  = 64
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "api_runtime" {
+  name                    = "file-drive/preview/api-runtime"
+  description             = "Generated preview admin and JWT signing secrets"
+  recovery_window_in_days = 7
+}
+
+resource "aws_secretsmanager_secret_version" "api_runtime" {
+  secret_id = aws_secretsmanager_secret.api_runtime.id
+  secret_string = jsonencode({
+    ADMIN_PASSWORD = random_password.api_admin.result
+    JWT_SECRET     = random_password.api_jwt.result
+  })
+}

@@ -1,15 +1,16 @@
-variable "allowed_api_cidr" {
-  description = "Your public IPv4 address as a /32 CIDR, for example 203.0.113.10/32."
-  type        = string
-
-  validation {
-    condition     = can(cidrhost(var.allowed_api_cidr, 0)) && endswith(var.allowed_api_cidr, "/32")
-    error_message = "Use a single IPv4 address in /32 CIDR form."
-  }
-}
-
 variable "container_image" {
-  description = "Backend image URI. The service starts with zero tasks until the app has an AWS-compatible configuration."
+  description = "Backend image URI. Keep the service at zero tasks until an AWS preview image has been pushed to ECR."
   type        = string
   default     = "public.ecr.aws/docker/library/eclipse-temurin:21-jre"
+}
+
+variable "desired_count" {
+  description = "Number of preview API tasks. Set to 1 after pushing the application image."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.desired_count >= 0 && floor(var.desired_count) == var.desired_count
+    error_message = "desired_count must be a non-negative whole number."
+  }
 }
