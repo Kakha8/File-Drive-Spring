@@ -15,6 +15,12 @@ variable "desired_count" {
   }
 }
 
+variable "clamav_image" {
+  description = "ClamAV image used by the API task sidecar. Pin this to a release or digest for production."
+  type        = string
+  default     = "clamav/clamav:stable"
+}
+
 variable "web_container_image" {
   description = "React/Nginx image URI. Keep the web service at zero tasks until its image has been pushed to ECR."
   type        = string

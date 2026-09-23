@@ -25,6 +25,7 @@ import {
 } from "../api/drive";
 import { revokeShare, shareResource } from "../api/sharing.js";
 import { apiFetch } from "../api/http";
+import { createClientId } from "../utils/clientId.js";
 
 const NOTIFICATIONS_CHANGED_EVENT =
     "file-drive:notifications-changed";
@@ -717,7 +718,14 @@ function Main({ onLogout }) {
 
     function openUploadPicker() {
         if (!currentFolderId || uploading) return;
-        fileInputRef.current?.click();
+
+        if (fileInputRef.current) {
+            // Browsers do not emit `change` when the same file remains selected.
+            // Clear the native input before every picker interaction so retries
+            // always enter handleUploadSelected.
+            fileInputRef.current.value = "";
+            fileInputRef.current.click();
+        }
     }
 
     async function handleUploadSelected(event) {
@@ -726,7 +734,7 @@ function Main({ onLogout }) {
         if (files.length === 0 || !currentFolderId) return;
 
         const uploadItems = files.map((file) => ({
-            id: crypto.randomUUID(),
+            id: createClientId(),
             name: file.name,
             progress: 0,
             status: "waiting",
