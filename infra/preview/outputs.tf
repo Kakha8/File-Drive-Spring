@@ -25,3 +25,10 @@ output "database_endpoint" {
 output "database_secret_arn" {
   value = aws_db_instance.preview.master_user_secret[0].secret_arn
 }
+
+output "storage_bucket_names" {
+  description = "Private S3 buckets used by the preview API."
+  value = {
+    for purpose, bucket in aws_s3_bucket.storage : purpose => bucket.bucket
+  }
+}

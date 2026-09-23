@@ -87,10 +87,13 @@ resource "aws_ecs_task_definition" "api" {
       { name = "AUTH_COOKIE_SECURE", value = "false" },
       { name = "JWT_REFRESH_DAYS", value = "14" },
       { name = "QUARANTINE_RETENTION_DAYS", value = "30" },
-      { name = "S3_ENDPOINT", value = "http://127.0.0.1:9000" },
-      { name = "S3_ACCESS_KEY", value = "disabled" },
-      { name = "S3_SECRET_KEY", value = "disabled" },
-      { name = "S3_BUCKET", value = "file-drive-preview-disabled" }
+      { name = "S3_ENDPOINT", value = "https://s3.eu-central-1.amazonaws.com" },
+      { name = "S3_REGION", value = "eu-central-1" },
+      { name = "S3_USE_IAM_ROLE", value = "true" },
+      { name = "S3_BUCKET", value = aws_s3_bucket.storage["files"].bucket },
+      { name = "S3_LOCKBOX_BUCKET", value = aws_s3_bucket.storage["lockbox"].bucket },
+      { name = "S3_QUARANTINE_BUCKET", value = aws_s3_bucket.storage["quarantine"].bucket },
+      { name = "S3_TRASH_BUCKET", value = aws_s3_bucket.storage["trash"].bucket }
     ]
     logConfiguration = {
       logDriver = "awslogs"
