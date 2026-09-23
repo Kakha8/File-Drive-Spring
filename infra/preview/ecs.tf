@@ -84,6 +84,9 @@ resource "aws_ecs_task_definition" "api" {
       { name = "SPRING_PROFILES_ACTIVE", value = "aws-preview" },
       { name = "DB_URL", value = "jdbc:postgresql://${aws_db_instance.preview.address}:${aws_db_instance.preview.port}/${aws_db_instance.preview.db_name}" },
       { name = "DB_USERNAME", value = aws_db_instance.preview.username },
+      { name = "AUTH_COOKIE_SECURE", value = "false" },
+      { name = "JWT_REFRESH_DAYS", value = "14" },
+      { name = "QUARANTINE_RETENTION_DAYS", value = "30" },
       { name = "S3_ENDPOINT", value = "http://127.0.0.1:9000" },
       { name = "S3_ACCESS_KEY", value = "disabled" },
       { name = "S3_SECRET_KEY", value = "disabled" },
@@ -112,4 +115,12 @@ resource "aws_ecs_service" "api" {
     security_groups  = [aws_security_group.api.id]
     assign_public_ip = true
   }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.api.arn
+    container_name   = "api"
+    container_port   = 8080
+  }
+
+  depends_on = [aws_lb_listener_rule.api]
 }

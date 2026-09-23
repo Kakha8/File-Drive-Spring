@@ -1,9 +1,11 @@
 [CmdletBinding()]
 param(
+    [ValidateSet("api", "web")]
+    [string]$Component = "api",
     [string]$Profile = "AdministratorAccess-678113404929",
     [string]$Region = "eu-central-1",
     [string]$AccountId = "678113404929",
-    [string]$Repository = "file-drive-preview-api",
+    [string]$Repository,
     [string]$Tag = ("preview-" + (Get-Date -Format "yyyyMMdd-HHmmss-fff")),
     [switch]$LoginOnly
 )
@@ -119,14 +121,24 @@ if ($Tag -notmatch '^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$') {
 }
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$dockerfilePath = Join-Path $repositoryRoot "Dockerfile"
+if (-not $Repository) {
+    $Repository = "file-drive-preview-$Component"
+}
+if ($Component -eq "web") {
+    $buildContext = Join-Path $repositoryRoot "frontend"
+    $dockerfilePath = Join-Path $buildContext "Dockerfile"
+}
+else {
+    $buildContext = $repositoryRoot
+    $dockerfilePath = Join-Path $repositoryRoot "Dockerfile"
+}
 if (-not (Test-Path -LiteralPath $dockerfilePath -PathType Leaf)) {
-    throw "Backend Dockerfile was not found at '$dockerfilePath'."
+    throw "Dockerfile was not found at '$dockerfilePath'."
 }
 
 $registry = "$AccountId.dkr.ecr.$Region.amazonaws.com"
 $imageUri = "$registry/$Repository`:$Tag"
-$localImage = "file-drive-preview-api:$Tag"
+$localImage = "file-drive-preview-$Component`:$Tag"
 
 Write-Host "Checking AWS SSO session for profile '$Profile'..."
 $activeAccount = & aws sts get-caller-identity --profile $Profile --query Account --output text
@@ -227,7 +239,7 @@ if ($LoginOnly) {
 }
 
 Write-Host "Building Linux/amd64 image '$localImage'..."
-& docker build --platform linux/amd64 --tag $localImage --file $dockerfilePath $repositoryRoot | Out-Host
+& docker build --platform linux/amd64 --tag $localImage --file $dockerfilePath $buildContext | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "Docker image build failed."
 }

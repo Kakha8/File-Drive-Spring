@@ -52,9 +52,13 @@ resource "aws_route_table_association" "public" {
 }
 
 resource "aws_security_group" "api" {
-  name        = "file-drive-preview-api"
+  name_prefix = "file-drive-preview-api-"
   description = "Private preview task egress; add HTTPS ingress with a load balancer later"
   vpc_id      = aws_vpc.preview.id
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   egress {
     from_port   = 0
@@ -62,6 +66,55 @@ resource "aws_security_group" "api" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+resource "aws_security_group" "load_balancer" {
+  name        = "file-drive-preview-alb"
+  description = "Public HTTP access to the preview application"
+  vpc_id      = aws_vpc.preview.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "web" {
+  name        = "file-drive-preview-web"
+  description = "Preview web traffic from the load balancer"
+  vpc_id      = aws_vpc.preview.id
+
+  ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.load_balancer.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group_rule" "api_from_load_balancer" {
+  type                     = "ingress"
+  from_port                = 8080
+  to_port                  = 8080
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.api.id
+  source_security_group_id = aws_security_group.load_balancer.id
 }
 
 resource "aws_security_group" "database" {

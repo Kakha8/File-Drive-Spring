@@ -2,6 +2,14 @@ output "ecr_repository_url" {
   value = aws_ecr_repository.api.repository_url
 }
 
+output "web_ecr_repository_url" {
+  value = aws_ecr_repository.web.repository_url
+}
+
+output "application_url" {
+  value = "http://${aws_lb.preview.dns_name}"
+}
+
 output "ecs_cluster_name" {
   value = aws_ecs_cluster.preview.name
 }

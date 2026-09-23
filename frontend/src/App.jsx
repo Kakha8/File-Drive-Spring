@@ -20,7 +20,7 @@ import Settings from "./pages/Settings";
 import Recent from "./pages/Recent";
 import Lockbox from "./pages/Lockbox";
 import "./App.css";
-import "./components/recent-activity.css";
+import "./components/Recent-Activity.css";
 import "./styles/activity-history.css";
 
 const SIDEBAR_STORAGE_KEY = "drive-sidebar-open";
