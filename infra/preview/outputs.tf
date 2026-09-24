@@ -32,3 +32,13 @@ output "storage_bucket_names" {
     for purpose, bucket in aws_s3_bucket.storage : purpose => bucket.bucket
   }
 }
+
+output "storage_kms_key_arn" {
+  description = "Customer-managed KMS key used by the preview S3 buckets."
+  value       = aws_kms_key.storage.arn
+}
+
+output "storage_kms_alias" {
+  description = "Alias of the customer-managed storage KMS key."
+  value       = aws_kms_alias.storage.name
+}

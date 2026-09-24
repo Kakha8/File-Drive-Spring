@@ -9,6 +9,21 @@ locals {
   ])
 }
 
+resource "aws_kms_key" "storage" {
+  description             = "Encrypts File Drive preview objects in S3"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+
+  tags = {
+    Name = "file-drive-preview-storage"
+  }
+}
+
+resource "aws_kms_alias" "storage" {
+  name          = "alias/file-drive-preview-storage"
+  target_key_id = aws_kms_key.storage.key_id
+}
+
 resource "aws_s3_bucket" "storage" {
   for_each = local.storage_buckets
 
@@ -41,8 +56,11 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "storage" {
   bucket = each.value.id
 
   rule {
+    bucket_key_enabled = true
+
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      kms_master_key_id = aws_kms_key.storage.arn
+      sse_algorithm     = "aws:kms"
     }
   }
 }
@@ -97,6 +115,34 @@ data "aws_iam_policy_document" "api_storage" {
       "s3:PutObject",
     ]
     resources = [for bucket in aws_s3_bucket.storage : "${bucket.arn}/*"]
+  }
+
+  statement {
+    sid = "UseStorageKeyThroughS3"
+    actions = [
+      "kms:Decrypt",
+      "kms:DescribeKey",
+      "kms:Encrypt",
+      "kms:GenerateDataKey",
+      "kms:ReEncryptFrom",
+      "kms:ReEncryptTo",
+    ]
+    resources = [aws_kms_key.storage.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["s3.eu-central-1.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "kms:EncryptionContext:aws:s3:arn"
+      values = concat(
+        [for bucket in aws_s3_bucket.storage : bucket.arn],
+        [for bucket in aws_s3_bucket.storage : "${bucket.arn}/*"],
+      )
+    }
   }
 }
 
