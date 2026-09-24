@@ -32,12 +32,12 @@ Lockbox is used through the separate [FD-Client](https://github.com/Kakha8/FD-Cl
 
 ### Storage and malware protection
 
-- MinIO S3-compatible object storage
+- MinIO S3-compatible object storage for local development and Amazon S3 in AWS
 - Separate buckets for primary files, trash, quarantine, and Lockbox
-- MinIO KES integration and bucket-level server-side encryption
+- MinIO KES encryption locally and AWS KMS server-side encryption in AWS
 - ClamAV scanning before regular files enter normal storage
 - Quarantine records and password-protected ZIP export
-- TLS between exposed services
+- TLS between locally exposed services
 
 ### Lockbox backend
 
@@ -107,7 +107,7 @@ ceremony and signature without requiring manufacturer attestation.
 
 File Drive uses two separate encryption layers:
 
-1. **Storage encryption** protects MinIO objects at the infrastructure layer through MinIO/KES configuration.
+1. **Storage encryption** protects objects at the infrastructure layer through MinIO/KES locally or SSE-KMS in AWS.
 2. **Lockbox client-side encryption** protects file contents before they leave FD-Client.
 
 For Lockbox files, the backend does not receive plaintext, file keys, or private client keys.
@@ -129,8 +129,8 @@ The current desktop implementation uses chunked `CSEMLK03` containers, AES-256-G
 | --- | --- |
 | Backend | Java 21, Spring Boot 3.5, Spring Security, Spring Data JPA |
 | Authentication | Password login, FIDO2/WebAuthn verification, JWT access tokens, and rotating refresh tokens |
-| Database | File-backed H2 for development |
-| Object storage | MinIO Java SDK, MinIO, MinIO KES |
+| Database | File-backed H2 locally; Amazon RDS for PostgreSQL in AWS |
+| Object storage | S3-compatible Java client, MinIO/KES locally, Amazon S3/AWS KMS in AWS |
 | Malware scanning | ClamAV |
 | Web UI | React 19, React Router 7, Vite 8 |
 | Lockbox verification | Bouncy Castle and backend protocol validators |
@@ -138,6 +138,8 @@ The current desktop implementation uses chunked `CSEMLK03` containers, AES-256-G
 | Local orchestration | Docker Compose |
 
 ## Architecture
+
+### Local development
 
 ```text
 React web app -----------+
@@ -150,6 +152,96 @@ FD-Client over HTTPS ----+--> Spring Boot REST API
                                   |
                                   +--> MinIO --> KES
 ```
+
+### AWS preview environment
+
+Terraform under `infra/preview` deploys the current cloud preview in
+`eu-central-1`. It is deliberately small and inexpensive enough for development:
+one API task, one web task, and a private Single-AZ PostgreSQL instance. This is
+not yet a production topology.
+
+```mermaid
+flowchart TB
+    user[Browser] -->|HTTP :80| alb[Application Load Balancer]
+
+    subgraph vpc[Amazon VPC 10.42.0.0/16]
+        subgraph public[Two public subnets in separate Availability Zones]
+            alb
+            web[ECS Fargate web service<br/>Nginx + React]
+            api[ECS Fargate API service<br/>Spring Boot]
+            clamav[ClamAV sidecar]
+        end
+
+        subgraph database[Two database subnets]
+            rds[(Amazon RDS<br/>PostgreSQL)]
+        end
+
+        alb -->|all non-/api paths| web
+        alb -->|/api/* on :8080| api
+        api -->|localhost:3310| clamav
+        api -->|TCP :5432| rds
+    end
+
+    api -->|task-role credentials| s3[(Private Amazon S3 buckets)]
+    s3 --> kms[AWS KMS key]
+    secrets[AWS Secrets Manager] -. injected at task startup .-> api
+    ecr[ECR] -. image pull .-> web
+    ecr -. image pull .-> api
+    web --> logs[CloudWatch Logs]
+    api --> logs
+    clamav --> logs
+```
+
+The Application Load Balancer is the only public application entry point.
+Requests under `/api/*` go to the Spring Boot target group; all other paths go
+to the Nginx container that serves the React single-page application. ECS uses
+security groups that accept web and API traffic only from the load balancer.
+The tasks currently run in public subnets with public IP addresses so they can
+pull images and contact AWS services without a NAT gateway, but their inbound
+ports are not open directly to the internet.
+
+RDS runs in database subnets, is not publicly accessible, and accepts PostgreSQL
+connections only from the API task security group. The application uses Spring
+Data JPA/Hibernate with the PostgreSQL JDBC driver. RDS stores its generated
+master password in Secrets Manager, while a separate secret contains the
+bootstrap administrator password and JWT signing secret. The ECS execution role
+retrieves these values when a task starts.
+
+Four private S3 buckets isolate normal files, Lockbox artifacts, quarantined
+objects, and trash. Public access is blocked, ACLs are disabled, versioning is
+enabled, and incomplete multipart uploads are removed after seven days. Every
+bucket uses SSE-KMS with one customer-managed key whose automatic rotation is
+enabled. The API task role can access only these buckets and can use the KMS key
+only through S3 with the expected S3 encryption context. Lockbox objects receive
+both this storage-level encryption and the independent client-side encryption
+performed by FD-Client.
+
+The API and ClamAV run in the same Fargate task. Spring waits for the ClamAV
+health check before starting and sends files to `clamd` over the task-local
+interface. Clean regular files are moved into normal storage; detected files
+remain in the quarantine flow. Lockbox data is already encrypted by the desktop
+client and follows its separate validation protocol.
+
+API and web images are stored in separate ECR repositories. Tags are immutable,
+images are scanned when pushed, and lifecycle policies retain the latest 20
+images. ECS sends API, ClamAV, and web logs to CloudWatch log groups with seven
+days of retention.
+
+Terraform state is stored in a separate private, encrypted, versioned S3 bucket.
+The preview configuration uses the state key `preview/terraform.tfstate` and S3
+state locking. The `infra/bootstrap` configuration creates this bucket and keeps
+its own small bootstrap state locally.
+
+GitHub Actions currently builds and tests the backend and frontend for pull
+requests and pushes to `main`. It does not apply Terraform or deploy images.
+Preview image publication and deployment are explicit operations performed by
+the PowerShell helpers in `scripts/`.
+
+> [!WARNING]
+> The preview ALB currently serves plain HTTP. Authentication cookies are therefore configured for the preview accordingly, and WebAuthn is disabled. Before treating this as production, add a domain, ACM certificate and HTTPS listener, redirect HTTP to HTTPS, enable secure cookies and WebAuthn for that domain, move ECS tasks to private subnets with controlled egress, separate the application database role from the RDS master user, enable stronger RDS backups/deletion protection, and add monitoring and WAF rules. AWS WAF and Shield Advanced are not part of the current Terraform stack.
+
+The AWS resources and deployment commands are documented in
+[`infra/README.md`](infra/README.md).
 
 The backend follows a conventional layered layout:
 
