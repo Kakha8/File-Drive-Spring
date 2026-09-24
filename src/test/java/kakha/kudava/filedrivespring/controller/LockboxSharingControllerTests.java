@@ -52,17 +52,17 @@ class LockboxSharingControllerTests {
     @Test
     void unauthenticatedSharingRoutesAreRejected() throws Exception {
         mvc.perform(get("/api/lockbox/share-recipients/alice/keys"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/lockbox/devices"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/lockbox/shares/received"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/lockbox/shares/received/11223344-5566-4788-99aa-bbccddeeff00"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mvc.perform(post("/api/lockbox/shares")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
