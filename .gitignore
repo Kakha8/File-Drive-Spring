@@ -40,3 +40,12 @@ build/
 /kes
 /kes-data
 /clamav-db
+
+# Terraform local state and plans (commit .terraform.lock.hcl)
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/*.tfplan
+**/*.tfvars
+!**/*.tfvars.example
+**/crash.log

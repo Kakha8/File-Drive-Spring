@@ -1,4 +1,5 @@
 import { apiFetch } from "./http";
+import { createClientId } from "../utils/clientId.js";
 
 const DEVICE_ID_STORAGE_KEY = "lockbox-device-id";
 
@@ -7,7 +8,7 @@ function getDeviceId() {
 
     if (saved) return saved;
 
-    const deviceId = crypto.randomUUID();
+    const deviceId = createClientId();
     localStorage.setItem(DEVICE_ID_STORAGE_KEY, deviceId);
     return deviceId;
 }

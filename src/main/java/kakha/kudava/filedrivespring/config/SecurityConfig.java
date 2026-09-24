@@ -154,15 +154,22 @@ public class SecurityConfig {
 
     @Bean
     CommandLineRunner createAdmin(UserRepository userRepository, PasswordEncoder passwordEncoder,
-                                  RootFolderService rootFolderService) {
+                                  RootFolderService rootFolderService,
+                                  @Value("${app.bootstrap-admin.sync-password:false}") boolean syncPassword) {
         return args -> {
-            if (userRepository.findByUsername("admin").isEmpty()) {
+            var existingAdmin = userRepository.findByUsername("admin");
+            if (existingAdmin.isEmpty()) {
                 kakha.kudava.filedrivespring.model.User admin = new kakha.kudava.filedrivespring.model.User();
                 admin.setUsername("admin");
                 admin.setPassword(passwordEncoder.encode(ADMIN_PASSWORD));
                 admin.setRole(kakha.kudava.filedrivespring.model.User.Role.ADMIN);
                 userRepository.save(admin);
                 rootFolderService.ensureRootFolder(admin);
+            } else if (syncPassword) {
+                var admin = existingAdmin.get();
+                admin.setPassword(passwordEncoder.encode(ADMIN_PASSWORD));
+                admin.setRole(kakha.kudava.filedrivespring.model.User.Role.ADMIN);
+                userRepository.save(admin);
             }
         };
     }
