@@ -10,7 +10,7 @@ import {
     Routes,
 } from "react-router-dom";
 
-import { refresh } from "./api/auth";
+import { hasRole, refresh } from "./api/auth";
 import Login from "./pages/Login";
 import Main from "./pages/Main";
 import Trashcan from "./pages/Trashcan";
@@ -19,6 +19,7 @@ import Favorites from "./pages/Favorites";
 import Settings from "./pages/Settings";
 import Recent from "./pages/Recent";
 import Lockbox from "./pages/Lockbox";
+import AdminDashboard from "./pages/AdminDashboard";
 import "./App.css";
 import "./components/Recent-Activity.css";
 import "./styles/activity-history.css";
@@ -223,6 +224,24 @@ function App() {
                         ) : (
                             <Navigate
                                 to="/login"
+                                replace
+                            />
+                        )
+                    }
+                />
+
+                <Route
+                    path="/admin"
+                    element={
+                        loggedIn && hasRole("ADMIN") ? (
+                            <AdminDashboard
+                                onLogout={handleLogout}
+                                sidebarOpen={sidebarOpen}
+                                onToggleSidebar={toggleSidebar}
+                            />
+                        ) : (
+                            <Navigate
+                                to={loggedIn ? "/main" : "/login"}
                                 replace
                             />
                         )

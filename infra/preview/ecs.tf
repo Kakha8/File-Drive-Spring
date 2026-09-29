@@ -156,9 +156,9 @@ resource "aws_ecs_service" "api" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = aws_subnet.public[*].id
+    subnets          = aws_subnet.application[*].id
     security_groups  = [aws_security_group.api.id]
-    assign_public_ip = true
+    assign_public_ip = false
   }
 
   load_balancer {
@@ -167,5 +167,10 @@ resource "aws_ecs_service" "api" {
     container_port   = 8080
   }
 
-  depends_on = [aws_lb_listener_rule.api]
+  depends_on = [
+    aws_lb_listener_rule.api,
+    aws_route_table_association.application,
+    aws_vpc_endpoint.interface,
+    aws_vpc_endpoint.s3,
+  ]
 }
