@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { login, verifyWebAuthnLogin } from "../api/auth";
+import { completeTemporaryPassword, login, verifyWebAuthnLogin } from "../api/auth";
 import logo from "../assets/logo.png";
+import PasswordInput from "../components/PasswordInput";
 
 function Login({ onLogin }) {
     const [username, setUsername] = useState("");
@@ -8,6 +9,10 @@ function Login({ onLogin }) {
     const [message, setMessage] = useState("");
     const [loading, setLoading] = useState(false);
     const [challenge, setChallenge] = useState(null);
+    const [passwordChangeRequired, setPasswordChangeRequired] = useState(false);
+    const [temporaryPassword, setTemporaryPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
     const [now, setNow] = useState(() => Date.now());
     const submitting = useRef(false);
     const expired = challenge && now >= Date.parse(challenge.expiresAt);
@@ -21,6 +26,10 @@ function Login({ onLogin }) {
     function startAgain() {
         if (submitting.current) return;
         setChallenge(null);
+        setPasswordChangeRequired(false);
+        setTemporaryPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
         setPassword("");
         setMessage("");
     }
@@ -38,10 +47,21 @@ function Login({ onLogin }) {
         submitting.current = true;
 
         try {
-            if (challenge) {
+            if (passwordChangeRequired) {
+                if (newPassword !== confirmPassword) {
+                    setMessage("New passwords do not match.");
+                    return;
+                }
+                await completeTemporaryPassword(username, temporaryPassword, newPassword);
+            } else if (challenge) {
                 await verifyWebAuthnLogin(challenge.challengeToken);
             } else {
                 const result = await login(username, password);
+                if (result.passwordChangeRequired) {
+                    setTemporaryPassword(password);
+                    setPasswordChangeRequired(true);
+                    return;
+                }
                 if (result.mfaRequired) {
                     setNow(Date.now());
                     setChallenge(result);
@@ -87,15 +107,41 @@ function Login({ onLogin }) {
 
                 <div className="login-form-panel">
                     <div className="login-form-heading">
-                        <span>{challenge ? "Two-step sign in" : "Welcome back"}</span>
-                        <h1>{challenge ? "Verify your identity" : "Sign in to File Drive"}</h1>
-                        <p>{challenge
+                        <span>{passwordChangeRequired ? "First sign in" : challenge ? "Two-step sign in" : "Welcome back"}</span>
+                        <h1>{passwordChangeRequired ? "Choose your password" : challenge ? "Verify your identity" : "Sign in to File Drive"}</h1>
+                        <p>{passwordChangeRequired
+                            ? "Replace the temporary password with a password only you know."
+                            : challenge
                             ? "Use your registered security key or passkey to continue."
                             : "Enter your account details to continue."}</p>
                     </div>
 
                     <form className="login-form" onSubmit={handleSubmit}>
-                        {challenge ? (
+                        {passwordChangeRequired ? (
+                            <>
+                                <p className="login-mfa-account">Setting a password for <strong>{username}</strong></p>
+                                <label htmlFor="new-password">New password</label>
+                                <PasswordInput
+                                    id="new-password"
+                                    autoComplete="new-password"
+                                    minLength="8"
+                                    required
+                                    disabled={loading}
+                                    value={newPassword}
+                                    onChange={(event) => setNewPassword(event.target.value)}
+                                />
+                                <label htmlFor="confirm-password">Confirm new password</label>
+                                <PasswordInput
+                                    id="confirm-password"
+                                    autoComplete="new-password"
+                                    minLength="8"
+                                    required
+                                    disabled={loading}
+                                    value={confirmPassword}
+                                    onChange={(event) => setConfirmPassword(event.target.value)}
+                                />
+                            </>
+                        ) : challenge ? (
                             <>
                                 <p className="login-mfa-account">Signing in as <strong>{username}</strong></p>
                                 {expired && <p className="message error login-error" role="alert">
@@ -117,9 +163,8 @@ function Login({ onLogin }) {
                         />
 
                         <label htmlFor="password">Password</label>
-                        <input
+                        <PasswordInput
                             id="password"
-                            type="password"
                             placeholder="Enter your password"
                             autoComplete="current-password"
                             required
@@ -134,10 +179,10 @@ function Login({ onLogin }) {
 
                         <button type="submit" disabled={loading || Boolean(expired)}>
                             {loading
-                                ? (challenge ? "Verifying..." : "Signing in...")
-                                : (challenge ? "Use security key or passkey" : "Sign in")}
+                                ? (passwordChangeRequired ? "Saving..." : challenge ? "Verifying..." : "Signing in...")
+                                : (passwordChangeRequired ? "Set password and sign in" : challenge ? "Use security key or passkey" : "Sign in")}
                         </button>
-                        {challenge && <button type="button" className="login-start-again" disabled={loading} onClick={startAgain}>
+                        {(challenge || passwordChangeRequired) && <button type="button" className="login-start-again" disabled={loading} onClick={startAgain}>
                             Start again
                         </button>}
                     </form>

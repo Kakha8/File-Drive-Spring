@@ -25,3 +25,39 @@ export async function searchUsers(query) {
 
     return response.json();
 }
+
+export async function getAdminUsers() {
+    const response = await apiFetch("/api/users");
+
+    if (!response.ok) {
+        throw new Error(await readApiError(response, "Failed to load users"));
+    }
+
+    return response.json();
+}
+
+export async function createAdminUser({ username, password, role, passwordChangeRequired }) {
+    const response = await apiFetch("/api/register/as-admin", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password, role, passwordChangeRequired }),
+    });
+
+    if (!response.ok) {
+        throw new Error(await readApiError(response, "Failed to create user"));
+    }
+
+    return response.json();
+}
+
+export async function deleteAdminUser(id) {
+    const response = await apiFetch(`/api/users/${id}`, {
+        method: "DELETE",
+    });
+
+    if (!response.ok) {
+        throw new Error(await readApiError(response, "Failed to delete user"));
+    }
+}

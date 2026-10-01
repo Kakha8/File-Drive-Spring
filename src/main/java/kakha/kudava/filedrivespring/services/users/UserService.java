@@ -47,6 +47,8 @@ public class UserService {
             UserDTO userDTO = new UserDTO();
             userDTO.setId(user.getId());
             userDTO.setUsername(user.getUsername());
+            userDTO.setRole(user.getRole() == null ? User.Role.USER.name() : user.getRole().name());
+            userDTO.setPasswordChangeRequired(user.isPasswordChangeRequired());
 
             userDTOs.add(userDTO);
         }
@@ -63,8 +65,21 @@ public class UserService {
     }
 
     @Transactional
-    public void delete(Long id) {
-        userRepository.deleteById(id);
+    public void delete(Long id, String actingUsername) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND,
+                        "User not found"
+                ));
+
+        if (user.getUsername().equals(actingUsername)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "You cannot delete your own account"
+            );
+        }
+
+        userRepository.delete(user);
         log.info("Object deleted successfully {}", id);
     }
 

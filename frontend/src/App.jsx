@@ -20,6 +20,7 @@ import Settings from "./pages/Settings";
 import Recent from "./pages/Recent";
 import Lockbox from "./pages/Lockbox";
 import AdminDashboard from "./pages/AdminDashboard";
+import AdminUsers from "./pages/AdminUsers";
 import "./App.css";
 import "./components/Recent-Activity.css";
 import "./styles/activity-history.css";
@@ -235,6 +236,24 @@ function App() {
                     element={
                         loggedIn && hasRole("ADMIN") ? (
                             <AdminDashboard
+                                onLogout={handleLogout}
+                                sidebarOpen={sidebarOpen}
+                                onToggleSidebar={toggleSidebar}
+                            />
+                        ) : (
+                            <Navigate
+                                to={loggedIn ? "/main" : "/login"}
+                                replace
+                            />
+                        )
+                    }
+                />
+
+                <Route
+                    path="/admin/users"
+                    element={
+                        loggedIn && hasRole("ADMIN") ? (
+                            <AdminUsers
                                 onLogout={handleLogout}
                                 sidebarOpen={sidebarOpen}
                                 onToggleSidebar={toggleSidebar}

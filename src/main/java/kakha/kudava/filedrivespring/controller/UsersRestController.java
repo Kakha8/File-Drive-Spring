@@ -85,8 +85,8 @@ public class UsersRestController {
 
     @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
-        userService.delete(id);
+    public ResponseEntity<Void> deleteUser(@PathVariable Long id, Authentication authentication) {
+        userService.delete(id, authentication.getName());
         return ResponseEntity.noContent().build();
     }
 

@@ -41,6 +41,9 @@ public class User {
     @Column(nullable = false, columnDefinition = "boolean default false")
     private boolean webauthnEnabled = false;
 
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean passwordChangeRequired = false;
+
     @PrePersist
     private void beforeInsert() {
         if (publicUuid == null) {

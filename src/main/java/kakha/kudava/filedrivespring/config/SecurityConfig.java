@@ -81,6 +81,7 @@ public class SecurityConfig {
 
                         .requestMatchers(
                                 "/api/auth/login",
+                                "/api/auth/complete-temporary-password",
                                 "/api/auth/webauthn/options",
                                 "/api/auth/webauthn/finish",
                                 "/api/auth/logout",

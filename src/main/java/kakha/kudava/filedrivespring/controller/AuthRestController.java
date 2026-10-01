@@ -15,6 +15,14 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/auth")
 public class AuthRestController {
+    public record TemporaryPasswordRequest(
+            String username,
+            @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
+            String temporaryPassword,
+            @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
+            String newPassword
+    ) {}
+
     private final TwoStageLoginService loginService;
     private final int refreshDays;
 
@@ -36,8 +44,26 @@ public class AuthRestController {
             AuthCookies.clearRefresh(response);
             return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result.challenge());
         }
+        if (result.passwordChange() != null) {
+            AuthCookies.clearRefresh(response);
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result.passwordChange());
+        }
         AuthCookies.setRefresh(response, result.session().refreshToken(), refreshDays);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result.session().login());
+    }
+
+    @PostMapping("/complete-temporary-password")
+    public ResponseEntity<LoginResponse> completeTemporaryPassword(
+            @RequestBody TemporaryPasswordRequest request,
+            HttpServletResponse response
+    ) {
+        var session = loginService.completeTemporaryPassword(
+                request.username(),
+                request.temporaryPassword(),
+                request.newPassword()
+        );
+        AuthCookies.setRefresh(response, session.refreshToken(), refreshDays);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(session.login());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
