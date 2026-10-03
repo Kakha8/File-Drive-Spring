@@ -95,9 +95,9 @@ resource "aws_ecs_task_definition" "api" {
         { name = "QUARANTINE_RETENTION_DAYS", value = "30" },
         { name = "CLAMAV_HOST", value = "127.0.0.1" },
         { name = "CLAMAV_PORT", value = "3310" },
-        { name = "CLAMAV_TIMEOUT_MS", value = "120000" },
-        { name = "SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE", value = "500MB" },
-        { name = "SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE", value = "500MB" },
+        { name = "CLAMAV_TIMEOUT_MS", value = "1800000" },
+        { name = "SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE", value = "10GB" },
+        { name = "SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE", value = "10GB" },
         { name = "S3_ENDPOINT", value = "https://s3.eu-central-1.amazonaws.com" },
         { name = "S3_REGION", value = "eu-central-1" },
         { name = "S3_USE_IAM_ROLE", value = "true" },
@@ -122,9 +122,9 @@ resource "aws_ecs_task_definition" "api" {
       essential = true
       cpu       = 512
       environment = [
-        { name = "CLAMD_CONF_StreamMaxLength", value = "500M" },
-        { name = "CLAMD_CONF_MaxFileSize", value = "500M" },
-        { name = "CLAMD_CONF_MaxScanSize", value = "500M" }
+        { name = "CLAMD_CONF_StreamMaxLength", value = "10G" },
+        { name = "CLAMD_CONF_MaxFileSize", value = "10G" },
+        { name = "CLAMD_CONF_MaxScanSize", value = "10G" }
       ]
       portMappings = [{
         containerPort = 3310

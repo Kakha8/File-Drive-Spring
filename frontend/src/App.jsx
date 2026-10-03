@@ -21,6 +21,7 @@ import Recent from "./pages/Recent";
 import Lockbox from "./pages/Lockbox";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminUsers from "./pages/AdminUsers";
+import { UploadProvider } from "./components/UploadManager";
 import "./App.css";
 import "./components/Recent-Activity.css";
 import "./styles/activity-history.css";
@@ -108,6 +109,7 @@ function App() {
 
     return (
         <BrowserRouter>
+            <UploadProvider>
             <Routes>
                 <Route
                     path="/login"
@@ -295,6 +297,7 @@ function App() {
                     }
                 />
             </Routes>
+            </UploadProvider>
         </BrowserRouter>
     );
 }

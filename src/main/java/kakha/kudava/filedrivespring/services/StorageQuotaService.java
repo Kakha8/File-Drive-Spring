@@ -83,6 +83,16 @@ public class StorageQuotaService {
         return new Reservation(this, id);
     }
 
+    public Usage usage() {
+        return transaction.execute(status -> {
+            long used = Math.addExact(
+                    Math.addExact(files.sumQuotaBytes(), quarantine.sumQuotaBytes()),
+                    lockboxRevisions.sumQuotaBytes()
+            );
+            return new Usage(used, limitBytes);
+        });
+    }
+
     private void ensureLockRow() {
         if (!quotaLocks.existsById(LOCK_ID)) {
             try {
@@ -124,6 +134,16 @@ public class StorageQuotaService {
             } else {
                 service.release(id);
             }
+        }
+    }
+
+    public record Usage(long usedBytes, long limitBytes) {
+        public long availableBytes() {
+            return Math.max(0L, limitBytes - usedBytes);
+        }
+
+        public double usedPercentage() {
+            return Math.min(100.0, usedBytes * 100.0 / limitBytes);
         }
     }
 }

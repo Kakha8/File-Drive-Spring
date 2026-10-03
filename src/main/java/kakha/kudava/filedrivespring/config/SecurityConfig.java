@@ -103,6 +103,10 @@ public class SecurityConfig {
                         ).hasAnyRole("USER", "ADMIN")
 
                         .requestMatchers(
+                                "/api/admin/**"
+                        ).hasRole("ADMIN")
+
+                        .requestMatchers(
                                 "/api/quarantine/**"
                         ).hasRole("ADMIN")
 
