@@ -1140,6 +1140,19 @@ body {
   padding: 30px 36px;
 }
 
+.admin-dashboard-page .drive-main {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.admin-dashboard-page .admin-dashboard-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
 .admin-summary-card {
   width: min(360px, 100%);
   min-height: 150px;
@@ -1160,6 +1173,140 @@ body {
   display: flex;
   align-items: stretch;
   gap: 22px;
+}
+
+.admin-dashboard-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+
+.admin-chart-card {
+  min-width: 0;
+  min-height: 245px;
+  padding: 22px 26px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: var(--old-panel, #1c2026);
+  color: var(--old-text, #e5e7eb);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.admin-chart-card:hover {
+  background: var(--old-panel-soft, #242a32);
+  border-color: rgba(255, 255, 255, 0.14);
+  transform: translateY(-1px);
+}
+
+.admin-chart-heading {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--old-muted, #9aa3af);
+  font-size: 15px;
+}
+
+.admin-chart-heading strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 600;
+}
+
+.admin-chart-heading strong svg {
+  width: 20px;
+  height: 20px;
+  color: var(--old-accent, #3b82f6);
+}
+
+.admin-chart-heading > span {
+  color: #777;
+  font-size: 21px;
+}
+
+.admin-chart-card .admin-storage-gauge {
+  width: 190px;
+  height: 164px;
+  margin-top: 2px;
+}
+
+.admin-chart-card > small {
+  margin-top: 9px;
+  color: var(--old-muted-soft, #6b7280);
+  font-size: 12px;
+}
+
+.admin-traffic-card {
+  align-items: stretch;
+}
+
+.admin-traffic-summary {
+  margin-top: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.admin-traffic-summary strong {
+  font-size: 25px;
+}
+
+.admin-traffic-summary small,
+.admin-traffic-axis small {
+  color: var(--old-muted-soft, #6b7280);
+  font-size: 11px;
+}
+
+.admin-traffic-chart {
+  width: 100%;
+  height: 112px;
+  margin-top: 6px;
+  overflow: visible;
+}
+
+.admin-traffic-grid {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.055);
+  stroke-width: 1;
+}
+
+.admin-traffic-area {
+  fill: url(#traffic-area);
+}
+
+.admin-traffic-line {
+  fill: none;
+  stroke: #3b82f6;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.admin-traffic-axis {
+  display: flex;
+  justify-content: space-between;
+}
+
+.admin-dashboard-shortcuts {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.admin-summary-card.compact {
+  width: 100%;
+  min-height: 128px;
+  padding: 20px;
+}
+
+.admin-summary-card.compact .admin-summary-card-copy strong {
+  font-size: 25px;
 }
 
 .admin-storage-card {
@@ -1200,8 +1347,17 @@ body {
   stroke-linecap: round;
 }
 
+.admin-storage-gauge circle {
+  fill: none;
+  stroke-width: 12;
+  stroke-linecap: round;
+  transform: rotate(135deg);
+  transform-origin: 90px 90px;
+}
+
 .admin-storage-gauge-track {
   stroke: #2b323d;
+  stroke-dasharray: 75 25;
 }
 
 .admin-storage-gauge-value {
@@ -1212,8 +1368,9 @@ body {
 .admin-storage-gauge strong {
   position: absolute;
   left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
   font-size: 24px;
   line-height: 1;
 }
@@ -1726,8 +1883,9 @@ body {
     padding: 22px 18px;
   }
 
-  .admin-dashboard-cards {
-    flex-direction: column;
+  .admin-dashboard-charts,
+  .admin-dashboard-shortcuts {
+    grid-template-columns: 1fr;
   }
 
   .admin-users-page .drive-header {

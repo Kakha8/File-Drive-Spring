@@ -21,6 +21,7 @@ import Recent from "./pages/Recent";
 import Lockbox from "./pages/Lockbox";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminUsers from "./pages/AdminUsers";
+import AdminSectionPlaceholder from "./pages/AdminSectionPlaceholder";
 import { UploadProvider } from "./components/UploadManager";
 import "./App.css";
 import "./components/Recent-Activity.css";
@@ -268,6 +269,10 @@ function App() {
                         )
                     }
                 />
+
+                {[{ path: "/admin/storage", title: "Storage", description: "Storage history and category breakdowns will appear here." }, { path: "/admin/traffic", title: "Traffic", description: "Upload, download, and request traffic will appear here." }, { path: "/admin/quarantine", title: "Quarantine", description: "Quarantined file management will appear here." }, { path: "/admin/logs", title: "Logs", description: "Administrative and system activity logs will appear here." }].map((section) => (
+                    <Route key={section.path} path={section.path} element={loggedIn && hasRole("ADMIN") ? <AdminSectionPlaceholder title={section.title} description={section.description} onLogout={handleLogout} sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} /> : <Navigate to={loggedIn ? "/main" : "/login"} replace />} />
+                ))}
 
                 <Route
                     path="/"

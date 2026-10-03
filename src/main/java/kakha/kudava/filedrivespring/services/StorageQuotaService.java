@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class StorageQuotaService {
-    public static final long DEFAULT_LIMIT_BYTES = 2_199_023_255_552L;
+    public static final long DEFAULT_LIMIT_BYTES = 21_474_836_480L;
     private static final long LOCK_ID = 1L;
 
     private final long limitBytes;
@@ -35,7 +35,7 @@ public class StorageQuotaService {
     private final TransactionTemplate transaction;
 
     public StorageQuotaService(
-            @Value("${storage.quota.limit-bytes:2199023255552}") long limitBytes,
+            @Value("${storage.quota.limit-bytes:21474836480}") long limitBytes,
             @Value("${storage.quota.reservation-ttl-hours:24}") long reservationTtlHours,
             FileMetaDataRepository files,
             QuarantinedFilesRepository quarantine,
