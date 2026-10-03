@@ -11,6 +11,13 @@ import org.springframework.web.server.ResponseStatusException;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    @ExceptionHandler(StorageQuotaExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleStorageQuotaExceeded(StorageQuotaExceededException ex) {
+        return ResponseEntity.status(HttpStatus.INSUFFICIENT_STORAGE).body(
+                ApiErrorResponse.of("STORAGE_QUOTA_EXCEEDED", ex.getMessage(), HttpStatus.INSUFFICIENT_STORAGE.value())
+        );
+    }
+
     @ExceptionHandler(LockboxApiException.class)
     public ResponseEntity<ApiErrorResponse> handleLockbox(LockboxApiException ex) {
         return ResponseEntity.status(ex.getStatus()).body(ApiErrorResponse.of(ex.getCode(), ex.getMessage(), ex.getStatus().value()));

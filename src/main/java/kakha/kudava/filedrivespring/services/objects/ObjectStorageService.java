@@ -57,6 +57,7 @@ public class ObjectStorageService {
     private final String trashBucket;
     private final ResourceAccessService access;
     private final NotificationService notificationService;
+    private final StorageQuotaService storageQuotaService;
 
 
     public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
@@ -65,7 +66,8 @@ public class ObjectStorageService {
                                 QuarantinedFilesRepository quarantinedFilesRepository, @Value("${s3.quarantine-bucket}") String quarantineBucket,
                                 UserRepository userRepository, QuarantineService quarantineService,
                                 RootFolderService rootFolderService, UploadCancellationService uploadCancellationService,
-                                @Value("${s3.trash-bucket}") String trashBucket, ResourceAccessService access, NotificationService notificationService) {
+                                @Value("${s3.trash-bucket}") String trashBucket, ResourceAccessService access,
+                                NotificationService notificationService, StorageQuotaService storageQuotaService) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
@@ -82,6 +84,7 @@ public class ObjectStorageService {
         this.trashBucket = trashBucket;
         this.access = access;
         this.notificationService = notificationService;
+        this.storageQuotaService = storageQuotaService;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId, String uploadId) throws Exception {
@@ -119,9 +122,11 @@ public class ObjectStorageService {
         Path tempFile = Files.createTempFile("upload-", ".scan");
 
         boolean uploadedToStorage = false;
+        StorageQuotaService.Reservation quotaReservation = null;
 
         try {
             file.transferTo(tempFile);
+            quotaReservation = storageQuotaService.reserve(Files.size(tempFile));
 
             throwIfUploadCanceled(uploadId);
 
@@ -268,6 +273,7 @@ public class ObjectStorageService {
 
             throw ex;
         } finally {
+            if (quotaReservation != null) quotaReservation.close();
             Files.deleteIfExists(tempFile);
         }
     }

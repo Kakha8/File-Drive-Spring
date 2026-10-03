@@ -5,6 +5,7 @@ import io.minio.*;
 import io.minio.messages.Item;
 import jakarta.transaction.Transactional;
 import kakha.kudava.filedrivespring.enums.EntityType;
+import kakha.kudava.filedrivespring.exceptions.StorageQuotaExceededException;
 import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.model.Folders;
 import kakha.kudava.filedrivespring.model.User;
@@ -27,9 +28,11 @@ public class MoveService {
     private final ObjectMapper objectMapper;
     private final ResourceAccessService access;
     private final SharingService sharingService;
+    private final StorageQuotaService storageQuotaService;
 
     public MoveService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
-                       FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper, ResourceAccessService access, SharingService sharingService) {
+                       FolderRepository folderRepository, LogsService logsService, ObjectMapper objectMapper, ResourceAccessService access,
+                       SharingService sharingService, StorageQuotaService storageQuotaService) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
@@ -38,6 +41,7 @@ public class MoveService {
         this.objectMapper = objectMapper;
         this.access = access;
         this.sharingService = sharingService;
+        this.storageQuotaService = storageQuotaService;
     }
 
     @Transactional
@@ -56,7 +60,7 @@ public class MoveService {
 
         boolean objectCopied = false;
 
-        try {
+        try (StorageQuotaService.Reservation ignored = storageQuotaService.reserve(fileMeta.getSize())) {
             minioClient.copyObject(
                     CopyObjectArgs.builder()
                             .bucket(bucket)
@@ -122,6 +126,9 @@ public class MoveService {
                 }
             }
 
+            if (e instanceof StorageQuotaExceededException quotaExceeded) {
+                throw quotaExceeded;
+            }
             throw new RuntimeException("Copy failed", e);
         }
     }
@@ -286,6 +293,8 @@ public class MoveService {
                     objectMapper.writeValueAsString(detailsMap)
             );
 
+        } catch (StorageQuotaExceededException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Folder move failed", e);
         }
@@ -354,7 +363,7 @@ public class MoveService {
                     throw new RuntimeException("Folder already exists in target: " + sourceFolder.getName());
                 });
 
-        try {
+        try (StorageQuotaService.Reservation ignored = storageQuotaService.reserve(folderBytes(sourceFolder))) {
             Folders copiedRoot = copyFolderRecursive(sourceFolder, targetFolder, newRootPrefix);
 
             Map<String, Object> detailsMap = new LinkedHashMap<>();
@@ -373,6 +382,8 @@ public class MoveService {
 
             return copiedRoot;
 
+        } catch (StorageQuotaExceededException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Folder copy failed", e);
         }
@@ -466,6 +477,17 @@ public class MoveService {
         }
 
         return copiedFolder;
+    }
+
+    private long folderBytes(Folders folder) {
+        long total = fileMetaDataRepository.findAllByParentId(folder.getId()).stream()
+                .filter(file -> !file.isDeleted() && !file.isPermanentlyDeleted())
+                .mapToLong(FileMetaData::getSize)
+                .sum();
+        for (Folders child : folder.getChildren()) {
+            total = Math.addExact(total, folderBytes(child));
+        }
+        return total;
     }
 
     private String normalizePrefix(String prefix) {

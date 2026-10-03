@@ -62,6 +62,7 @@ public class TextFileService {
     private final ClamAvScannerService clamAvScannerService;
     private final LogsService logsService;
     private final ObjectMapper objectMapper;
+    private final StorageQuotaService storageQuotaService;
 
     public TextFileService(
             MinioClient minioClient,
@@ -71,7 +72,8 @@ public class TextFileService {
             ResourceAccessService resourceAccessService,
             ClamAvScannerService clamAvScannerService,
             LogsService logsService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            StorageQuotaService storageQuotaService
     ) {
         this.minioClient = minioClient;
         this.bucket = bucket;
@@ -81,6 +83,7 @@ public class TextFileService {
         this.clamAvScannerService = clamAvScannerService;
         this.logsService = logsService;
         this.objectMapper = objectMapper;
+        this.storageQuotaService = storageQuotaService;
     }
 
     public TextFileContentDTO getContent(Long fileId) throws Exception {
@@ -140,14 +143,18 @@ public class TextFileService {
         Long oldSize = file.getSize();
         String contentType = resolveContentType(file.getFileName());
 
-        replaceMinioObject(file, newBytes, contentType);
+        FileMetaData savedFile;
+        long growth = Math.max(0L, newBytes.length - oldSize);
+        try (StorageQuotaService.Reservation ignored = storageQuotaService.reserve(growth)) {
+            replaceMinioObject(file, newBytes, contentType);
 
-        file.setChecksum(newChecksum);
-        file.setSize((long) newBytes.length);
-        file.setObjectType(contentType);
-        file.setLastModifiedDate(Instant.now());
+            file.setChecksum(newChecksum);
+            file.setSize((long) newBytes.length);
+            file.setObjectType(contentType);
+            file.setLastModifiedDate(Instant.now());
 
-        FileMetaData savedFile = fileMetaDataRepository.save(file);
+            savedFile = fileMetaDataRepository.save(file);
+        }
 
         createUpdateLog(
                 savedFile,

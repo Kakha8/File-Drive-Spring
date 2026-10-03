@@ -104,7 +104,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "S3_BUCKET", value = aws_s3_bucket.storage["files"].bucket },
         { name = "S3_LOCKBOX_BUCKET", value = aws_s3_bucket.storage["lockbox"].bucket },
         { name = "S3_QUARANTINE_BUCKET", value = aws_s3_bucket.storage["quarantine"].bucket },
-        { name = "S3_TRASH_BUCKET", value = aws_s3_bucket.storage["trash"].bucket }
+        { name = "S3_TRASH_BUCKET", value = aws_s3_bucket.storage["trash"].bucket },
+        { name = "STORAGE_QUOTA_LIMIT_BYTES", value = "2199023255552" }
       ]
       logConfiguration = {
         logDriver = "awslogs"

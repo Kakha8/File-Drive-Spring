@@ -15,6 +15,13 @@ import java.util.Optional;
 
 @Repository
 public interface FileMetaDataRepository extends JpaRepository<FileMetaData, Long> {
+    @Query("""
+        select coalesce(sum(f.size), 0) from FileMetaData f
+        where f.permanentlyDeleted = false
+          and f.driveSpace = kakha.kudava.filedrivespring.enums.DriveSpace.DRIVE
+    """)
+    long sumQuotaBytes();
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
         update FileMetaData m

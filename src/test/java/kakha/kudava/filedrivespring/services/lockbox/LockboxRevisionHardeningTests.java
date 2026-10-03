@@ -107,7 +107,7 @@ class LockboxRevisionHardeningTests {
         final LockboxKeyRepository keys=mock(LockboxKeyRepository.class);
         final ResourceAccessService access=mock(ResourceAccessService.class);final User user=mock(User.class);final LockboxFile logical=mock(LockboxFile.class);
         final FileMetaData metadata=mock(FileMetaData.class);final LockboxProfile profile=mock(LockboxProfile.class);
-        final LockboxService service=new LockboxService(manifests,signatures,containers,mock(LockboxSignatureVerifier.class),storage,files,mock(FolderRepository.class),logicalFiles,revisions,keys,mock(LockboxProfileRepository.class),mock(RootFolderService.class),access,1024,1024,1024);
+        final LockboxService service=new LockboxService(manifests,signatures,containers,mock(LockboxSignatureVerifier.class),storage,files,mock(FolderRepository.class),logicalFiles,revisions,keys,mock(LockboxProfileRepository.class),mock(RootFolderService.class),access,mock(kakha.kudava.filedrivespring.services.StorageQuotaService.class),1024,1024,1024);
         Fixture(){when(access.currentUser()).thenReturn(user);when(user.getId()).thenReturn(1L);when(logicalFiles.findByIdAndProfileUserId(10L,1L)).thenReturn(Optional.of(logical));when(logicalFiles.findForUpdateByIdAndProfileUserId(10L,1L)).thenReturn(Optional.of(logical));when(logical.getId()).thenReturn(10L);when(logical.getFile()).thenReturn(metadata);when(logical.getProfile()).thenReturn(profile);when(profile.getId()).thenReturn(5L);when(profile.getStatus()).thenReturn(LockboxProfile.Status.ENABLED);}
     }
 }
