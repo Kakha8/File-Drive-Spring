@@ -137,7 +137,7 @@ public class QuarantineService {
                             .build()
             );
             log.info("Object in quarantine bucket deleted successfully {}", objectKey);
-            logsService.malwareDeleteLog(objectKey, quarantineId, "FILE");
+            logsService.malwareDeleteLog(file.getOriginalFilename(), objectKey, quarantineId, "FILE");
             file.setDeleted(true);
             quarantinedFilesRepository.save(file);
         } catch (Exception e) {
@@ -181,7 +181,7 @@ public class QuarantineService {
                         objectKey,
                         file.getCreatedAt()
                 );
-                logsService.malwareScheduleLog(objectKey, file.getId(), "FILE");
+                logsService.malwareScheduleLog(file.getOriginalFilename(), objectKey, file.getId(), "FILE");
             } catch (Exception e) {
                 log.error(
                         "Failed to delete expired quarantined file: id={}, objectKey={}",

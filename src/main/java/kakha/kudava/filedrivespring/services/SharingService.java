@@ -166,6 +166,8 @@ public class SharingService {
                 logsService.shareLog(
                         file.getId(),
                         EntityType.FILE,
+                        file.getFileName(),
+                        file.getObjectKey(),
                         permission.getId(),
                         sharedWith.getId(),
                         permission.getRole()
@@ -237,6 +239,8 @@ public class SharingService {
                 logsService.shareLog(
                         folder.getId(),
                         EntityType.FOLDER,
+                        folder.getName(),
+                        null,
                         permission.getId(),
                         sharedWith.getId(),
                         permission.getRole()
@@ -274,6 +278,7 @@ public class SharingService {
         Long entityId;
         EntityType entityType;
         String entityName;
+        String objectKey;
 
         if (permission.getFile() != null) {
             FileMetaData file = permission.getFile();
@@ -285,6 +290,7 @@ public class SharingService {
             entityId = file.getId();
             entityType = EntityType.FILE;
             entityName = file.getFileName();
+            objectKey = file.getObjectKey();
 
         } else if (permission.getFolder() != null) {
             Folders folder = permission.getFolder();
@@ -296,6 +302,7 @@ public class SharingService {
             entityId = folder.getId();
             entityType = EntityType.FOLDER;
             entityName = folder.getName();
+            objectKey = null;
 
         } else {
             throw new RuntimeException("Invalid share");
@@ -310,6 +317,8 @@ public class SharingService {
         logsService.shareRevokeLog(
                 entityId,
                 entityType,
+                entityName,
+                objectKey,
                 permission.getId(),
                 recipient.getId(),
                 permission.getRole()

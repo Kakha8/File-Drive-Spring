@@ -300,7 +300,17 @@ public class ObjectStorageService {
 
         log.info("Downloading object from {}", objectKey);
 
-        logsService.downloadLog(objectKey, id, "FILE");
+        Map<String, Object> downloadDetails = new LinkedHashMap<>();
+        downloadDetails.put("name", fileMetaData.getFileName());
+        downloadDetails.put("objectKey", objectKey);
+        downloadDetails.put("downloadedAt", Instant.now());
+
+        logsService.downloadLog(
+                fileMetaData.getFileName(),
+                id,
+                EntityType.FILE.name(),
+                objectMapper.writeValueAsString(downloadDetails)
+        );
 
         return minioClient.getObject(
                 GetObjectArgs.builder()

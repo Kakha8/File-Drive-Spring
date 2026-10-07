@@ -36,10 +36,13 @@ const Icons = {
             <path d="M14 4h4a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-4" />
         </Icon>
     ),
-    File: ({ className }) => (
+    HardDrive: ({ className }) => (
         <Icon className={className}>
-            <path d="M6 3h8l4 4v14H6z" />
-            <path d="M14 3v5h5" />
+            <rect x="3" y="5" width="18" height="14" rx="3" />
+            <path d="M3 13.5h18" />
+            <path d="M7 16.5h5" />
+            <circle cx="17.5" cy="16.5" r="0.8" fill="currentColor" stroke="none" />
+            <path d="M7 8.5h10" />
         </Icon>
     ),
     Shared: ({ className }) => (
@@ -86,7 +89,7 @@ const Icons = {
 
 const navItems = [
     { key: "admin", label: "Dashboard", icon: Icons.Dashboard, path: "/admin", adminOnly: true },
-    { key: "my", label: "My files", icon: Icons.File, path: "/main" },
+    { key: "my", label: "My files", icon: Icons.HardDrive, path: "/main" },
     { key: "shared", label: "Shared", icon: Icons.Shared, path: "/shared" },
     { key: "recent", label: "Recent", icon: Icons.Clock, path: "/recent" },
     { key: "favorites", label: "Favorites", icon: Icons.Star, path: "/favorites",},
