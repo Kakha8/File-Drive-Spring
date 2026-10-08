@@ -2,7 +2,7 @@ import DriveSidebar from "../components/DriveSidebar";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getAdminUsers } from "../api/users";
-import { getAdminStorageUsage } from "../api/admin";
+import { getAdminQuarantine, getAdminStorageUsage } from "../api/admin";
 import NotificationMenu from "../components/NotificationMenu";
 import UserMenu from "../components/UserMenu";
 
@@ -19,6 +19,14 @@ function formatBytes(bytes) {
     return `${value.toFixed(digits)} ${units[unit]}`;
 }
 
+function formatCompactCount(value) {
+    if (!Number.isFinite(value) || value < 0) return "—";
+    return new Intl.NumberFormat(undefined, {
+        notation: "compact",
+        maximumFractionDigits: 1,
+    }).format(value);
+}
+
 export default function AdminDashboard({
     onLogout,
     sidebarOpen,
@@ -26,6 +34,7 @@ export default function AdminDashboard({
 }) {
     const navigate = useNavigate();
     const [userCount, setUserCount] = useState(null);
+    const [quarantineCount, setQuarantineCount] = useState(null);
     const [storage, setStorage] = useState(null);
     const storagePercentage = Math.max(0, Math.min(100, storage?.usedPercentage ?? 0));
 
@@ -46,6 +55,14 @@ export default function AdminDashboard({
             })
             .catch(() => {
                 if (!cancelled) setStorage(null);
+            });
+
+        getAdminQuarantine({ page: 0, size: 1 })
+            .then((result) => {
+                if (!cancelled) setQuarantineCount(Number(result.totalElements) || 0);
+            })
+            .catch(() => {
+                if (!cancelled) setQuarantineCount(null);
             });
 
         return () => {
@@ -125,11 +142,11 @@ export default function AdminDashboard({
                         </button>
                         <button type="button" className="admin-summary-card compact" onClick={() => navigate("/admin/quarantine")}>
                             <span className="admin-summary-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3 3.5 7v5c0 5 3.6 8 8.5 9 4.9-1 8.5-4 8.5-9V7L12 3Z" /><path d="M9 9l6 6M15 9l-6 6" /></svg></span>
-                            <span className="admin-summary-card-copy"><span>Quarantine</span><strong>—</strong><small>Review isolated files</small></span><span className="admin-summary-card-arrow" aria-hidden="true">→</span>
+                            <span className="admin-summary-card-copy"><span>Quarantine</span><strong title={quarantineCount == null ? undefined : `${quarantineCount.toLocaleString()} quarantined files`} aria-label={quarantineCount == null ? "Quarantine count unavailable" : `${quarantineCount.toLocaleString()} quarantined files`}>{formatCompactCount(quarantineCount)}</strong><small>Review isolated files</small></span><span className="admin-summary-card-arrow" aria-hidden="true">→</span>
                         </button>
                         <button type="button" className="admin-summary-card compact" onClick={() => navigate("/admin/logs")}>
                             <span className="admin-summary-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h9l3 3v15H6z" /><path d="M9 10h6M9 14h6M9 18h4" /></svg></span>
-                            <span className="admin-summary-card-copy"><span>Logs</span><strong>—</strong><small>Inspect system activity</small></span><span className="admin-summary-card-arrow" aria-hidden="true">→</span>
+                            <span className="admin-summary-card-copy admin-summary-card-copy-no-value"><span>Logs</span><small>Inspect system activity</small></span><span className="admin-summary-card-arrow" aria-hidden="true">→</span>
                         </button>
                     </div>
                 </div>

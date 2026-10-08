@@ -1442,6 +1442,10 @@ body {
   font-size: 13px;
 }
 
+.admin-summary-card-copy-no-value small {
+  margin-top: 20px;
+}
+
 .admin-summary-card-arrow {
   color: #777777;
   font-size: 21px;
@@ -2107,6 +2111,196 @@ body {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.admin-quarantine-filters {
+  flex-wrap: wrap;
+}
+
+.admin-quarantine-timeline {
+  min-height: 315px;
+  margin-bottom: 28px;
+  padding: 28px 32px 22px;
+  border: 1px solid var(--drive-border);
+  border-radius: 22px;
+  background: var(--drive-panel);
+}
+
+.admin-quarantine-chart-heading,
+.admin-quarantine-chart-heading > div,
+.admin-quarantine-chart-heading > div > div {
+  display: flex;
+  align-items: center;
+}
+
+.admin-quarantine-chart-heading {
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.admin-quarantine-chart-heading > div {
+  gap: 14px;
+}
+
+.admin-quarantine-chart-heading > div > div {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.admin-quarantine-chart-heading h2,
+.admin-quarantine-chart-heading p {
+  margin: 0;
+}
+
+.admin-quarantine-chart-heading h2 {
+  color: var(--drive-text);
+  font-size: 20px;
+}
+
+.admin-quarantine-chart-heading p,
+.admin-quarantine-chart-heading small,
+.admin-quarantine-chart-axis {
+  color: var(--drive-muted);
+}
+
+.admin-quarantine-chart-heading > strong {
+  color: var(--drive-text);
+  font-size: 30px;
+}
+
+.admin-quarantine-chart-heading small {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.admin-quarantine-chart-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 13px;
+  background: var(--drive-panel-soft);
+  color: #8ebcff;
+}
+
+.admin-quarantine-chart-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.admin-quarantine-chart-wrap {
+  margin-top: 18px;
+}
+
+.admin-quarantine-chart-wrap > svg {
+  display: block;
+  width: 100%;
+  height: 190px;
+  overflow: visible;
+}
+
+.admin-quarantine-chart-grid {
+  stroke: var(--drive-border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.admin-quarantine-chart-area {
+  fill: rgba(239, 92, 99, 0.13);
+}
+
+.admin-quarantine-chart-line {
+  fill: none;
+  stroke: #ef6a70;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.admin-quarantine-chart-point {
+  fill: #ef6a70;
+  stroke: var(--drive-panel);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.admin-quarantine-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -5px;
+  font-size: 13px;
+}
+
+.admin-quarantine-search {
+  width: 250px;
+  flex: 0 1 250px;
+}
+
+.admin-quarantine-page .admin-users-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-quarantine-table {
+  min-width: 1050px;
+  table-layout: fixed;
+}
+
+.admin-quarantine-table th:nth-child(1) { width: 190px; }
+.admin-quarantine-table th:nth-child(2) { width: 260px; }
+.admin-quarantine-table th:nth-child(3) { width: 140px; }
+.admin-quarantine-table th:nth-child(4) { width: 270px; }
+.admin-quarantine-table th:nth-child(5) { width: 100px; }
+.admin-quarantine-table th:nth-child(6) { width: 48px; }
+
+.admin-quarantine-name {
+  overflow: hidden;
+}
+
+.admin-quarantine-name strong,
+.admin-quarantine-name small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-quarantine-name strong {
+  font-weight: 500;
+}
+
+.admin-quarantine-name small {
+  margin-top: 4px;
+  color: var(--old-muted-soft, #6b7280);
+  font-size: 11px;
+}
+
+.admin-threat-badge {
+  display: inline-block;
+  max-width: 100%;
+  padding: 4px 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(210, 83, 83, 0.12);
+  color: #e4a1a1;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-quarantine-expand-cell {
+  padding-right: 4px !important;
+  text-align: right !important;
+}
+
+@media (max-width: 1400px) {
+  .admin-quarantine-filters .admin-time-filter,
+  .admin-quarantine-filters .admin-multi-filter,
+  .admin-quarantine-search {
+    flex: 1 1 205px;
+  }
 }
 
 .admin-message {
