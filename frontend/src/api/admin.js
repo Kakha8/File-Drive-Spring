@@ -8,6 +8,14 @@ export async function getAdminStorageUsage() {
     return response.json();
 }
 
+export async function getAdminTraffic() {
+    const response = await apiFetch("/api/admin/traffic");
+    if (!response.ok) {
+        throw new Error("Failed to load traffic statistics");
+    }
+    return response.json();
+}
+
 export async function getAdminLogs({ page = 0, size = 10, all = false, users = [], actions = [], from = "", to = "" } = {}) {
     const params = new URLSearchParams({
         page: String(Math.max(0, page)),

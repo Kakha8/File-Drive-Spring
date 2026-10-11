@@ -232,6 +232,7 @@ public class ObjectStorageService {
                 uploadDetails.put("objectKey", savedFile.getObjectKey());
                 uploadDetails.put("uploadedAt", Instant.now());
                 uploadDetails.put("folderId", folder.getId());
+                uploadDetails.put("size", savedFile.getSize());
 
                 String uploadDetailsJson =
                         objectMapper.writeValueAsString(uploadDetails);
@@ -304,6 +305,7 @@ public class ObjectStorageService {
         downloadDetails.put("name", fileMetaData.getFileName());
         downloadDetails.put("objectKey", objectKey);
         downloadDetails.put("downloadedAt", Instant.now());
+        downloadDetails.put("size", fileMetaData.getSize());
 
         logsService.downloadLog(
                 fileMetaData.getFileName(),

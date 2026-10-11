@@ -2,7 +2,7 @@ import DriveSidebar from "../components/DriveSidebar";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getAdminUsers } from "../api/users";
-import { getAdminQuarantine, getAdminStorageUsage } from "../api/admin";
+import { getAdminQuarantine, getAdminStorageUsage, getAdminTraffic } from "../api/admin";
 import NotificationMenu from "../components/NotificationMenu";
 import UserMenu from "../components/UserMenu";
 
@@ -27,6 +27,31 @@ function formatCompactCount(value) {
     }).format(value);
 }
 
+function TrafficChart({ traffic }) {
+    const points = Array.isArray(traffic?.points) ? traffic.points : [];
+    const width = 420;
+    const height = 112;
+    const top = 8;
+    const baseline = 96;
+    const maxBytes = Math.max(1, ...points.map((point) => Number(point.totalBytes) || 0));
+    const coordinates = points.map((point, index) => ({
+        x: points.length <= 1 ? width / 2 : index * (width / (points.length - 1)),
+        y: baseline - ((Number(point.totalBytes) || 0) / maxBytes) * (baseline - top),
+    }));
+    const line = coordinates.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+    const area = coordinates.length ? `${line} L${coordinates.at(-1).x.toFixed(1)} ${height} L0 ${height} Z` : "";
+
+    return <>
+        <svg className="admin-traffic-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${formatBytes(Number(traffic?.totalBytes) || 0)} transferred during the last 24 hours`}>
+            <defs><linearGradient id="traffic-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity="0.28" /><stop offset="100%" stopColor="#3b82f6" stopOpacity="0" /></linearGradient></defs>
+            <path className="admin-traffic-grid" d="M0 96H420M0 52H420M0 8H420" />
+            {area && <path className="admin-traffic-area" d={area} />}
+            {line && <path className="admin-traffic-line" d={line} />}
+        </svg>
+        <span className="admin-traffic-axis"><small>24h ago</small><small>Now</small></span>
+    </>;
+}
+
 export default function AdminDashboard({
     onLogout,
     sidebarOpen,
@@ -36,6 +61,7 @@ export default function AdminDashboard({
     const [userCount, setUserCount] = useState(null);
     const [quarantineCount, setQuarantineCount] = useState(null);
     const [storage, setStorage] = useState(null);
+    const [traffic, setTraffic] = useState(null);
     const storagePercentage = Math.max(0, Math.min(100, storage?.usedPercentage ?? 0));
 
     useEffect(() => {
@@ -63,6 +89,14 @@ export default function AdminDashboard({
             })
             .catch(() => {
                 if (!cancelled) setQuarantineCount(null);
+            });
+
+        getAdminTraffic()
+            .then((result) => {
+                if (!cancelled) setTraffic(result);
+            })
+            .catch(() => {
+                if (!cancelled) setTraffic(null);
             });
 
         return () => {
@@ -119,19 +153,8 @@ export default function AdminDashboard({
 
                         <button type="button" className="admin-chart-card admin-traffic-card" onClick={() => navigate("/admin/traffic")}>
                             <span className="admin-chart-heading"><strong><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 17h3l3-7 4 10 3-7h5" /><path d="M18 6h3v3" /><path d="m21 6-5 5" /></svg>Traffic</strong><span aria-hidden="true">→</span></span>
-                            <span className="admin-traffic-summary"><strong>1.8 GB</strong><small>Mock traffic · last 24 hours</small></span>
-                            <svg className="admin-traffic-chart" viewBox="0 0 420 112" preserveAspectRatio="none" role="img" aria-label="Mock traffic chart for the last 24 hours">
-                                <defs>
-                                    <linearGradient id="traffic-area" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.28" />
-                                        <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
-                                    </linearGradient>
-                                </defs>
-                                <path className="admin-traffic-grid" d="M0 88H420M0 52H420M0 16H420" />
-                                <path className="admin-traffic-area" d="M0 90 C28 86 38 64 67 70 S110 87 137 58 S180 42 205 61 S250 80 274 43 S317 19 344 39 S386 54 420 18 L420 112 L0 112 Z" />
-                                <path className="admin-traffic-line" d="M0 90 C28 86 38 64 67 70 S110 87 137 58 S180 42 205 61 S250 80 274 43 S317 19 344 39 S386 54 420 18" />
-                            </svg>
-                            <span className="admin-traffic-axis"><small>24h ago</small><small>Now</small></span>
+                            <span className="admin-traffic-summary"><strong>{traffic ? formatBytes(Number(traffic.totalBytes) || 0) : "—"}</strong><small>{traffic ? `${formatBytes(Number(traffic.uploadedBytes) || 0)} up · ${formatBytes(Number(traffic.downloadedBytes) || 0)} down` : "Traffic unavailable"}</small></span>
+                            <TrafficChart traffic={traffic} />
                         </button>
                     </div>
 
