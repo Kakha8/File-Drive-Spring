@@ -38,6 +38,7 @@ public class JwtRefreshService {
     }
 
     private String createToken(User user, int daysValid, boolean mfaVerified) {
+        if (user.isDeleted() || user.isSuspensionActive()) throw new IllegalStateException("Account is unavailable.");
         if ((user.isTotpEnabled() || user.isWebauthnEnabled()) && !mfaVerified) throw new IllegalStateException("MFA verification required.");
         String refreshToken = generateRandomToken();
         String hash = TokenHashUtil.sha256(refreshToken);
@@ -56,6 +57,7 @@ public class JwtRefreshService {
     /** Caller must hold the User lock and have completed the required factors. */
     @Transactional(propagation = Propagation.MANDATORY)
     public AuthenticatedSession issueSession(User user, int daysValid, boolean mfaVerified) {
+        if (user.isDeleted() || user.isSuspensionActive()) throw new RefreshRejected();
         if (user.getPublicUuid() == null) throw new IllegalStateException("Authenticated account has no public UUID.");
         if ((user.isTotpEnabled() || user.isWebauthnEnabled()) && !mfaVerified) throw new IllegalStateException("MFA verification required.");
         var details = org.springframework.security.core.userdetails.User.withUsername(user.getUsername())
@@ -74,7 +76,7 @@ public class JwtRefreshService {
         User user = users.findForAuthenticationUpdate(ownerId).orElseThrow(RefreshRejected::new);
         JwtRefresher stored = repo.findForRotation(hash, ownerId).orElseThrow(RefreshRejected::new);
         if (stored.isRevoked()) throw new RefreshRejected();
-        if (!stored.getExpiresAt().isAfter(LocalDateTime.now()) || ((user.isTotpEnabled() || user.isWebauthnEnabled()) && !stored.isMfaVerified())) {
+        if (user.isDeleted() || user.isSuspensionActive() || !stored.getExpiresAt().isAfter(LocalDateTime.now()) || ((user.isTotpEnabled() || user.isWebauthnEnabled()) && !stored.isMfaVerified())) {
             stored.setRevoked(true);
             throw new RefreshRejected();
         }

@@ -41,6 +41,11 @@ public class JwtFilter extends OncePerRequestFilter {
             var ticket = downloadTickets.peek(request.getParameter("ticket"));
             if (ticket != null) {
                 var userDetails = userDetailsService.loadUserByUsername(ticket.username());
+                if (!userDetails.isEnabled()) {
+                    SecurityContextHolder.clearContext();
+                    filterChain.doFilter(request, response);
+                    return;
+                }
                 var auth = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
@@ -59,6 +64,11 @@ public class JwtFilter extends OncePerRequestFilter {
             String username = jws.getPayload().getSubject();
 
             var userDetails = userDetailsService.loadUserByUsername(username);
+            if (!userDetails.isEnabled()) {
+                SecurityContextHolder.clearContext();
+                filterChain.doFilter(request, response);
+                return;
+            }
 
             @SuppressWarnings("unchecked")
             List<?> rolesRaw = jws.getPayload().get("roles", List.class);

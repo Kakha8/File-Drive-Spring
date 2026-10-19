@@ -98,8 +98,25 @@ function storeLoginSession(data) {
 }
 
 async function authResponseError(response, fallback) {
-    const error = new Error(await readApiError(response, fallback));
+    let data = null;
+    let message = fallback;
+    try {
+        const text = await response.text();
+        if (text) {
+            try {
+                data = JSON.parse(text);
+                message = data.message || data.error || fallback;
+            } catch {
+                message = text;
+            }
+        }
+    } catch {
+        message = fallback;
+    }
+    const error = new Error(message);
     error.status = response.status;
+    if (data?.error) error.code = data.error;
+    if (data?.suspendedUntil) error.suspendedUntil = data.suspendedUntil;
     return error;
 }
 

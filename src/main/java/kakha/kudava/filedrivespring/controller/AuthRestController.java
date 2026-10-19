@@ -7,10 +7,13 @@ import kakha.kudava.filedrivespring.records.ApiErrorResponse;
 import kakha.kudava.filedrivespring.services.totp.TwoStageLoginService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -70,5 +73,15 @@ public class AuthRestController {
     public ResponseEntity<ApiErrorResponse> malformedRequest() {
         return ResponseEntity.badRequest().cacheControl(CacheControl.noStore())
                 .body(ApiErrorResponse.of("INVALID_AUTH_REQUEST", "Invalid authentication request.", 400));
+    }
+
+    @ExceptionHandler(TwoStageLoginService.AccountSuspended.class)
+    public ResponseEntity<Map<String, Object>> suspended(TwoStageLoginService.AccountSuspended exception) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "ACCOUNT_SUSPENDED");
+        body.put("message", "This account is suspended.");
+        body.put("status", HttpStatus.FORBIDDEN.value());
+        if (exception.suspendedUntil() != null) body.put("suspendedUntil", exception.suspendedUntil().toString());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).cacheControl(CacheControl.noStore()).body(body);
     }
 }

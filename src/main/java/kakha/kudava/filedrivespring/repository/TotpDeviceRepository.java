@@ -23,6 +23,8 @@ public interface TotpDeviceRepository
             Long userId
     );
 
+    void deleteAllByUserId(Long userId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select d from TotpDevice d where d.id = :deviceId and d.user.id = :userId")
     Optional<TotpDevice> findForEnrollmentUpdate(

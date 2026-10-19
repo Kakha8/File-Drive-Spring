@@ -65,6 +65,8 @@ public class TwoStageLoginService {
         LoginAttemptLimit limit = limit(user, now);
         checkLimit(limit);
         if (!passwords.matches(password, user.getPassword())) fail(limit);
+        if (user.isDeleted()) throw rejected();
+        if (user.isSuspensionActive()) throw new AccountSuspended(user.getSuspendedUntil());
         if (user.getPublicUuid() == null) throw new IllegalStateException("Authenticated account has no public UUID.");
         if (user.isPasswordChangeRequired()) {
             challenges.consumeOutstanding(user.getId(), now);
@@ -120,6 +122,8 @@ public class TwoStageLoginService {
                 || !passwords.matches(temporaryPassword, user.getPassword())) {
             fail(limit);
         }
+        if (user.isDeleted()) throw rejected();
+        if (user.isSuspensionActive()) throw new AccountSuspended(user.getSuspendedUntil());
         if (passwords.matches(newPassword, user.getPassword())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Choose a password different from the temporary password.");
@@ -156,6 +160,14 @@ public class TwoStageLoginService {
 
     public static final class LoginRejected extends ResponseStatusException {
         private LoginRejected(HttpStatus status, String message) { super(status, message); }
+    }
+    public static final class AccountSuspended extends ResponseStatusException {
+        private final Instant suspendedUntil;
+        public AccountSuspended(Instant suspendedUntil) {
+            super(HttpStatus.FORBIDDEN, "This account is suspended.");
+            this.suspendedUntil = suspendedUntil;
+        }
+        public Instant suspendedUntil() { return suspendedUntil; }
     }
     public record MfaRequired(boolean mfaRequired, String challengeToken, Instant expiresAt, String method) {
         public MfaRequired(boolean mfaRequired, String challengeToken, Instant expiresAt) {

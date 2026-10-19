@@ -369,6 +369,31 @@ public class LogsService {
         );
     }
 
+    public void userAccountLog(ActionType action, User target, Map<String, Object> details) {
+        if (action != ActionType.USER_SUSPEND
+                && action != ActionType.USER_REACTIVATE
+                && action != ActionType.USER_DELETE
+                && action != ActionType.USER_RESTORE
+                && action != ActionType.USER_PASSWORD_RESET
+                && action != ActionType.USER_2FA_REMOVE) {
+            throw new IllegalArgumentException("Unsupported user account audit action: " + action);
+        }
+
+        Map<String, Object> metadata = new LinkedHashMap<>(details == null ? Map.of() : details);
+        metadata.put("username", target.getUsername());
+        metadata.put("targetUserId", target.getId());
+        metadata.put("loggedAt", Instant.now());
+
+        ActionLogs actionLogs = logAction(
+                action.name(),
+                target.getId(),
+                EntityType.USER.name(),
+                writeDetails(metadata)
+        );
+        actionLogsRepository.save(actionLogs);
+        log.info("Logging account action {} for user {}", action, target.getUsername());
+    }
+
     private String sharingDetails(
             String name,
             String objectKey,

@@ -24,7 +24,7 @@ function summarizeDetails(details) {
     if (!details) return "—";
     try {
         const parsed = JSON.parse(details);
-        const usefulValue = parsed.name || parsed.resourceName || parsed.fileName || parsed.folderName || parsed.newName;
+        const usefulValue = parsed.name || parsed.resourceName || parsed.fileName || parsed.folderName || parsed.newName || parsed.username;
         return usefulValue || Object.entries(parsed)
             .slice(0, 2)
             .map(([key, value]) => `${humanize(key)}: ${String(value)}`)
@@ -56,7 +56,7 @@ function detailEntries(details) {
 }
 
 function hasAdditionalDetails(details) {
-    const summaryKeys = new Set(["name", "resourceName", "fileName", "folderName", "newName"]);
+    const summaryKeys = new Set(["name", "resourceName", "fileName", "folderName", "newName", "username"]);
     return detailEntries(details).some(([key]) => !summaryKeys.has(key));
 }
 
@@ -238,6 +238,7 @@ export default function AdminLogs({ onLogout, sidebarOpen, onToggleSidebar }) {
                 logs: Array.isArray(data.logs)
                     ? data.logs.map((log) => ({
                         ...log,
+                        performedBy: log.username || "System",
                         details: parseExportDetails(log.details),
                     }))
                     : [],
@@ -309,7 +310,7 @@ export default function AdminLogs({ onLogout, sidebarOpen, onToggleSidebar }) {
                                     <path d="M4 5h16l-6.5 7.2V19l-3 1v-7.8L4 5Z" />
                                 </svg>
                             </span>
-                            <MultiFilter label="Users" options={userOptions} selected={selectedUsers} onToggle={(value) => toggleSelection(setSelectedUsers, value)} onClear={() => { setSelectedUsers([]); setPage(1); }} searchable />
+                            <MultiFilter label="Performed by" options={userOptions} selected={selectedUsers} onToggle={(value) => toggleSelection(setSelectedUsers, value)} onClear={() => { setSelectedUsers([]); setPage(1); }} searchable />
                             <MultiFilter label="Actions" options={actionOptions} selected={selectedActions} onToggle={(value) => toggleSelection(setSelectedActions, value)} onClear={() => { setSelectedActions([]); setPage(1); }} searchable />
                             <label className="admin-time-filter"><span>From</span><input type="datetime-local" value={fromTime} max={toTime || undefined} onChange={(event) => { setFromTime(event.target.value); setPage(1); }} /></label>
                             <label className="admin-time-filter"><span>To</span><input type="datetime-local" value={toTime} min={fromTime || undefined} onChange={(event) => { setToTime(event.target.value); setPage(1); }} /></label>
@@ -324,7 +325,7 @@ export default function AdminLogs({ onLogout, sidebarOpen, onToggleSidebar }) {
                     <div className="admin-users-table-wrap">
                         <table className="admin-users-table admin-logs-table">
                             <thead>
-                                <tr><th>Time</th><th>User</th><th>Action</th><th>Entity</th><th>Details</th></tr>
+                                <tr><th>Time</th><th>Performed by</th><th>Action</th><th>Target</th><th>Details</th></tr>
                             </thead>
                             <tbody>
                                 {logs.map((log) => {
@@ -352,6 +353,7 @@ export default function AdminLogs({ onLogout, sidebarOpen, onToggleSidebar }) {
                                                 <tr className="admin-log-expanded-row">
                                                     <td colSpan="5">
                                                         <dl className="admin-log-detail-grid">
+                                                            <div><dt>Performed by</dt><dd>{log.username || "System"}</dd></div>
                                                             {detailEntries(log.details).map(([key, value]) => (
                                                                 <div key={key}><dt>{formatDetailLabel(key)}</dt><dd>{formatDetailValue(value)}</dd></div>
                                                             ))}

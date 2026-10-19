@@ -11,4 +11,5 @@ public interface WebAuthnCeremonyRepository extends JpaRepository<WebAuthnCeremo
     Optional<Long> findOwnerId(@Param("id") UUID id);
     // All writes are serialized by the owning User's pessimistic lock.
     void deleteAllByUserIdAndKind(Long userId, WebAuthnCeremony.Kind kind);
+    void deleteAllByUserId(Long userId);
 }
