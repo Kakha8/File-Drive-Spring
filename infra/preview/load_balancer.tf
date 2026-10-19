@@ -30,7 +30,7 @@ resource "aws_lb_target_group" "api" {
 
   health_check {
     enabled = true
-    path    = "/api/auth/me"
+    path    = "/actuator/health/readiness"
     matcher = "200"
   }
 }

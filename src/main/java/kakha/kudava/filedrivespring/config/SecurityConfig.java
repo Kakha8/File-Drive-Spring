@@ -87,6 +87,11 @@ public class SecurityConfig {
                         ).permitAll()
 
                         .requestMatchers(
+                                "/actuator/health",
+                                "/actuator/health/**"
+                        ).permitAll()
+
+                        .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/complete-temporary-password",
                                 "/api/auth/webauthn/options",

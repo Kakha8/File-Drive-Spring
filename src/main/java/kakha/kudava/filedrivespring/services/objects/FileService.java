@@ -6,6 +6,7 @@ import kakha.kudava.filedrivespring.model.FileMetaData;
 import kakha.kudava.filedrivespring.repository.FileMetaDataRepository;
 import kakha.kudava.filedrivespring.services.UploadCancellationService;
 import kakha.kudava.filedrivespring.services.ResourceAccessService;
+import kakha.kudava.filedrivespring.services.UploadPipelineMonitor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -18,12 +19,14 @@ public class FileService {
     private final FileMetaDataRepository fileMetaDataRepository;
     private final UploadCancellationService uploadCancellationService;
     private final ResourceAccessService access;
+    private final UploadPipelineMonitor uploadPipeline;
 
-    public FileService(ObjectStorageService objectStorageService, FileMetaDataRepository fileMetaDataRepository, UploadCancellationService uploadCancellationService, ResourceAccessService access) {
+    public FileService(ObjectStorageService objectStorageService, FileMetaDataRepository fileMetaDataRepository, UploadCancellationService uploadCancellationService, ResourceAccessService access, UploadPipelineMonitor uploadPipeline) {
         this.objectStorageService = objectStorageService;
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.uploadCancellationService = uploadCancellationService;
         this.access = access;
+        this.uploadPipeline = uploadPipeline;
     }
 
     public java.util.List<kakha.kudava.filedrivespring.dto.FileItemDTO> recent(int limit) {
@@ -55,7 +58,14 @@ public class FileService {
 
             throwIfUploadCanceled(uploadId);
 
+            uploadPipeline.stage(uploadId, UploadPipelineMonitor.Stage.COMPLETED);
             return mapToDto(entity);
+        } catch (UploadCanceledException exception) {
+            uploadPipeline.stage(uploadId, UploadPipelineMonitor.Stage.CANCELED);
+            throw exception;
+        } catch (Exception exception) {
+            uploadPipeline.stage(uploadId, UploadPipelineMonitor.Stage.FAILED);
+            throw exception;
         } finally {
             uploadCancellationService.clear(uploadId);
         }

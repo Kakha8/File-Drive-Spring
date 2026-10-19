@@ -61,6 +61,7 @@ public class ObjectStorageService {
     private final NotificationService notificationService;
     private final StorageQuotaService storageQuotaService;
     private final TrafficSamplingService trafficSamplingService;
+    private final UploadPipelineMonitor uploadPipeline;
 
 
     public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
@@ -71,7 +72,7 @@ public class ObjectStorageService {
                                 RootFolderService rootFolderService, UploadCancellationService uploadCancellationService,
                                 @Value("${s3.trash-bucket}") String trashBucket, ResourceAccessService access,
                                 NotificationService notificationService, StorageQuotaService storageQuotaService,
-                                TrafficSamplingService trafficSamplingService) {
+                                TrafficSamplingService trafficSamplingService, UploadPipelineMonitor uploadPipeline) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
@@ -90,6 +91,7 @@ public class ObjectStorageService {
         this.notificationService = notificationService;
         this.storageQuotaService = storageQuotaService;
         this.trafficSamplingService = trafficSamplingService;
+        this.uploadPipeline = uploadPipeline;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId, String uploadId) throws Exception {
@@ -135,6 +137,7 @@ public class ObjectStorageService {
 
             throwIfUploadCanceled(uploadId);
 
+            uploadPipeline.stage(uploadId, UploadPipelineMonitor.Stage.SCANNING);
             ClamAvScannerService.ScanResult scanResult = clamAvScannerService.scan(tempFile);
 
             throwIfUploadCanceled(uploadId);
@@ -176,6 +179,7 @@ public class ObjectStorageService {
                 details.put("checksum", quarantinedFile.getChecksum());
                 details.put("user_id", quarantinedFile.getUser().getId());
                 if (uploadId != null && !uploadId.isBlank()) {
+                    uploadPipeline.stage(uploadId, UploadPipelineMonitor.Stage.QUARANTINED);
                     trafficSamplingService.completeUpload(user, uploadId, Files.size(tempFile), "MALWARE");
                     details.put("trafficSampled", true);
                     details.put("transferId", uploadId);
@@ -201,6 +205,7 @@ public class ObjectStorageService {
             }
 
             throwIfUploadCanceled(uploadId);
+            uploadPipeline.stage(uploadId, UploadPipelineMonitor.Stage.STORING);
 
             try (InputStream in = Files.newInputStream(tempFile);
                  DigestInputStream dis = new DigestInputStream(in, md)) {

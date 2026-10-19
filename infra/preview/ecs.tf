@@ -45,6 +45,20 @@ resource "aws_iam_role" "api_task" {
   assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
 }
 
+resource "aws_iam_role_policy" "api_task_health" {
+  name = "read-preview-service-health"
+  role = aws_iam_role.api_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ecs:DescribeServices"]
+      Resource = "*"
+    }]
+  })
+}
+
 resource "aws_ecs_cluster" "preview" {
   name = "file-drive-preview"
 }
@@ -105,7 +119,10 @@ resource "aws_ecs_task_definition" "api" {
         { name = "S3_LOCKBOX_BUCKET", value = aws_s3_bucket.storage["lockbox"].bucket },
         { name = "S3_QUARANTINE_BUCKET", value = aws_s3_bucket.storage["quarantine"].bucket },
         { name = "S3_TRASH_BUCKET", value = aws_s3_bucket.storage["trash"].bucket },
-        { name = "STORAGE_QUOTA_LIMIT_BYTES", value = "21474836480" }
+        { name = "STORAGE_QUOTA_LIMIT_BYTES", value = "21474836480" },
+        { name = "ECS_CLUSTER_NAME", value = aws_ecs_cluster.preview.name },
+        { name = "ECS_SERVICE_NAME", value = "file-drive-preview-api" },
+        { name = "AWS_REGION", value = "eu-central-1" }
       ]
       logConfiguration = {
         logDriver = "awslogs"
