@@ -25,7 +25,12 @@ public class AdminStorageController {
                         usage.usedBytes(),
                         usage.limitBytes(),
                         usage.availableBytes(),
-                        usage.usedPercentage()
+                        usage.usedPercentage(),
+                        usage.objectCount(),
+                        new StorageCategoryResponse(usage.files().bytes(), usage.files().count()),
+                        new StorageCategoryResponse(usage.trash().bytes(), usage.trash().count()),
+                        new StorageCategoryResponse(usage.quarantine().bytes(), usage.quarantine().count()),
+                        new StorageCategoryResponse(usage.lockbox().bytes(), usage.lockbox().count())
                 ));
     }
 
@@ -33,7 +38,14 @@ public class AdminStorageController {
             long usedBytes,
             long limitBytes,
             long availableBytes,
-            double usedPercentage
+            double usedPercentage,
+            long objectCount,
+            StorageCategoryResponse files,
+            StorageCategoryResponse trash,
+            StorageCategoryResponse quarantine,
+            StorageCategoryResponse lockbox
     ) {
     }
+
+    public record StorageCategoryResponse(long bytes, long count) {}
 }

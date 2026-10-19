@@ -27,6 +27,28 @@ function formatCompactCount(value) {
     }).format(value);
 }
 
+const STORAGE_CATEGORIES = [
+    ["files", "Files"],
+    ["trash", "Trash"],
+    ["quarantine", "Quarantine"],
+    ["lockbox", "Lockbox"],
+];
+
+function StorageBreakdown({ storage }) {
+    const usedBytes = Math.max(0, Number(storage?.usedBytes) || 0);
+    return <>
+        <div className="admin-storage-breakdown-bar" aria-label="Storage category breakdown">
+            {STORAGE_CATEGORIES.map(([key, label]) => {
+                const bytes = Math.max(0, Number(storage?.[key]?.bytes) || 0);
+                return bytes > 0 && <span key={key} className={`category-${key}`} style={{ width: `${(bytes / Math.max(usedBytes, 1)) * 100}%` }} title={`${label}: ${formatBytes(bytes)}`} />;
+            })}
+        </div>
+        <div className="admin-storage-breakdown-list">
+            {STORAGE_CATEGORIES.map(([key, label]) => <span key={key}><i className={`category-${key}`} aria-hidden="true" /><b>{label}</b><small>{storage ? formatBytes(Number(storage[key]?.bytes) || 0) : "—"}</small></span>)}
+        </div>
+    </>;
+}
+
 function TrafficChart({ traffic }) {
     const points = Array.isArray(traffic?.points) ? traffic.points : [];
     const width = 420;
@@ -244,27 +266,25 @@ export default function AdminDashboard({
                     <div className="admin-dashboard-charts">
                         <button
                             type="button"
-                            className="admin-chart-card"
+                            className="admin-chart-card admin-storage-dashboard-card"
                             onClick={() => navigate("/admin/storage")}
                         >
                             <span className="admin-chart-heading"><strong><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" /></svg>Storage</strong><span aria-hidden="true">→</span></span>
-                            <div className="admin-storage-gauge" role="img" aria-label={storage ? `${storage.usedPercentage.toFixed(1)} percent of storage used` : "Storage usage unavailable"}>
-                                <svg viewBox="0 0 180 180" aria-hidden="true">
-                                    <circle className="admin-storage-gauge-track" pathLength="100" cx="90" cy="90" r="68" />
-                                    {storagePercentage >= 0.05 && (
-                                        <circle
-                                            className="admin-storage-gauge-value"
-                                            pathLength="100"
-                                            cx="90"
-                                            cy="90"
-                                            r="68"
-                                            style={{ strokeDasharray: `${storagePercentage * 0.75} 100` }}
-                                        />
-                                    )}
-                                </svg>
-                                <strong>{storage ? `${storage.usedPercentage.toFixed(1)}%` : "—"}</strong>
+                            <div className="admin-storage-overview">
+                                <div className="admin-storage-gauge" role="img" aria-label={storage ? `${storage.usedPercentage.toFixed(1)} percent of storage used` : "Storage usage unavailable"}>
+                                    <svg viewBox="0 0 180 180" aria-hidden="true">
+                                        <circle className="admin-storage-gauge-track" pathLength="100" cx="90" cy="90" r="68" />
+                                        {storagePercentage >= 0.05 && <circle className="admin-storage-gauge-value" pathLength="100" cx="90" cy="90" r="68" style={{ strokeDasharray: `${storagePercentage * 0.75} 100` }} />}
+                                    </svg>
+                                    <strong>{storage ? `${storage.usedPercentage.toFixed(1)}%` : "—"}</strong>
+                                </div>
+                                <div className="admin-storage-overview-copy">
+                                    <span><strong>{storage ? formatBytes(storage.usedBytes) : "—"}</strong><small>of {storage ? formatBytes(storage.limitBytes) : "—"} used</small></span>
+                                    <span><strong>{storage ? formatBytes(storage.availableBytes) : "—"}</strong><small>available</small></span>
+                                </div>
                             </div>
-                            <small>{storage ? `${formatBytes(storage.usedBytes)} of ${formatBytes(storage.limitBytes)} used` : "Storage usage unavailable"}</small>
+                            <StorageBreakdown storage={storage} />
+                            <span className="admin-storage-footer"><small>{storage ? `${Number(storage.objectCount).toLocaleString()} ${Number(storage.objectCount) === 1 ? "object" : "objects"}` : "Loading storage…"}</small><small>{storage && storage.usedPercentage >= 85 ? "Capacity warning" : "Across all storage areas"}</small></span>
                         </button>
 
                         <HealthCard health={health} onOpen={() => navigate("/admin/health")} />

@@ -14,6 +14,9 @@ public interface QuarantinedFilesRepository extends JpaRepository<QuarantinedFil
     @Query("select coalesce(sum(q.size), 0) from QuarantinedFiles q where q.deleted = false")
     long sumQuotaBytes();
 
+    @Query("select count(q) from QuarantinedFiles q where q.deleted = false")
+    long countQuotaFiles();
+
     List<QuarantinedFiles> findAll();
     QuarantinedFiles findQuarantinedFileById(Long id);
     List<QuarantinedFiles> findByCreatedAtBeforeAndDeletedFalse(Instant cutoff);

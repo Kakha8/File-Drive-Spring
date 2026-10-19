@@ -85,11 +85,15 @@ public class StorageQuotaService {
 
     public Usage usage() {
         return transaction.execute(status -> {
+            Category filesUsage = new Category(files.sumActiveDriveBytes(), files.countActiveDriveFiles());
+            Category trashUsage = new Category(files.sumTrashBytes(), files.countTrashFiles());
+            Category quarantineUsage = new Category(quarantine.sumQuotaBytes(), quarantine.countQuotaFiles());
+            Category lockboxUsage = new Category(lockboxRevisions.sumQuotaBytes(), lockboxRevisions.countQuotaRevisions());
             long used = Math.addExact(
-                    Math.addExact(files.sumQuotaBytes(), quarantine.sumQuotaBytes()),
-                    lockboxRevisions.sumQuotaBytes()
+                    Math.addExact(filesUsage.bytes(), trashUsage.bytes()),
+                    Math.addExact(quarantineUsage.bytes(), lockboxUsage.bytes())
             );
-            return new Usage(used, limitBytes);
+            return new Usage(used, limitBytes, filesUsage, trashUsage, quarantineUsage, lockboxUsage);
         });
     }
 
@@ -137,13 +141,21 @@ public class StorageQuotaService {
         }
     }
 
-    public record Usage(long usedBytes, long limitBytes) {
+    public record Category(long bytes, long count) {}
+
+    public record Usage(long usedBytes, long limitBytes, Category files, Category trash,
+                        Category quarantine, Category lockbox) {
         public long availableBytes() {
             return Math.max(0L, limitBytes - usedBytes);
         }
 
         public double usedPercentage() {
             return Math.min(100.0, usedBytes * 100.0 / limitBytes);
+        }
+
+        public long objectCount() {
+            return Math.addExact(Math.addExact(files.count(), trash.count()),
+                    Math.addExact(quarantine.count(), lockbox.count()));
         }
     }
 }

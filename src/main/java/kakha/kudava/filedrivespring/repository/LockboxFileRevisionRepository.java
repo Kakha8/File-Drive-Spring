@@ -6,6 +6,8 @@ import java.util.List; import java.util.Optional;
 public interface LockboxFileRevisionRepository extends JpaRepository<LockboxFileRevision,Long>{
     @Query("select coalesce(sum(coalesce(r.storedSize, r.containerSize)), 0) from LockboxFileRevision r")
     long sumQuotaBytes();
+    @Query("select count(r) from LockboxFileRevision r")
+    long countQuotaRevisions();
     Optional<LockboxFileRevision> findByLockboxFileIdAndRevision(Long fileId,long revision);
     List<LockboxFileRevision> findAllByLockboxFileIdOrderByRevisionDesc(Long fileId);
     boolean existsByLockboxFileIdAndRevision(Long fileId,long revision);
