@@ -122,6 +122,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "STORAGE_QUOTA_LIMIT_BYTES", value = "21474836480" },
         { name = "ECS_CLUSTER_NAME", value = aws_ecs_cluster.preview.name },
         { name = "ECS_SERVICE_NAME", value = "file-drive-preview-api" },
+        { name = "ECS_WEB_SERVICE_NAME", value = "file-drive-preview-web" },
         { name = "AWS_REGION", value = "eu-central-1" }
       ]
       logConfiguration = {

@@ -24,6 +24,7 @@ import AdminUsers from "./pages/AdminUsers";
 import AdminLogs from "./pages/AdminLogs";
 import AdminQuarantine from "./pages/AdminQuarantine";
 import AdminTraffic from "./pages/AdminTraffic";
+import AdminHealth from "./pages/AdminHealth";
 import AdminSectionPlaceholder from "./pages/AdminSectionPlaceholder";
 import { UploadProvider } from "./components/UploadManager";
 import "./App.css";
@@ -296,6 +297,11 @@ function App() {
                 <Route
                     path="/admin/traffic"
                     element={loggedIn && hasRole("ADMIN") ? <AdminTraffic onLogout={handleLogout} sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} /> : <Navigate to={loggedIn ? "/main" : "/login"} replace />}
+                />
+
+                <Route
+                    path="/admin/health"
+                    element={loggedIn && hasRole("ADMIN") ? <AdminHealth onLogout={handleLogout} sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} /> : <Navigate to={loggedIn ? "/main" : "/login"} replace />}
                 />
 
                 {[{ path: "/admin/storage", title: "Storage", description: "Storage history and category breakdowns will appear here." }].map((section) => (

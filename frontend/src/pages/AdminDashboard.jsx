@@ -2,7 +2,7 @@ import DriveSidebar from "../components/DriveSidebar";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getAdminUsers } from "../api/users";
-import { getAdminQuarantine, getAdminStorageUsage, getAdminTraffic } from "../api/admin";
+import { getAdminHealth, getAdminQuarantine, getAdminStorageUsage, getAdminTraffic } from "../api/admin";
 import NotificationMenu from "../components/NotificationMenu";
 import UserMenu from "../components/UserMenu";
 
@@ -61,6 +61,62 @@ function TrafficChart({ traffic }) {
     </>;
 }
 
+function displayHealthStatus(status) {
+    if (status === "CHECKING") return "Checking…";
+    if (status === "HEALTHY") return "Healthy";
+    if (status === "DEGRADED") return "Degraded";
+    if (status === "CRITICAL") return "Critical";
+    return "Unavailable";
+}
+
+function componentStatus(health, name) {
+    return String(health?.checks?.[name]?.status || "UNKNOWN").toLowerCase();
+}
+
+function formatLatency(value) {
+    const latency = Number(value);
+    if (!Number.isFinite(latency)) return "—";
+    if (latency < 1) return "<1 ms";
+    return `${Math.round(latency).toLocaleString()} ms`;
+}
+
+function HealthCard({ health, onOpen }) {
+    const loading = health === undefined;
+    const status = loading ? "CHECKING" : health?.status || "UNKNOWN";
+    const statusClass = status.toLowerCase();
+    const ecsDetails = health?.checks?.ecs?.details;
+    const p95 = health?.checks?.http?.details?.p95Ms;
+    const activeUploads = Number(health?.checks?.uploadPipeline?.details?.active) || 0;
+    const stuckUploads = Number(health?.checks?.uploadPipeline?.details?.stuck) || 0;
+    const checkLabel = health
+        ? `${health.passingChecks}/${health.totalChecks} checks passing`
+        : loading ? "Running health checks…" : "Health data unavailable";
+
+    return (
+        <button type="button" className={`admin-chart-card admin-health-card status-${statusClass}`} aria-label={`Open system health details. Current status: ${displayHealthStatus(status)}`} onClick={onOpen}>
+            <span className="admin-chart-heading"><strong><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12h4l2.2-5 4.2 10 2.2-5H21" /><path d="M20 6.5A9 9 0 1 0 21 12" /></svg>System health</strong><span className="admin-health-live"><i aria-hidden="true" />Live</span></span>
+            <div className="admin-health-overview">
+                <div className="admin-health-ring" aria-hidden="true">
+                    <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" /><circle className="admin-health-ring-value" cx="50" cy="50" r="40" pathLength="100" style={{ strokeDasharray: loading ? "22 78" : `${health ? (health.passingChecks / Math.max(health.totalChecks, 1)) * 100 : 0} 100` }} /></svg>
+                    <strong>{displayHealthStatus(status)}</strong>
+                </div>
+                <div className="admin-health-summary">
+                    <strong>{checkLabel}</strong>
+                    <span><b>p95 latency</b>{formatLatency(p95)}</span>
+                    <span><b>ECS tasks</b>{ecsDetails ? `API ${ecsDetails.backendRunningTasks ?? "—"}/${ecsDetails.backendDesiredTasks ?? "—"} · Web ${ecsDetails.frontendRunningTasks ?? "—"}/${ecsDetails.frontendDesiredTasks ?? "—"}` : "—"}</span>
+                    {(activeUploads > 0 || stuckUploads > 0) && <span className={stuckUploads > 0 ? "admin-health-warning" : ""}><b>Uploads</b>{stuckUploads > 0 ? `${stuckUploads} stuck` : `${activeUploads} active`}</span>}
+                </div>
+            </div>
+            <div className="admin-health-components">
+                {[['api', 'API'], ['database', 'Database'], ['clamAv', 'ClamAV'], ['storage', 'Storage']].map(([key, label]) => (
+                    <span key={key}><i className={`status-${componentStatus(health, key)}`} aria-hidden="true" />{label}</span>
+                ))}
+            </div>
+            <small>{health?.checkedAt ? `Checked ${new Date(health.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : loading ? "Fetching latest health report" : "Unable to reach health checks"}</small>
+        </button>
+    );
+}
+
 export default function AdminDashboard({
     onLogout,
     sidebarOpen,
@@ -70,6 +126,7 @@ export default function AdminDashboard({
     const [userCount, setUserCount] = useState(null);
     const [quarantineCount, setQuarantineCount] = useState(null);
     const [storage, setStorage] = useState(null);
+    const [health, setHealth] = useState(undefined);
     const [traffic, setTraffic] = useState(null);
     const storagePercentage = Math.max(0, Math.min(100, storage?.usedPercentage ?? 0));
 
@@ -102,6 +159,35 @@ export default function AdminDashboard({
 
         return () => {
             cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        let timer;
+
+        const loadHealth = () => getAdminHealth()
+            .then((result) => {
+                if (!cancelled) setHealth(result);
+            })
+            .catch(() => {
+                if (!cancelled) setHealth(null);
+            });
+
+        loadHealth();
+        timer = window.setInterval(() => {
+            if (!document.hidden) loadHealth();
+        }, 30_000);
+
+        const refreshWhenVisible = () => {
+            if (!document.hidden) loadHealth();
+        };
+        document.addEventListener("visibilitychange", refreshWhenVisible);
+
+        return () => {
+            cancelled = true;
+            window.clearInterval(timer);
+            document.removeEventListener("visibilitychange", refreshWhenVisible);
         };
     }, []);
 
@@ -180,6 +266,8 @@ export default function AdminDashboard({
                             </div>
                             <small>{storage ? `${formatBytes(storage.usedBytes)} of ${formatBytes(storage.limitBytes)} used` : "Storage usage unavailable"}</small>
                         </button>
+
+                        <HealthCard health={health} onOpen={() => navigate("/admin/health")} />
 
                         <button type="button" className="admin-chart-card admin-traffic-card" onClick={() => navigate("/admin/traffic")}>
                             <span className="admin-chart-heading"><strong><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 17h3l3-7 4 10 3-7h5" /><path d="M18 6h3v3" /><path d="m21 6-5 5" /></svg>Traffic</strong><span aria-hidden="true">→</span></span>

@@ -53,8 +53,14 @@ public class AdminHealthController {
 
         EcsServiceHealth.Result ecsResult = ecs.check();
         Map<String, Object> ecsDetails = new LinkedHashMap<>();
-        ecsDetails.put("runningTasks", ecsResult.running());
-        ecsDetails.put("desiredTasks", ecsResult.desired());
+        ecsDetails.put("runningTasks", ecsResult.backend().running() + ecsResult.frontend().running());
+        ecsDetails.put("desiredTasks", ecsResult.backend().desired() + ecsResult.frontend().desired());
+        ecsDetails.put("backendRunningTasks", ecsResult.backend().running());
+        ecsDetails.put("backendDesiredTasks", ecsResult.backend().desired());
+        ecsDetails.put("frontendRunningTasks", ecsResult.frontend().running());
+        ecsDetails.put("frontendDesiredTasks", ecsResult.frontend().desired());
+        ecsDetails.put("backendContainers", java.util.List.of("API", "ClamAV"));
+        ecsDetails.put("frontendContainers", java.util.List.of("Web"));
         if (ecsResult.message() != null) ecsDetails.put("message", ecsResult.message());
         checks.put("ecs", new Component(ecsResult.status(), ecsDetails));
 

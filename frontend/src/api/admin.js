@@ -8,6 +8,14 @@ export async function getAdminStorageUsage() {
     return response.json();
 }
 
+export async function getAdminHealth() {
+    const response = await apiFetch("/api/admin/health");
+    if (!response.ok) {
+        throw new Error("Failed to load system health");
+    }
+    return response.json();
+}
+
 export async function getAdminTraffic({ users = [], directions = [], types = [], from = "", to = "" } = {}) {
     const params = new URLSearchParams();
     users.forEach((username) => params.append("users", username));
