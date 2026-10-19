@@ -23,6 +23,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import AdminUsers from "./pages/AdminUsers";
 import AdminLogs from "./pages/AdminLogs";
 import AdminQuarantine from "./pages/AdminQuarantine";
+import AdminTraffic from "./pages/AdminTraffic";
 import AdminSectionPlaceholder from "./pages/AdminSectionPlaceholder";
 import { UploadProvider } from "./components/UploadManager";
 import "./App.css";
@@ -292,7 +293,12 @@ function App() {
                     element={loggedIn && hasRole("ADMIN") ? <AdminQuarantine onLogout={handleLogout} sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} /> : <Navigate to={loggedIn ? "/main" : "/login"} replace />}
                 />
 
-                {[{ path: "/admin/storage", title: "Storage", description: "Storage history and category breakdowns will appear here." }, { path: "/admin/traffic", title: "Traffic", description: "Upload, download, and request traffic will appear here." }].map((section) => (
+                <Route
+                    path="/admin/traffic"
+                    element={loggedIn && hasRole("ADMIN") ? <AdminTraffic onLogout={handleLogout} sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} /> : <Navigate to={loggedIn ? "/main" : "/login"} replace />}
+                />
+
+                {[{ path: "/admin/storage", title: "Storage", description: "Storage history and category breakdowns will appear here." }].map((section) => (
                     <Route key={section.path} path={section.path} element={loggedIn && hasRole("ADMIN") ? <AdminSectionPlaceholder title={section.title} description={section.description} onLogout={handleLogout} sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} /> : <Navigate to={loggedIn ? "/main" : "/login"} replace />} />
                 ))}
 

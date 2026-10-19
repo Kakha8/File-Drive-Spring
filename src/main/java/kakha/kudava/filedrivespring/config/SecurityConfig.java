@@ -6,6 +6,7 @@ import kakha.kudava.filedrivespring.services.objects.RootFolderService;
 import kakha.kudava.filedrivespring.services.users.DbUserDetailsService;
 import kakha.kudava.filedrivespring.services.jwt.JwtFilter;
 import kakha.kudava.filedrivespring.services.jwt.JwtService;
+import kakha.kudava.filedrivespring.services.DownloadTicketService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
@@ -40,10 +41,16 @@ public class SecurityConfig {
     private List<String> allowedOrigins;
 
     @Bean
+    public DownloadTicketService downloadTicketService() {
+        return new DownloadTicketService();
+    }
+
+    @Bean
     public SecurityFilterChain apiSecurityFilterChain(
             HttpSecurity http,
             JwtService jwtService,
-            DbUserDetailsService userDetailService
+            DbUserDetailsService userDetailService,
+            DownloadTicketService downloadTickets
     ) throws Exception {
 
         http
@@ -134,7 +141,8 @@ public class SecurityConfig {
         http.addFilterBefore(
                 new JwtFilter(
                         jwtService,
-                        userDetailService
+                        userDetailService,
+                        downloadTickets
                 ),
                 UsernamePasswordAuthenticationFilter.class
         );

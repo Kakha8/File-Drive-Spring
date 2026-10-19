@@ -8,8 +8,14 @@ export async function getAdminStorageUsage() {
     return response.json();
 }
 
-export async function getAdminTraffic() {
-    const response = await apiFetch("/api/admin/traffic");
+export async function getAdminTraffic({ users = [], directions = [], types = [], from = "", to = "" } = {}) {
+    const params = new URLSearchParams();
+    users.forEach((username) => params.append("users", username));
+    directions.forEach((direction) => params.append("directions", direction));
+    types.forEach((type) => params.append("types", type));
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const response = await apiFetch(`/api/admin/traffic?${params.toString()}`);
     if (!response.ok) {
         throw new Error("Failed to load traffic statistics");
     }

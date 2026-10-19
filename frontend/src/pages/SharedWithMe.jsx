@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { hasRole, logout as apiLogout } from "../api/auth";
-import { getFileBlob, getFolderZipBlob } from "../api/drive";
+import { createBrowserDownloadUrl, startBrowserDownload } from "../api/drive";
 import { getSharedWithMe } from "../api/sharing";
 import TextEditorModal from "../components/TextEditorModal";
 import NotificationMenu from "../components/NotificationMenu";
@@ -451,13 +451,11 @@ export default function SharedWithMe({ onLogout }) {
             setOpenMenuId(null);
 
             if (item.resourceType === "FOLDER") {
-                const blob = await getFolderZipBlob(item.rawId);
-                downloadBlob(blob, `${item.name || "folder"}.zip`);
+                startBrowserDownload(await createBrowserDownloadUrl("FOLDER", [], [item.rawId]));
                 return;
             }
 
-            const blob = await getFileBlob(item.rawId);
-            downloadBlob(blob, item.name || "download");
+            startBrowserDownload(await createBrowserDownloadUrl("FILE", [item.rawId], []));
         } catch (err) {
             setError(err.message || "Failed to download shared item");
         }

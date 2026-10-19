@@ -16,6 +16,7 @@ import kakha.kudava.filedrivespring.repository.UserRepository;
 import kakha.kudava.filedrivespring.services.LogsService;
 import kakha.kudava.filedrivespring.services.ResourceAccessService;
 import kakha.kudava.filedrivespring.services.SharingService;
+import kakha.kudava.filedrivespring.services.TrafficSamplingService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
@@ -47,9 +48,11 @@ public class FolderService {
     private final ObjectMapper objectMapper;
     private final LogsService logsService;
     private final SharingService sharingService;
+    private final TrafficSamplingService trafficSamplingService;
     public FolderService(FolderRepository folderRepository, ObjectStorageService objectStorageService, UserRepository userRepository, RootFolderService rootFolderService, ResourceAccessService access,
                          MinioClient minioClient,
-                         FileMetaDataRepository fileMetaDataRepository, ObjectMapper objectMapper, LogsService logsService, SharingService sharingService) {
+                         FileMetaDataRepository fileMetaDataRepository, ObjectMapper objectMapper, LogsService logsService,
+                         SharingService sharingService, TrafficSamplingService trafficSamplingService) {
         this.folderRepository = folderRepository;
         this.objectStorageService = objectStorageService;
         this.userRepository = userRepository;
@@ -60,6 +63,7 @@ public class FolderService {
         this.objectMapper = objectMapper;
         this.logsService = logsService;
         this.sharingService = sharingService;
+        this.trafficSamplingService = trafficSamplingService;
     }
 
     private User currentUser() {
@@ -325,7 +329,8 @@ public class FolderService {
             User user,
             OutputStream outputStream
     ) throws IOException {
-        CountingOutputStream countingOutputStream = new CountingOutputStream(outputStream);
+        TrafficSamplingService.Tracker traffic = trafficSamplingService.startDownload(user, "ZIP");
+        CountingOutputStream countingOutputStream = new CountingOutputStream(outputStream, traffic);
         Set<String> usedZipNames = new HashSet<>();
 
         try {
@@ -351,6 +356,8 @@ public class FolderService {
             details.put("fileCount", count.fileCount());
             details.put("folderCount", count.folderCount());
             details.put("zipSizeBytes", countingOutputStream.getByteCount());
+            details.put("trafficSampled", true);
+            details.put("transferId", traffic.transferId());
 
             try {
                 logsService.folderDownloadLog(
@@ -538,26 +545,34 @@ public class FolderService {
 
     private static final class CountingOutputStream extends FilterOutputStream {
         private long byteCount;
+        private final TrafficSamplingService.Tracker traffic;
 
-        private CountingOutputStream(OutputStream outputStream) {
+        private CountingOutputStream(OutputStream outputStream, TrafficSamplingService.Tracker traffic) {
             super(outputStream);
+            this.traffic = traffic;
         }
 
         @Override
         public void write(int value) throws IOException {
             out.write(value);
             byteCount++;
+            traffic.record(1);
         }
 
         @Override
         public void write(byte[] bytes, int offset, int length) throws IOException {
             out.write(bytes, offset, length);
             byteCount += length;
+            traffic.record(length);
         }
 
         @Override
         public void close() throws IOException {
-            flush();
+            try {
+                flush();
+            } finally {
+                traffic.close();
+            }
         }
 
         private long getByteCount() {

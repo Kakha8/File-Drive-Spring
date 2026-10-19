@@ -73,6 +73,17 @@ public class LogsService {
         log.info(String.format("Logging the download of %s from %s", fileName, parentId));
     }
 
+    public void downloadLog(User user, String fileName, Long entityId, String entityType, String detailsJson) {
+        ActionLogs actionLogs = new ActionLogs();
+        actionLogs.setAction(ActionType.DOWNLOAD);
+        actionLogs.setEntityId(entityId);
+        actionLogs.setUser(user);
+        actionLogs.setEntityType(EntityType.valueOf(entityType));
+        actionLogs.setDetails(detailsJson);
+        actionLogsRepository.save(actionLogs);
+        log.info("Logging {} downloaded bytes for {}", detailsJson, fileName);
+    }
+
     public void deleteLog(String fileName, Long parentId, String entityType){
         ActionLogs actionLogs = logAction(ActionType.DELETE.name(), parentId,
                 entityType, resourceDetails(fileName, null));

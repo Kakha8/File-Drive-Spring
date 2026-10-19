@@ -27,6 +27,7 @@ function signatureName(response) {
 }
 
 function QuarantineTimeline({ timeline }) {
+    const [hoveredIndex, setHoveredIndex] = useState(null);
     const points = Array.isArray(timeline?.points) ? timeline.points : [];
     const width = 760;
     const height = 190;
@@ -43,19 +44,33 @@ function QuarantineTimeline({ timeline }) {
     const line = coordinates.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
     const area = coordinates.length ? `${line} L${coordinates.at(-1).x.toFixed(1)} ${baseline} L${coordinates[0].x.toFixed(1)} ${baseline} Z` : "";
     const formatRange = (value) => value ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value)) : "—";
+    const hovered = hoveredIndex == null ? null : coordinates[hoveredIndex];
+    const hoverBandWidth = points.length <= 1 ? width : width / (points.length - 1);
+    const tooltipLeft = hoveredIndex == null || points.length <= 1 ? 50 : (hoveredIndex / (points.length - 1)) * 100;
+    const tooltipAlignment = tooltipLeft < 22 ? "start" : tooltipLeft > 78 ? "end" : "center";
 
     return <section className="admin-quarantine-timeline" aria-labelledby="quarantine-timeline-title">
         <div className="admin-quarantine-chart-heading">
             <div><span className="admin-quarantine-chart-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></span><div><h2 id="quarantine-timeline-title">Detections over time</h2><p>Files isolated by ClamAV</p></div></div>
             <strong>{Number(timeline?.totalDetections) || 0}<small> detections</small></strong>
         </div>
-        <div className="admin-quarantine-chart-wrap">
+        <div className="admin-quarantine-chart-wrap" onPointerLeave={() => setHoveredIndex(null)}>
             <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Quarantine detections over time">
                 {[0, 1, 2, 3].map((lineIndex) => <line key={lineIndex} className="admin-quarantine-chart-grid" x1="0" x2={width} y1={top + lineIndex * ((baseline - top) / 3)} y2={top + lineIndex * ((baseline - top) / 3)} />)}
                 {area && <path className="admin-quarantine-chart-area" d={area} />}
                 {line && <path className="admin-quarantine-chart-line" d={line} />}
-                {coordinates.filter((point) => point.count > 0).map((point, index) => <circle key={index} className="admin-quarantine-chart-point" cx={point.x} cy={point.y} r="4"><title>{point.count} detection{point.count === 1 ? "" : "s"} · {formatRange(point.start)}</title></circle>)}
+                {hovered && <line className="admin-quarantine-hover-guide" x1={hovered.x} x2={hovered.x} y1={top} y2={baseline} />}
+                {coordinates.map((point, index) => point.count > 0 && <circle key={point.start || index} className={`admin-quarantine-chart-point ${hoveredIndex === index ? "highlighted" : ""}`} cx={point.x} cy={point.y} r={hoveredIndex === index ? 7 : 4} />)}
+                {coordinates.map((point, index) => {
+                    const x = Math.max(0, point.x - hoverBandWidth / 2);
+                    return <rect key={`hover-${point.start || index}`} className="admin-quarantine-hover-target" x={x} y="0" width={Math.min(hoverBandWidth, width - x)} height={height} onPointerEnter={() => setHoveredIndex(index)} />;
+                })}
             </svg>
+            {hovered && <div className={`admin-quarantine-tooltip ${tooltipAlignment}`} style={{ left: `${tooltipLeft}%` }} role="status">
+                <strong>{formatTimestamp(hovered.start)}</strong>
+                <span><i />Detections <b>{hovered.count.toLocaleString()}</b></span>
+                <small>{hovered.count === 0 ? "No files were quarantined in this interval." : `${hovered.count.toLocaleString()} file${hovered.count === 1 ? " was" : "s were"} isolated by ClamAV.`}</small>
+            </div>}
             <div className="admin-quarantine-chart-axis"><span>{formatRange(points[0]?.start)}</span><span>{formatRange(points.at(-1)?.start)}</span></div>
         </div>
     </section>;

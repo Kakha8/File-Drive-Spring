@@ -13,8 +13,8 @@ import {
     createFolder,
     getFileBlob,
     getFolder,
-    getFolderZipBlob,
-    getMixedZipBlob,
+    createBrowserDownloadUrl,
+    startBrowserDownload,
     getRootFolder,
     renameFile,
     renameFolder,
@@ -992,19 +992,16 @@ function Main({ onLogout }) {
                     .filter((currentItem) => currentItem.type === "folder")
                     .map((currentItem) => currentItem.rawId);
 
-                const blob = await getMixedZipBlob(fileIds, folderIds);
-                downloadBlob(blob, "download.zip");
+                startBrowserDownload(await createBrowserDownloadUrl("ZIP", fileIds, folderIds));
                 return;
             }
 
             if (item.type === "folder") {
-                const blob = await getFolderZipBlob(item.rawId);
-                downloadBlob(blob, `${item.name || "folder"}.zip`);
+                startBrowserDownload(await createBrowserDownloadUrl("FOLDER", [], [item.rawId]));
                 return;
             }
 
-            const blob = await getFileBlob(item.rawId);
-            downloadBlob(blob, item.name || "download");
+            startBrowserDownload(await createBrowserDownloadUrl("FILE", [item.rawId], []));
         } catch (err) {
             setError(err.message || "Failed to download item");
         }

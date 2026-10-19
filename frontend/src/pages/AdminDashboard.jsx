@@ -34,6 +34,8 @@ function TrafficChart({ traffic }) {
     const top = 8;
     const baseline = 96;
     const maxBytes = Math.max(1, ...points.map((point) => Number(point.totalBytes) || 0));
+    const middleLabel = formatBytes(maxBytes / 2);
+    const maximumLabel = formatBytes(maxBytes);
     const coordinates = points.map((point, index) => ({
         x: points.length <= 1 ? width / 2 : index * (width / (points.length - 1)),
         y: baseline - ((Number(point.totalBytes) || 0) / maxBytes) * (baseline - top),
@@ -42,12 +44,19 @@ function TrafficChart({ traffic }) {
     const area = coordinates.length ? `${line} L${coordinates.at(-1).x.toFixed(1)} ${height} L0 ${height} Z` : "";
 
     return <>
-        <svg className="admin-traffic-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${formatBytes(Number(traffic?.totalBytes) || 0)} transferred during the last 24 hours`}>
-            <defs><linearGradient id="traffic-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity="0.28" /><stop offset="100%" stopColor="#3b82f6" stopOpacity="0" /></linearGradient></defs>
-            <path className="admin-traffic-grid" d="M0 96H420M0 52H420M0 8H420" />
-            {area && <path className="admin-traffic-area" d={area} />}
-            {line && <path className="admin-traffic-line" d={line} />}
-        </svg>
+        <div className="admin-traffic-mini-graph">
+            <span className="admin-traffic-mini-y-axis" aria-hidden="true">
+                <small>{maximumLabel}</small>
+                <small>{middleLabel === maximumLabel ? "" : middleLabel}</small>
+                <small>0 B</small>
+            </span>
+            <svg className="admin-traffic-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${formatBytes(Number(traffic?.totalBytes) || 0)} transferred during the last 24 hours; peak bucket ${maximumLabel}`}>
+                <defs><linearGradient id="traffic-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity="0.28" /><stop offset="100%" stopColor="#3b82f6" stopOpacity="0" /></linearGradient></defs>
+                <path className="admin-traffic-grid" d="M0 96H420M0 52H420M0 8H420" />
+                {area && <path className="admin-traffic-area" d={area} />}
+                {line && <path className="admin-traffic-line" d={line} />}
+            </svg>
+        </div>
         <span className="admin-traffic-axis"><small>24h ago</small><small>Now</small></span>
     </>;
 }
@@ -91,7 +100,16 @@ export default function AdminDashboard({
                 if (!cancelled) setQuarantineCount(null);
             });
 
-        getAdminTraffic()
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        let timer;
+
+        const loadTraffic = () => getAdminTraffic()
             .then((result) => {
                 if (!cancelled) setTraffic(result);
             })
@@ -99,8 +117,20 @@ export default function AdminDashboard({
                 if (!cancelled) setTraffic(null);
             });
 
+        loadTraffic();
+        timer = window.setInterval(() => {
+            if (!document.hidden) loadTraffic();
+        }, 5_000);
+
+        const refreshWhenVisible = () => {
+            if (!document.hidden) loadTraffic();
+        };
+        document.addEventListener("visibilitychange", refreshWhenVisible);
+
         return () => {
             cancelled = true;
+            window.clearInterval(timer);
+            document.removeEventListener("visibilitychange", refreshWhenVisible);
         };
     }, []);
 

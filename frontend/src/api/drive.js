@@ -107,6 +107,28 @@ export async function getMixedZipBlob(fileIds, folderIds) {
     return response.blob();
 }
 
+export async function createBrowserDownloadUrl(kind, fileIds = [], folderIds = []) {
+    const response = await apiFetch("/api/download/ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, fileIds, folderIds }),
+    });
+    if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to prepare download");
+    }
+    const { ticket } = await response.json();
+    return `${API_BASE_URL}/api/download/browser?ticket=${encodeURIComponent(ticket)}`;
+}
+
+export function startBrowserDownload(url) {
+    const link = document.createElement("a");
+    link.href = url;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
 export async function cancelUpload(uploadId) {
     const response = await apiFetch(`/api/uploads/${encodeURIComponent(uploadId)}`, {
         method: "DELETE",
@@ -121,6 +143,24 @@ export async function cancelUpload(uploadId) {
 function uploadFileOnce(parentId, file, token, onProgress, signal, uploadId) {
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
+        let lastReportedBytes = 0;
+        let lastReportAt = 0;
+
+        const reportTrafficProgress = (uploadedBytes, force = false) => {
+            const safeBytes = Math.max(0, Math.min(file.size, Math.round(uploadedBytes)));
+            const now = Date.now();
+            if (!force && safeBytes < file.size && now - lastReportAt < 1_000) return;
+            if (safeBytes <= lastReportedBytes) return;
+            lastReportedBytes = safeBytes;
+            lastReportAt = now;
+            apiFetch(`/api/uploads/${encodeURIComponent(uploadId)}/progress`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ uploadedBytes: safeBytes, totalBytes: file.size }),
+            }).catch(() => {});
+        };
 
         xhr.open("POST", `${API_BASE_URL}/api/files`);
         xhr.withCredentials = true;
@@ -138,6 +178,7 @@ function uploadFileOnce(parentId, file, token, onProgress, signal, uploadId) {
 
             const percent = Math.round((event.loaded / event.total) * 100);
             onProgress?.(percent);
+            reportTrafficProgress((event.loaded / event.total) * file.size, percent >= 100);
         };
 
         xhr.onload = () => {
