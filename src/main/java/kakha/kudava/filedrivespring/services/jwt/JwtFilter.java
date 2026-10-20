@@ -10,6 +10,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import kakha.kudava.filedrivespring.services.DownloadTicketService;
 
 import java.io.IOException;
 import java.util.List;
@@ -17,11 +18,13 @@ import java.util.List;
 public class JwtFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
+    private final DownloadTicketService downloadTickets;
 
 
-    public JwtFilter(JwtService jwtService, UserDetailsService userDetailsService) {
+    public JwtFilter(JwtService jwtService, UserDetailsService userDetailsService, DownloadTicketService downloadTickets) {
         this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
+        this.downloadTickets = downloadTickets;
     }
 
 
@@ -33,6 +36,22 @@ public class JwtFilter extends OncePerRequestFilter {
         }
 
         String header = request.getHeader("Authorization");
+        if ((header == null || !header.startsWith("Bearer "))
+                && "/api/download/browser".equals(request.getServletPath())) {
+            var ticket = downloadTickets.peek(request.getParameter("ticket"));
+            if (ticket != null) {
+                var userDetails = userDetailsService.loadUserByUsername(ticket.username());
+                if (!userDetails.isEnabled()) {
+                    SecurityContextHolder.clearContext();
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+                var auth = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                SecurityContextHolder.getContext().setAuthentication(auth);
+            }
+            filterChain.doFilter(request, response);
+            return;
+        }
         if (header == null || !header.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
@@ -45,6 +64,11 @@ public class JwtFilter extends OncePerRequestFilter {
             String username = jws.getPayload().getSubject();
 
             var userDetails = userDetailsService.loadUserByUsername(username);
+            if (!userDetails.isEnabled()) {
+                SecurityContextHolder.clearContext();
+                filterChain.doFilter(request, response);
+                return;
+            }
 
             @SuppressWarnings("unchecked")
             List<?> rolesRaw = jws.getPayload().get("roles", List.class);

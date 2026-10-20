@@ -1,4 +1,6 @@
 package kakha.kudava.filedrivespring.services;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -15,18 +17,23 @@ public class ClamAvScannerService {
     private final String host;
     private final int port;
     private final int timeoutMs;
+    private final MeterRegistry meterRegistry;
 
     public ClamAvScannerService(
             @Value("${clamav.host}") String host,
             @Value("${clamav.port}") int port,
-            @Value("${clamav.timeout-ms}") int timeoutMs
+            @Value("${clamav.timeout-ms}") int timeoutMs,
+            MeterRegistry meterRegistry
     ) {
         this.host = host;
         this.port = port;
         this.timeoutMs = timeoutMs;
+        this.meterRegistry = meterRegistry;
     }
 
     public ScanResult scan(Path file) throws IOException {
+        Timer.Sample timer = Timer.start(meterRegistry);
+        String result = "failure";
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(host, port), timeoutMs);
             socket.setSoTimeout(timeoutMs);
@@ -54,14 +61,40 @@ public class ClamAvScannerService {
             String response = readResponse(socketIn);
 
             if (response.contains("FOUND")) {
+                result = "infected";
                 return ScanResult.infected(response);
             }
 
             if (response.contains("OK")) {
+                result = "clean";
                 return ScanResult.clean(response);
             }
 
             throw new IOException("Unexpected ClamAV response: " + response);
+        } finally {
+            timer.stop(Timer.builder("filedrive.clamav.scan")
+                    .description("ClamAV scan duration")
+                    .tag("result", result)
+                    .publishPercentileHistogram()
+                    .register(meterRegistry));
+        }
+    }
+
+    public ProbeResult probe() throws IOException {
+        long started = System.nanoTime();
+        String pong = command("zPING\0");
+        if (!pong.contains("PONG")) throw new IOException("Unexpected ClamAV ping response");
+        String version = command("zVERSION\0");
+        return new ProbeResult(version, (System.nanoTime() - started) / 1_000_000);
+    }
+
+    private String command(String command) throws IOException {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, port), Math.min(timeoutMs, 5_000));
+            socket.setSoTimeout(Math.min(timeoutMs, 5_000));
+            socket.getOutputStream().write(command.getBytes());
+            socket.getOutputStream().flush();
+            return readResponse(socket.getInputStream());
         }
     }
 
@@ -86,4 +119,5 @@ public class ClamAvScannerService {
             return new ScanResult(false, response);
         }
     }
+    public record ProbeResult(String version, long latencyMs) {}
 }

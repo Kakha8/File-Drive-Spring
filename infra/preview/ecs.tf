@@ -45,6 +45,20 @@ resource "aws_iam_role" "api_task" {
   assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
 }
 
+resource "aws_iam_role_policy" "api_task_health" {
+  name = "read-preview-service-health"
+  role = aws_iam_role.api_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ecs:DescribeServices"]
+      Resource = "*"
+    }]
+  })
+}
+
 resource "aws_ecs_cluster" "preview" {
   name = "file-drive-preview"
 }
@@ -95,16 +109,21 @@ resource "aws_ecs_task_definition" "api" {
         { name = "QUARANTINE_RETENTION_DAYS", value = "30" },
         { name = "CLAMAV_HOST", value = "127.0.0.1" },
         { name = "CLAMAV_PORT", value = "3310" },
-        { name = "CLAMAV_TIMEOUT_MS", value = "120000" },
-        { name = "SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE", value = "500MB" },
-        { name = "SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE", value = "500MB" },
+        { name = "CLAMAV_TIMEOUT_MS", value = "1800000" },
+        { name = "SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE", value = "10GB" },
+        { name = "SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE", value = "10GB" },
         { name = "S3_ENDPOINT", value = "https://s3.eu-central-1.amazonaws.com" },
         { name = "S3_REGION", value = "eu-central-1" },
         { name = "S3_USE_IAM_ROLE", value = "true" },
         { name = "S3_BUCKET", value = aws_s3_bucket.storage["files"].bucket },
         { name = "S3_LOCKBOX_BUCKET", value = aws_s3_bucket.storage["lockbox"].bucket },
         { name = "S3_QUARANTINE_BUCKET", value = aws_s3_bucket.storage["quarantine"].bucket },
-        { name = "S3_TRASH_BUCKET", value = aws_s3_bucket.storage["trash"].bucket }
+        { name = "S3_TRASH_BUCKET", value = aws_s3_bucket.storage["trash"].bucket },
+        { name = "STORAGE_QUOTA_LIMIT_BYTES", value = "21474836480" },
+        { name = "ECS_CLUSTER_NAME", value = aws_ecs_cluster.preview.name },
+        { name = "ECS_SERVICE_NAME", value = "file-drive-preview-api" },
+        { name = "ECS_WEB_SERVICE_NAME", value = "file-drive-preview-web" },
+        { name = "AWS_REGION", value = "eu-central-1" }
       ]
       logConfiguration = {
         logDriver = "awslogs"
@@ -121,9 +140,9 @@ resource "aws_ecs_task_definition" "api" {
       essential = true
       cpu       = 512
       environment = [
-        { name = "CLAMD_CONF_StreamMaxLength", value = "500M" },
-        { name = "CLAMD_CONF_MaxFileSize", value = "500M" },
-        { name = "CLAMD_CONF_MaxScanSize", value = "500M" }
+        { name = "CLAMD_CONF_StreamMaxLength", value = "10G" },
+        { name = "CLAMD_CONF_MaxFileSize", value = "10G" },
+        { name = "CLAMD_CONF_MaxScanSize", value = "10G" }
       ]
       portMappings = [{
         containerPort = 3310
@@ -156,9 +175,9 @@ resource "aws_ecs_service" "api" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = aws_subnet.public[*].id
+    subnets          = aws_subnet.application[*].id
     security_groups  = [aws_security_group.api.id]
-    assign_public_ip = true
+    assign_public_ip = false
   }
 
   load_balancer {
@@ -167,5 +186,10 @@ resource "aws_ecs_service" "api" {
     container_port   = 8080
   }
 
-  depends_on = [aws_lb_listener_rule.api]
+  depends_on = [
+    aws_lb_listener_rule.api,
+    aws_route_table_association.application,
+    aws_vpc_endpoint.interface,
+    aws_vpc_endpoint.s3,
+  ]
 }

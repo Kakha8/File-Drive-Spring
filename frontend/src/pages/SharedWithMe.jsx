@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { logout as apiLogout } from "../api/auth";
-import { getFileBlob, getFolderZipBlob } from "../api/drive";
+import { hasRole, logout as apiLogout } from "../api/auth";
+import { createBrowserDownloadUrl, startBrowserDownload } from "../api/drive";
 import { getSharedWithMe } from "../api/sharing";
 import TextEditorModal from "../components/TextEditorModal";
 import NotificationMenu from "../components/NotificationMenu";
@@ -40,10 +40,13 @@ const Icons = {
             <path d="M14 4h4a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-4" />
         </Icon>
     ),
-    File: ({ className }) => (
+    HardDrive: ({ className }) => (
         <Icon className={className}>
-            <path d="M6 3h8l4 4v14H6z" />
-            <path d="M14 3v5h5" />
+            <rect x="3" y="5" width="18" height="14" rx="3" />
+            <path d="M3 13.5h18" />
+            <path d="M7 16.5h5" />
+            <circle cx="17.5" cy="16.5" r="0.8" fill="currentColor" stroke="none" />
+            <path d="M7 8.5h10" />
         </Icon>
     ),
     Folder: ({ className }) => (
@@ -88,6 +91,19 @@ const Icons = {
             <path d="M3 6h18" />
             <path d="M8 6V4h8v2" />
             <path d="M6 6l1 15h10l1-15" />
+        </Icon>
+    ),
+    File: ({ className }) => (
+        <Icon className={className}>
+            <path d="M6 3h8l4 4v14H6z" />
+            <path d="M14 3v5h5" />
+        </Icon>
+    ),
+    Dashboard: ({ className }) => (
+        <Icon className={className}>
+            <path d="M4 17a8 8 0 1 1 16 0" />
+            <path d="m12 17 4-5" />
+            <circle cx="12" cy="17" r="1" />
         </Icon>
     ),
     Search: ({ className }) => (
@@ -174,7 +190,8 @@ function canEditSharedFile(item) {
 }
 
 const navItems = [
-    { key: "my", label: "My files", icon: Icons.File },
+    { key: "admin", label: "Dashboard", icon: Icons.Dashboard, adminOnly: true },
+    { key: "my", label: "My files", icon: Icons.HardDrive },
     { key: "shared", label: "Shared", icon: Icons.Shared },
     { key: "recent", label: "Recent", icon: Icons.Clock },
     { key: "favorites", label: "Favorites", icon: Icons.Star },
@@ -434,13 +451,11 @@ export default function SharedWithMe({ onLogout }) {
             setOpenMenuId(null);
 
             if (item.resourceType === "FOLDER") {
-                const blob = await getFolderZipBlob(item.rawId);
-                downloadBlob(blob, `${item.name || "folder"}.zip`);
+                startBrowserDownload(await createBrowserDownloadUrl("FOLDER", [], [item.rawId]));
                 return;
             }
 
-            const blob = await getFileBlob(item.rawId);
-            downloadBlob(blob, item.name || "download");
+            startBrowserDownload(await createBrowserDownloadUrl("FILE", [item.rawId], []));
         } catch (err) {
             setError(err.message || "Failed to download shared item");
         }
@@ -506,7 +521,7 @@ export default function SharedWithMe({ onLogout }) {
 
                 <div className="sidebar-scroll">
                     <nav className="sidebar-nav">
-                        {navItems.map((item) => {
+                        {navItems.filter((item) => !item.adminOnly || hasRole("ADMIN")).map((item) => {
                             const NavIcon = item.icon;
 
                             return (
@@ -542,6 +557,11 @@ export default function SharedWithMe({ onLogout }) {
 
                                         if (item.key === "lockbox") {
                                             navigate("/lockbox");
+                                            return;
+                                        }
+
+                                        if (item.key === "admin") {
+                                            navigate("/admin");
                                             return;
                                         }
                                     }}

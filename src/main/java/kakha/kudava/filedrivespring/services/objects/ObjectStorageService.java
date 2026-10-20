@@ -26,6 +26,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.FilterInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,6 +59,9 @@ public class ObjectStorageService {
     private final String trashBucket;
     private final ResourceAccessService access;
     private final NotificationService notificationService;
+    private final StorageQuotaService storageQuotaService;
+    private final TrafficSamplingService trafficSamplingService;
+    private final UploadPipelineMonitor uploadPipeline;
 
 
     public ObjectStorageService(MinioClient minioClient, @Value("${s3.bucket}") String bucket, FileMetaDataRepository fileMetaDataRepository,
@@ -65,7 +70,9 @@ public class ObjectStorageService {
                                 QuarantinedFilesRepository quarantinedFilesRepository, @Value("${s3.quarantine-bucket}") String quarantineBucket,
                                 UserRepository userRepository, QuarantineService quarantineService,
                                 RootFolderService rootFolderService, UploadCancellationService uploadCancellationService,
-                                @Value("${s3.trash-bucket}") String trashBucket, ResourceAccessService access, NotificationService notificationService) {
+                                @Value("${s3.trash-bucket}") String trashBucket, ResourceAccessService access,
+                                NotificationService notificationService, StorageQuotaService storageQuotaService,
+                                TrafficSamplingService trafficSamplingService, UploadPipelineMonitor uploadPipeline) {
         this.minioClient = minioClient;
         this.bucket = bucket;
         this.fileMetaDataRepository = fileMetaDataRepository;
@@ -82,6 +89,9 @@ public class ObjectStorageService {
         this.trashBucket = trashBucket;
         this.access = access;
         this.notificationService = notificationService;
+        this.storageQuotaService = storageQuotaService;
+        this.trafficSamplingService = trafficSamplingService;
+        this.uploadPipeline = uploadPipeline;
     }
 
     public FileMetaData upload(MultipartFile file, Long parentId, String uploadId) throws Exception {
@@ -119,12 +129,15 @@ public class ObjectStorageService {
         Path tempFile = Files.createTempFile("upload-", ".scan");
 
         boolean uploadedToStorage = false;
+        StorageQuotaService.Reservation quotaReservation = null;
 
         try {
             file.transferTo(tempFile);
+            quotaReservation = storageQuotaService.reserve(Files.size(tempFile));
 
             throwIfUploadCanceled(uploadId);
 
+            uploadPipeline.stage(uploadId, UploadPipelineMonitor.Stage.SCANNING);
             ClamAvScannerService.ScanResult scanResult = clamAvScannerService.scan(tempFile);
 
             throwIfUploadCanceled(uploadId);
@@ -165,6 +178,12 @@ public class ObjectStorageService {
                 details.put("size", Files.size(tempFile));
                 details.put("checksum", quarantinedFile.getChecksum());
                 details.put("user_id", quarantinedFile.getUser().getId());
+                if (uploadId != null && !uploadId.isBlank()) {
+                    uploadPipeline.stage(uploadId, UploadPipelineMonitor.Stage.QUARANTINED);
+                    trafficSamplingService.completeUpload(user, uploadId, Files.size(tempFile), "MALWARE");
+                    details.put("trafficSampled", true);
+                    details.put("transferId", uploadId);
+                }
 
                 String detailsJson = objectMapper.writeValueAsString(details);
 
@@ -186,6 +205,7 @@ public class ObjectStorageService {
             }
 
             throwIfUploadCanceled(uploadId);
+            uploadPipeline.stage(uploadId, UploadPipelineMonitor.Stage.STORING);
 
             try (InputStream in = Files.newInputStream(tempFile);
                  DigestInputStream dis = new DigestInputStream(in, md)) {
@@ -227,6 +247,12 @@ public class ObjectStorageService {
                 uploadDetails.put("objectKey", savedFile.getObjectKey());
                 uploadDetails.put("uploadedAt", Instant.now());
                 uploadDetails.put("folderId", folder.getId());
+                uploadDetails.put("size", savedFile.getSize());
+                if (uploadId != null && !uploadId.isBlank()) {
+                    trafficSamplingService.completeUpload(user, uploadId, savedFile.getSize(), "REGULAR");
+                    uploadDetails.put("trafficSampled", true);
+                    uploadDetails.put("transferId", uploadId);
+                }
 
                 String uploadDetailsJson =
                         objectMapper.writeValueAsString(uploadDetails);
@@ -268,6 +294,7 @@ public class ObjectStorageService {
 
             throw ex;
         } finally {
+            if (quotaReservation != null) quotaReservation.close();
             Files.deleteIfExists(tempFile);
         }
     }
@@ -289,19 +316,72 @@ public class ObjectStorageService {
 
     public InputStream download(Long id) throws Exception {
         FileMetaData fileMetaData = access.requireFileView(id);
+        User user = access.currentUser();
 
         String objectKey = fileMetaData.getObjectKey();
 
         log.info("Downloading object from {}", objectKey);
 
-        logsService.downloadLog(objectKey, id, "FILE");
-
-        return minioClient.getObject(
+        InputStream source = minioClient.getObject(
                 GetObjectArgs.builder()
                         .bucket(bucket)
                         .object(objectKey)
                         .build()
         );
+        TrafficSamplingService.Tracker traffic = trafficSamplingService.startDownload(user, "REGULAR");
+        return new FilterInputStream(source) {
+            private long transferred;
+            private boolean logged;
+
+            @Override
+            public int read() throws IOException {
+                int value = super.read();
+                if (value >= 0) {
+                    transferred++;
+                    traffic.record(1);
+                }
+                return value;
+            }
+
+            @Override
+            public int read(byte[] bytes, int offset, int length) throws IOException {
+                int count = super.read(bytes, offset, length);
+                if (count > 0) {
+                    transferred += count;
+                    traffic.record(count);
+                }
+                return count;
+            }
+
+            @Override
+            public void close() throws IOException {
+                try {
+                    super.close();
+                } finally {
+                    traffic.close();
+                    logTransferredBytes();
+                }
+            }
+
+            private void logTransferredBytes() {
+                if (logged) return;
+                logged = true;
+                try {
+                    Map<String, Object> details = new LinkedHashMap<>();
+                    details.put("name", fileMetaData.getFileName());
+                    details.put("objectKey", objectKey);
+                    details.put("downloadedAt", Instant.now());
+                    details.put("size", transferred);
+                    details.put("requestedSize", fileMetaData.getSize());
+                    details.put("complete", fileMetaData.getSize() == null || transferred >= fileMetaData.getSize());
+                    details.put("trafficSampled", true);
+                    details.put("transferId", traffic.transferId());
+                    logsService.downloadLog(user, fileMetaData.getFileName(), id, EntityType.FILE.name(), objectMapper.writeValueAsString(details));
+                } catch (Exception exception) {
+                    log.error("Download completed but traffic logging failed for file {}", id, exception);
+                }
+            }
+        };
     }
 
     public InputStream downloadWithoutLog(Long id) throws Exception {

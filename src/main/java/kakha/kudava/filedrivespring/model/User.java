@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.UUID;
+import java.time.Instant;
 
 @Entity
 @Getter
@@ -41,10 +42,39 @@ public class User {
     @Column(nullable = false, columnDefinition = "boolean default false")
     private boolean webauthnEnabled = false;
 
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean passwordChangeRequired = false;
+
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean suspended = false;
+
+    @Column
+    private Instant suspendedAt;
+
+    @Column
+    private Instant suspendedUntil;
+
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean deleted = false;
+
+    @Column
+    private Instant deletedAt;
+
+    @Column(updatable = false)
+    private Instant createdAt;
+
+    @Transient
+    public boolean isSuspensionActive() {
+        return !deleted && suspended && (suspendedUntil == null || suspendedUntil.isAfter(Instant.now()));
+    }
+
     @PrePersist
     private void beforeInsert() {
         if (publicUuid == null) {
             publicUuid = UUID.randomUUID();
+        }
+        if (createdAt == null) {
+            createdAt = Instant.now();
         }
     }
 }

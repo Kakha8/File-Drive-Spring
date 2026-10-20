@@ -19,6 +19,7 @@ import kakha.kudava.filedrivespring.repository.LockboxFileRevisionRepository;
 import kakha.kudava.filedrivespring.repository.LockboxKeyRepository;
 import kakha.kudava.filedrivespring.repository.LockboxProfileRepository;
 import kakha.kudava.filedrivespring.services.ResourceAccessService;
+import kakha.kudava.filedrivespring.services.StorageQuotaService;
 import kakha.kudava.filedrivespring.services.objects.RootFolderService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -69,6 +70,7 @@ public class LockboxService {
     private final LockboxProfileRepository profiles;
     private final RootFolderService roots;
     private final ResourceAccessService access;
+    private final StorageQuotaService storageQuotaService;
 
     private final long maxContainer;
     private final long maxManifest;
@@ -88,6 +90,7 @@ public class LockboxService {
             LockboxProfileRepository profiles,
             RootFolderService roots,
             ResourceAccessService access,
+            StorageQuotaService storageQuotaService,
             @Value("${lockbox.upload.max-container-size}")
             long maxContainer,
             @Value("${lockbox.upload.max-manifest-size}")
@@ -108,6 +111,7 @@ public class LockboxService {
         this.profiles = profiles;
         this.roots = roots;
         this.access = access;
+        this.storageQuotaService = storageQuotaService;
         this.maxContainer = maxContainer;
         this.maxManifest = maxManifest;
         this.maxSignature = maxSignature;
@@ -155,6 +159,7 @@ public class LockboxService {
 
         List<String> uploadedObjects =
                 new ArrayList<>();
+        StorageQuotaService.Reservation quotaReservation = null;
 
         try {
             stage(
@@ -356,6 +361,10 @@ public class LockboxService {
                     uploadedObjects
             );
 
+            long storedSize = Math.addExact(actualContainerSize,
+                    Math.addExact(Files.size(manifestPath), Files.size(signaturePath)));
+            quotaReservation = storageQuotaService.reserve(storedSize);
+
             uploadObject(
                     containerObjectKey,
                     containerPath,
@@ -426,7 +435,7 @@ public class LockboxService {
                         lockboxFile
                 );
                 revisions.saveAndFlush(new LockboxFileRevision(lockboxFile, 1, 3, 1,
-                        actualContainerSize, actualContainerHash, parsedManifest.encryptionKeyId(),
+                        actualContainerSize, storedSize, actualContainerHash, parsedManifest.encryptionKeyId(),
                         parsedManifest.signingKeyId(), parsedManifest.deviceUuid(),
                         parsedContainer.chunkSize(), parsedContainer.chunkCount(), containerObjectKey,
                         manifestObjectKey, signatureObjectKey));
@@ -459,6 +468,7 @@ public class LockboxService {
 
             throw exception;
         } finally {
+            if (quotaReservation != null) quotaReservation.close();
             deleteTree(temporaryDirectory);
         }
     }
@@ -480,6 +490,7 @@ public class LockboxService {
         Path temporaryDirectory=Files.createTempDirectory("lockbox-revision-");
         Path containerPath=temporaryDirectory.resolve("container"),manifestPath=temporaryDirectory.resolve("manifest"),signaturePath=temporaryDirectory.resolve("signature");
         List<String> uploadedObjects=new ArrayList<>();
+        StorageQuotaService.Reservation quotaReservation=null;
         try{
             stage(container,containerPath,maxContainer);stage(manifest,manifestPath,maxManifest);stage(signature,signaturePath,maxSignature);
             byte[] manifestBytes=readExact(manifestPath,maxManifest),signatureBytes=readExact(signaturePath,maxSignature);
@@ -510,17 +521,19 @@ public class LockboxService {
             String prefix="users/"+user.getId()+"/lockbox/"+logical.getClientFileId()+"/"+parsedManifest.revision()+"/requests/"+UUID.randomUUID()+"/";
             String containerKey=prefix+"container.fdcse",manifestKey=prefix+"manifest.fdmanifest",signatureKey=prefix+"signature.fdsig";
             registerRollbackCleanup(uploadedObjects);
+            long storedSize=Math.addExact(actualSize,Math.addExact(Files.size(manifestPath),Files.size(signaturePath)));
+            quotaReservation=storageQuotaService.reserve(storedSize);
             uploadObject(containerKey,containerPath,LockboxObjectStorage.ArtifactType.CONTAINER,uploadedObjects);
             uploadObject(manifestKey,manifestPath,LockboxObjectStorage.ArtifactType.MANIFEST,uploadedObjects);
             uploadObject(signatureKey,signaturePath,LockboxObjectStorage.ArtifactType.SIGNATURE,uploadedObjects);
             try{
-                LockboxFileRevision saved=revisions.saveAndFlush(new LockboxFileRevision(logical,parsedManifest.revision(),3,1,actualSize,actualHash,parsedManifest.encryptionKeyId(),parsedManifest.signingKeyId(),parsedManifest.deviceUuid(),parsedContainer.chunkSize(),parsedContainer.chunkCount(),containerKey,manifestKey,signatureKey));
+                LockboxFileRevision saved=revisions.saveAndFlush(new LockboxFileRevision(logical,parsedManifest.revision(),3,1,actualSize,storedSize,actualHash,parsedManifest.encryptionKeyId(),parsedManifest.signingKeyId(),parsedManifest.deviceUuid(),parsedContainer.chunkSize(),parsedContainer.chunkCount(),containerKey,manifestKey,signatureKey));
                 logical.advanceToRevision(expectedRevision,parsedManifest.revision());lockboxFiles.saveAndFlush(logical);
                 FileMetaData metadata=logical.getFile();metadata.setObjectKey(containerKey);metadata.setSize(actualSize);metadata.setChecksum(HexFormat.of().formatHex(actualHash));metadata.setLastModifiedDate(Instant.now());files.save(metadata);
                 return new LockboxUploadResponse(logical.getId(),logical.getClientFileId(),saved.getRevision(),metadata.getParent()==null?null:metadata.getParent().getId(),actualSize,HexFormat.of().formatHex(actualHash),3,1,saved.getCreatedAt());
             }catch(DataIntegrityViolationException|IllegalStateException exception){throw revisionConflict();}
         }catch(Exception exception){if(!TransactionSynchronizationManager.isSynchronizationActive())cleanupUploadedObjects(uploadedObjects,exception);throw exception;}
-        finally{deleteTree(temporaryDirectory);}
+        finally{if(quotaReservation!=null)quotaReservation.close();deleteTree(temporaryDirectory);}
     }
 
     @Transactional(readOnly=true)

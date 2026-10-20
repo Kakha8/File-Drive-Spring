@@ -8,4 +8,5 @@ import java.util.Optional;
 public interface WebAuthnCredentialRepository extends JpaRepository<WebAuthnCredential, Long> {
     List<WebAuthnCredential> findAllByUserId(Long userId);
     Optional<WebAuthnCredential> findByCredentialId(String credentialId);
+    void deleteAllByUserId(Long userId);
 }

@@ -47,7 +47,7 @@ public class FavoritesService {
         User currentUser = resourceAccessService.currentUser();
 
         for (Long fileId : safeIds(request.getFileIds())) {
-            resourceAccessService.requireFileView(fileId);
+            FileMetaData file = resourceAccessService.requireFileView(fileId);
 
             boolean changed = addOrRestore(
                     currentUser,
@@ -58,13 +58,15 @@ public class FavoritesService {
             if (changed) {
                 logsService.favoritesAddLog(
                         fileId,
-                        EntityType.FILE
+                        EntityType.FILE,
+                        file.getFileName(),
+                        file.getObjectKey()
                 );
             }
         }
 
         for (Long folderId : safeIds(request.getFolderIds())) {
-            resourceAccessService.requireFolderView(folderId);
+            Folders folder = resourceAccessService.requireFolderView(folderId);
 
             boolean changed = addOrRestore(
                     currentUser,
@@ -75,7 +77,9 @@ public class FavoritesService {
             if (changed) {
                 logsService.favoritesAddLog(
                         folderId,
-                        EntityType.FOLDER
+                        EntityType.FOLDER,
+                        folder.getName(),
+                        null
                 );
             }
         }
@@ -223,9 +227,26 @@ public class FavoritesService {
 
         favorite.remove();
 
+        String name = null;
+        String objectKey = null;
+        if (favorite.getEntityType() == EntityType.FILE) {
+            FileMetaData file = fileMetaDataRepository.findById(favorite.getEntityId()).orElse(null);
+            if (file != null) {
+                name = file.getFileName();
+                objectKey = file.getObjectKey();
+            }
+        } else if (favorite.getEntityType() == EntityType.FOLDER) {
+            Folders folder = folderRepository.findById(favorite.getEntityId()).orElse(null);
+            if (folder != null) {
+                name = folder.getName();
+            }
+        }
+
         logsService.favoritesRemoveLog(
                 favorite.getEntityId(),
-                favorite.getEntityType()
+                favorite.getEntityType(),
+                name,
+                objectKey
         );
     }
 }

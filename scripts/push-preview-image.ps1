@@ -12,110 +12,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Invoke-DockerRegistryLogin {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$DockerPath,
-        [Parameter(Mandatory = $true)]
-        [string]$Registry,
-        [Parameter(Mandatory = $true)]
-        [string]$Username,
-        [Parameter(Mandatory = $true)]
-        [string]$Password
-    )
-
-    # Windows PowerShell can encode text piped to native programs as UTF-16,
-    # which corrupts ECR's token. Write UTF-8 directly to Docker's stdin.
-    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $startInfo.FileName = $DockerPath
-    $startInfo.Arguments = "login --username $Username --password-stdin $Registry"
-    $startInfo.UseShellExecute = $false
-    $startInfo.CreateNoWindow = $true
-    $startInfo.RedirectStandardInput = $true
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    if ($startInfo.PSObject.Properties.Name -contains "StandardInputEncoding") {
-        $startInfo.StandardInputEncoding = New-Object System.Text.UTF8Encoding($false)
-    }
-
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $startInfo
-    [void]$process.Start()
-    $process.StandardInput.WriteLine($Password)
-    $process.StandardInput.Close()
-    $standardOutput = $process.StandardOutput.ReadToEnd()
-    $standardError = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
-    $exitCode = $process.ExitCode
-    $process.Dispose()
-
-    if ($standardOutput) {
-        Write-Host $standardOutput.TrimEnd()
-    }
-    if ($standardError) {
-        Write-Host $standardError.TrimEnd()
-    }
-    return $exitCode
-}
-
-function Save-DockerDesktopCredential {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$CredentialHelperPath,
-        [Parameter(Mandatory = $true)]
-        [string]$Registry,
-        [Parameter(Mandatory = $true)]
-        [string]$Username,
-        [Parameter(Mandatory = $true)]
-        [string]$Password
-    )
-
-    $credentialJson = @{
-        ServerURL = $Registry
-        Username  = $Username
-        Secret    = $Password
-    } | ConvertTo-Json -Compress
-    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $startInfo.FileName = $CredentialHelperPath
-    $startInfo.Arguments = "store"
-    $startInfo.UseShellExecute = $false
-    $startInfo.CreateNoWindow = $true
-    $startInfo.RedirectStandardInput = $true
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-    if ($startInfo.PSObject.Properties.Name -contains "StandardInputEncoding") {
-        $startInfo.StandardInputEncoding = New-Object System.Text.UTF8Encoding($false)
-    }
-
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $startInfo
-    [void]$process.Start()
-    $process.StandardInput.WriteLine($credentialJson)
-    $process.StandardInput.Close()
-    $standardOutput = $process.StandardOutput.ReadToEnd()
-    $standardError = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
-    $exitCode = $process.ExitCode
-    $process.Dispose()
-    $credentialJson = $null
-
-    if ($standardOutput) {
-        Write-Host $standardOutput.TrimEnd()
-    }
-    if ($standardError) {
-        Write-Host $standardError.TrimEnd()
-    }
-    return $exitCode
-}
-
 foreach ($commandName in @("aws", "docker")) {
     if (-not (Get-Command $commandName -ErrorAction SilentlyContinue)) {
         throw "Required command '$commandName' was not found in PATH."
     }
 }
-$dockerPath = (Get-Command docker -ErrorAction Stop).Source
-$credentialHelperPath = (Get-Command docker-credential-desktop -ErrorAction Stop).Source
-
 if ($Tag -notmatch '^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$') {
     throw "Tag '$Tag' is not a valid ECR image tag."
 }
@@ -176,83 +77,95 @@ if ($LASTEXITCODE -ne 0) {
     throw "Docker is unavailable. Start Docker Desktop and retry."
 }
 
-Write-Host "Logging Docker in to $registry..."
-$dockerAuthenticated = $false
-foreach ($loginAttempt in 1..3) {
-    $authorizationToken = ((& aws ecr get-authorization-token `
-        --region $Region `
-        --profile $Profile `
-        --query 'authorizationData[0].authorizationToken' `
-        --output text) -join '').Trim()
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not get an ECR authorization token."
-    }
-    $decodedAuthorization = [Text.Encoding]::UTF8.GetString(
-        [Convert]::FromBase64String($authorizationToken)
+Write-Host "Preparing an isolated Docker credential for $registry..."
+$authorizationToken = ((& aws ecr get-authorization-token `
+    --region $Region `
+    --profile $Profile `
+    --query 'authorizationData[0].authorizationToken' `
+    --output text) -join '').Trim()
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not get an ECR authorization token."
+}
+$decodedAuthorization = [Text.Encoding]::UTF8.GetString(
+    [Convert]::FromBase64String($authorizationToken)
+)
+$credentialSeparator = $decodedAuthorization.IndexOf(':')
+if ($credentialSeparator -lt 1) {
+    throw "ECR returned an invalid authorization token."
+}
+$ecrUsername = $decodedAuthorization.Substring(0, $credentialSeparator)
+$ecrPassword = $decodedAuthorization.Substring($credentialSeparator + 1)
+if ($ecrUsername -ne "AWS") {
+    throw "ECR returned the unexpected Docker username '$ecrUsername'."
+}
+
+# Avoid `docker login --password-stdin` here. Windows PowerShell 5.1 writes a
+# BOM to redirected process input on some .NET Framework versions, corrupting
+# both the ECR password and Docker Desktop credential-helper JSON. An isolated
+# DOCKER_CONFIG gives Docker the same short-lived token without stdin encoding.
+$temporaryDockerConfig = Join-Path `
+    ([IO.Path]::GetTempPath()) `
+    "file-drive-docker-config-$([guid]::NewGuid())"
+$previousDockerConfig = $env:DOCKER_CONFIG
+[void](New-Item -ItemType Directory -Path $temporaryDockerConfig)
+$temporaryDockerConfigFile = Join-Path $temporaryDockerConfig "config.json"
+
+try {
+    $basicCredential = [Convert]::ToBase64String(
+        [Text.Encoding]::ASCII.GetBytes("$ecrUsername`:$ecrPassword")
     )
-    $credentialSeparator = $decodedAuthorization.IndexOf(':')
-    if ($credentialSeparator -lt 1) {
-        throw "ECR returned an invalid authorization token."
-    }
-    $ecrUsername = $decodedAuthorization.Substring(0, $credentialSeparator)
-    $ecrPassword = $decodedAuthorization.Substring($credentialSeparator + 1)
-    if ($ecrUsername -ne "AWS") {
-        throw "ECR returned the unexpected Docker username '$ecrUsername'."
+    $dockerConfigJson = @{
+        auths = @{
+            $registry = @{ auth = $basicCredential }
+        }
+    } | ConvertTo-Json -Depth 4 -Compress
+    [IO.File]::WriteAllText(
+        $temporaryDockerConfigFile,
+        $dockerConfigJson,
+        [Text.UTF8Encoding]::new($false)
+    )
+    $env:DOCKER_CONFIG = $temporaryDockerConfig
+
+    if ($LoginOnly) {
+        Write-Host "Temporary ECR credential created successfully."
+        return
     }
 
-    $dockerLoginExitCode = Invoke-DockerRegistryLogin `
-        -DockerPath $dockerPath `
-        -Registry $registry `
-        -Username $ecrUsername `
-        -Password $ecrPassword
-    if ($dockerLoginExitCode -eq 0) {
-        $dockerAuthenticated = $true
+    Write-Host "Building Linux/amd64 image '$localImage'..."
+    & docker build --platform linux/amd64 --tag $localImage --file $dockerfilePath $buildContext | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker image build failed."
     }
-    elseif ($loginAttempt -eq 3) {
-        Write-Warning "Docker's registry preflight failed; storing the ECR credential through Docker Desktop's credential helper."
-        $credentialStoreExitCode = Save-DockerDesktopCredential `
-            -CredentialHelperPath $credentialHelperPath `
-            -Registry $registry `
-            -Username $ecrUsername `
-            -Password $ecrPassword
-        if ($credentialStoreExitCode -eq 0) {
-            $dockerAuthenticated = $true
-        }
+
+    Write-Host "Tagging and pushing '$imageUri'..."
+    & docker tag $localImage $imageUri
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not tag the local image for ECR."
     }
+    & docker push $imageUri | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker could not push the image to ECR. The ECR tag is immutable; use a new tag for the next attempt."
+    }
+
+    Write-Host "Image pushed successfully."
+    Write-Output $imageUri
+}
+finally {
+    $env:DOCKER_CONFIG = $previousDockerConfig
     $authorizationToken = $null
     $decodedAuthorization = $null
     $ecrPassword = $null
-    if ($dockerAuthenticated) {
-        break
+    $basicCredential = $null
+    if (Test-Path -LiteralPath $temporaryDockerConfig -PathType Container) {
+        $resolvedTemporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd(
+            [IO.Path]::DirectorySeparatorChar,
+            [IO.Path]::AltDirectorySeparatorChar
+        )
+        $resolvedDockerConfig = [IO.Path]::GetFullPath($temporaryDockerConfig)
+        $expectedPrefix = $resolvedTemporaryRoot + [IO.Path]::DirectorySeparatorChar + "file-drive-docker-config-"
+        if (-not $resolvedDockerConfig.StartsWith($expectedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to remove unexpected Docker configuration path '$resolvedDockerConfig'."
+        }
+        Remove-Item -LiteralPath $resolvedDockerConfig -Recurse -Force -Confirm:$false
     }
-    if ($loginAttempt -lt 3) {
-        Write-Warning "ECR login attempt $loginAttempt failed; retrying with a fresh token."
-        Start-Sleep -Seconds 2
-    }
 }
-if (-not $dockerAuthenticated) {
-    throw "Docker could not authenticate to ECR."
-}
-if ($LoginOnly) {
-    Write-Host "Docker authentication test succeeded."
-    return
-}
-
-Write-Host "Building Linux/amd64 image '$localImage'..."
-& docker build --platform linux/amd64 --tag $localImage --file $dockerfilePath $buildContext | Out-Host
-if ($LASTEXITCODE -ne 0) {
-    throw "Docker image build failed."
-}
-
-Write-Host "Tagging and pushing '$imageUri'..."
-& docker tag $localImage $imageUri
-if ($LASTEXITCODE -ne 0) {
-    throw "Could not tag the local image for ECR."
-}
-& docker push $imageUri | Out-Host
-if ($LASTEXITCODE -ne 0) {
-    throw "Docker could not push the image to ECR. The ECR tag is immutable; use a new tag for the next attempt."
-}
-
-Write-Host "Image pushed successfully."
-Write-Output $imageUri

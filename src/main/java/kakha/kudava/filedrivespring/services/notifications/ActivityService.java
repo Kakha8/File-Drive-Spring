@@ -193,7 +193,8 @@ public class ActivityService {
                         "resourceName",
                         "fileName",
                         "folderName",
-                        "newName"
+                        "newName",
+                        "username"
                 );
 
         resourceName =
@@ -257,6 +258,13 @@ public class ActivityService {
     private String buildTitle(
             String action
     ) {
+        if (action.equals("USER_SUSPEND")) return "User suspended";
+        if (action.equals("USER_REACTIVATE")) return "User reactivated";
+        if (action.equals("USER_DELETE")) return "User deleted";
+        if (action.equals("USER_RESTORE")) return "User restored";
+        if (action.equals("USER_PASSWORD_RESET")) return "User password reset";
+        if (action.equals("USER_2FA_REMOVE")) return "User 2FA removed";
+
         if (
                 contains(action, "PERMANENT") &&
                         contains(action, "DELETE")
@@ -328,6 +336,13 @@ public class ActivityService {
                         ? "The folder"
                         : "The item"
                         : quote(resourceName);
+
+        if (action.equals("USER_SUSPEND")) return item + " was suspended.";
+        if (action.equals("USER_REACTIVATE")) return item + " was reactivated.";
+        if (action.equals("USER_DELETE")) return item + " was soft-deleted.";
+        if (action.equals("USER_RESTORE")) return item + " was restored.";
+        if (action.equals("USER_PASSWORD_RESET")) return item + " must change their password at next sign-in.";
+        if (action.equals("USER_2FA_REMOVE")) return item + " had their login verification methods removed.";
 
         if (
                 contains(action, "PERMANENT") &&

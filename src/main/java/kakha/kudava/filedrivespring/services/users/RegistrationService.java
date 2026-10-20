@@ -40,6 +40,7 @@ public class RegistrationService {
         User user = new User();
         user.setUsername(userDTO.getUsername());
         user.setPassword(passwordEncoder.encode(userDTO.getPassword()));
+        user.setPasswordChangeRequired(userDTO.isPasswordChangeRequired());
 
         if (userDTO.getRole() == null || userDTO.getRole().isBlank()) {
             user.setRole(User.Role.USER);

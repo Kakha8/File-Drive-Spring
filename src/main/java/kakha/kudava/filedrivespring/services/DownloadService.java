@@ -33,11 +33,13 @@ public class DownloadService {
     private final ObjectMapper objectMapper;
     private final ResourceAccessService access;
     private final SharingService sharingService;
+    private final TrafficSamplingService trafficSamplingService;
 
     public DownloadService(
             FileMetaDataRepository fileMetaDataRepository,
             FolderRepository folderRepository,
-            ObjectStorageService objectStorageService, LogsService logsService, ObjectMapper objectMapper, ResourceAccessService access, SharingService sharingService
+            ObjectStorageService objectStorageService, LogsService logsService, ObjectMapper objectMapper,
+            ResourceAccessService access, SharingService sharingService, TrafficSamplingService trafficSamplingService
     ) {
         this.fileMetaDataRepository = fileMetaDataRepository;
         this.folderRepository = folderRepository;
@@ -46,6 +48,7 @@ public class DownloadService {
         this.objectMapper = objectMapper;
         this.access = access;
         this.sharingService = sharingService;
+        this.trafficSamplingService = trafficSamplingService;
     }
 
     public ZipDownloadResult downloadAsZip(DownloadZipRequest request) throws Exception {
@@ -81,7 +84,8 @@ public class DownloadService {
             User user,
             OutputStream outputStream
     ) throws IOException {
-        CountingOutputStream countingOutputStream = new CountingOutputStream(outputStream);
+        TrafficSamplingService.Tracker traffic = trafficSamplingService.startDownload(user, "ZIP");
+        CountingOutputStream countingOutputStream = new CountingOutputStream(outputStream, traffic);
         Set<String> usedZipNames = new HashSet<>();
         int fileCount = 0;
         int folderCount = 0;
@@ -112,6 +116,8 @@ public class DownloadService {
             details.put("fileCount", fileCount);
             details.put("folderCount", folderCount);
             details.put("zipSizeBytes", countingOutputStream.getByteCount());
+            details.put("trafficSampled", true);
+            details.put("transferId", traffic.transferId());
             try {
                 logsService.bulkDownloadLog(objectMapper.writeValueAsString(details));
             } catch (Exception e) {
@@ -275,26 +281,34 @@ public class DownloadService {
 
     private static final class CountingOutputStream extends FilterOutputStream {
         private long byteCount;
+        private final TrafficSamplingService.Tracker traffic;
 
-        private CountingOutputStream(OutputStream outputStream) {
+        private CountingOutputStream(OutputStream outputStream, TrafficSamplingService.Tracker traffic) {
             super(outputStream);
+            this.traffic = traffic;
         }
 
         @Override
         public void write(int value) throws IOException {
             out.write(value);
             byteCount++;
+            traffic.record(1);
         }
 
         @Override
         public void write(byte[] bytes, int offset, int length) throws IOException {
             out.write(bytes, offset, length);
             byteCount += length;
+            traffic.record(length);
         }
 
         @Override
         public void close() throws IOException {
-            flush();
+            try {
+                flush();
+            } finally {
+                traffic.close();
+            }
         }
 
         private long getByteCount() {

@@ -1,5 +1,7 @@
 package kakha.kudava.filedrivespring.services;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import kakha.kudava.filedrivespring.enums.ActionType;
 import kakha.kudava.filedrivespring.enums.EntityType;
 import kakha.kudava.filedrivespring.enums.SharingRole;
@@ -14,6 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -22,9 +27,11 @@ public class LogsService {
 
     private final ActionLogsRepository actionLogsRepository;
     private final UserRepository userRepository;
-    public LogsService(ActionLogsRepository actionLogsRepository, UserRepository userRepository) {
+    private final ObjectMapper objectMapper;
+    public LogsService(ActionLogsRepository actionLogsRepository, UserRepository userRepository, ObjectMapper objectMapper) {
         this.actionLogsRepository = actionLogsRepository;
         this.userRepository = userRepository;
+        this.objectMapper = objectMapper;
     }
 
     private ActionLogs logAction(String actionType,
@@ -58,17 +65,28 @@ public class LogsService {
 
     }
 
-    public void downloadLog(String fileName, Long parentId, String entityType){
+    public void downloadLog(String fileName, Long parentId, String entityType, String detailsJson){
 
         ActionLogs actionLogs = logAction(ActionType.DOWNLOAD.name(), parentId,
-                entityType, null);
+                entityType, detailsJson);
         actionLogsRepository.save(actionLogs);
         log.info(String.format("Logging the download of %s from %s", fileName, parentId));
     }
 
+    public void downloadLog(User user, String fileName, Long entityId, String entityType, String detailsJson) {
+        ActionLogs actionLogs = new ActionLogs();
+        actionLogs.setAction(ActionType.DOWNLOAD);
+        actionLogs.setEntityId(entityId);
+        actionLogs.setUser(user);
+        actionLogs.setEntityType(EntityType.valueOf(entityType));
+        actionLogs.setDetails(detailsJson);
+        actionLogsRepository.save(actionLogs);
+        log.info("Logging {} downloaded bytes for {}", detailsJson, fileName);
+    }
+
     public void deleteLog(String fileName, Long parentId, String entityType){
         ActionLogs actionLogs = logAction(ActionType.DELETE.name(), parentId,
-                entityType, null);
+                entityType, resourceDetails(fileName, null));
         actionLogsRepository.save(actionLogs);
         log.info(String.format("Logging the delete of %s", fileName));
     }
@@ -106,21 +124,21 @@ public class LogsService {
         log.warn("Logging the malware upload of {}", name);
     }
 
-    public void malwareDeleteLog(String name, Long parentId, String entityType) {
-        ActionLogs actionLogs = logAction(ActionType.MALWARE_DELETE.name(), parentId, entityType, null);
+    public void malwareDeleteLog(String name, String objectKey, Long parentId, String entityType) {
+        ActionLogs actionLogs = logAction(ActionType.MALWARE_DELETE.name(), parentId, entityType,
+                resourceDetails(name, objectKey));
         actionLogsRepository.save(actionLogs);
         log.info(String.format("Logging the malware delete of {}", name));
     }
 
-    public void malwareScheduleLog(String name, Long parentId, String entityType) {
+    public void malwareScheduleLog(String name, String objectKey, Long parentId, String entityType) {
 
         ActionLogs actionLogs = new ActionLogs();
         actionLogs.setAction(ActionType.valueOf(ActionType.MALWARE_SCHEDULED_DELETION.name()));
-        actionLogs.setDetails(null);
-        actionLogs.setEntityId(null);
+        actionLogs.setDetails(resourceDetails(name, objectKey));
+        actionLogs.setEntityId(parentId);
         actionLogs.setUser(null);
         actionLogs.setEntityType(EntityType.valueOf(entityType));
-        actionLogs.setDetails(null);
         log.info(String.format("Logging the scheduled deletion of malware {} from quarantine", name));
         actionLogsRepository.save(actionLogs);
     }
@@ -237,13 +255,15 @@ public class LogsService {
 
     public void favoritesAddLog(
             Long entityId,
-            EntityType entityType
+            EntityType entityType,
+            String name,
+            String objectKey
     ) {
         ActionLogs actionLogs = logAction(
                 ActionType.FAVORITES_ADD.name(),
                 entityId,
                 entityType.name(),
-                null
+                resourceDetails(name, objectKey)
         );
 
         actionLogsRepository.save(actionLogs);
@@ -257,13 +277,15 @@ public class LogsService {
 
     public void favoritesRemoveLog(
             Long entityId,
-            EntityType entityType
+            EntityType entityType,
+            String name,
+            String objectKey
     ) {
         ActionLogs actionLogs = logAction(
                 ActionType.FAVORITES_REMOVE.name(),
                 entityId,
                 entityType.name(),
-                null
+                resourceDetails(name, objectKey)
         );
 
         actionLogsRepository.save(actionLogs);
@@ -278,11 +300,15 @@ public class LogsService {
     public void shareLog(
             Long entityId,
             EntityType entityType,
+            String name,
+            String objectKey,
             Long shareId,
             Long sharedWithUserId,
             SharingRole role
     ) {
         String detailsJson = sharingDetails(
+                name,
+                objectKey,
                 shareId,
                 sharedWithUserId,
                 role
@@ -310,11 +336,15 @@ public class LogsService {
     public void shareRevokeLog(
             Long entityId,
             EntityType entityType,
+            String name,
+            String objectKey,
             Long shareId,
             Long sharedWithUserId,
             SharingRole role
     ) {
         String detailsJson = sharingDetails(
+                name,
+                objectKey,
                 shareId,
                 sharedWithUserId,
                 role
@@ -339,16 +369,64 @@ public class LogsService {
         );
     }
 
+    public void userAccountLog(ActionType action, User target, Map<String, Object> details) {
+        if (action != ActionType.USER_SUSPEND
+                && action != ActionType.USER_REACTIVATE
+                && action != ActionType.USER_DELETE
+                && action != ActionType.USER_RESTORE
+                && action != ActionType.USER_PASSWORD_RESET
+                && action != ActionType.USER_2FA_REMOVE) {
+            throw new IllegalArgumentException("Unsupported user account audit action: " + action);
+        }
+
+        Map<String, Object> metadata = new LinkedHashMap<>(details == null ? Map.of() : details);
+        metadata.put("username", target.getUsername());
+        metadata.put("targetUserId", target.getId());
+        metadata.put("loggedAt", Instant.now());
+
+        ActionLogs actionLogs = logAction(
+                action.name(),
+                target.getId(),
+                EntityType.USER.name(),
+                writeDetails(metadata)
+        );
+        actionLogsRepository.save(actionLogs);
+        log.info("Logging account action {} for user {}", action, target.getUsername());
+    }
+
     private String sharingDetails(
+            String name,
+            String objectKey,
             Long shareId,
             Long sharedWithUserId,
             SharingRole role
     ) {
-        return String.format(
-                "{\"shareId\":%d,\"sharedWithUserId\":%d,\"role\":\"%s\"}",
-                shareId,
-                sharedWithUserId,
-                role.name()
-        );
+        Map<String, Object> details = resourceDetailsMap(name, objectKey);
+        details.put("shareId", shareId);
+        details.put("sharedWithUserId", sharedWithUserId);
+        details.put("role", role.name());
+        return writeDetails(details);
+    }
+
+    private String resourceDetails(String name, String objectKey) {
+        return writeDetails(resourceDetailsMap(name, objectKey));
+    }
+
+    private Map<String, Object> resourceDetailsMap(String name, String objectKey) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("name", name);
+        if (objectKey != null && !objectKey.isBlank()) {
+            details.put("objectKey", objectKey);
+        }
+        details.put("loggedAt", Instant.now());
+        return details;
+    }
+
+    private String writeDetails(Map<String, Object> details) {
+        try {
+            return objectMapper.writeValueAsString(details);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Could not serialize audit log details", exception);
+        }
     }
 }

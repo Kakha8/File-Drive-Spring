@@ -1,31 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { logout as apiLogout } from "../api/auth";
+import { hasRole, logout as apiLogout } from "../api/auth";
 import ConfirmTrashModal from "../components/ConfirmTrashModal";
 import DestinationModal from "../components/DestinationModal";
 import ShareModal from "../components/ShareModal";
 import TextEditorModal from "../components/TextEditorModal";
 import UserMenu from "../components/UserMenu";
 import NotificationMenu from "../components/NotificationMenu";
+import { useUploads } from "../components/UploadManager";
 import logo from "../assets/logo.png";
 import {
     createFolder,
     getFileBlob,
     getFolder,
-    getFolderZipBlob,
-    getMixedZipBlob,
+    createBrowserDownloadUrl,
+    startBrowserDownload,
     getRootFolder,
     renameFile,
     renameFolder,
-    uploadFile,
-    cancelUpload,
     moveToTrash,
     copyItem,
     moveItem,
 } from "../api/drive";
 import { revokeShare, shareResource } from "../api/sharing.js";
 import { apiFetch } from "../api/http";
-import { createClientId } from "../utils/clientId.js";
 
 const NOTIFICATIONS_CHANGED_EVENT =
     "file-drive:notifications-changed";
@@ -68,10 +66,13 @@ const Icons = {
             <path d="M14 4h4a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-4" />
         </Icon>
     ),
-    File: ({ className }) => (
+    HardDrive: ({ className }) => (
         <Icon className={className}>
-            <path d="M6 3h8l4 4v14H6z" />
-            <path d="M14 3v5h5" />
+            <rect x="3" y="5" width="18" height="14" rx="3" />
+            <path d="M3 13.5h18" />
+            <path d="M7 16.5h5" />
+            <circle cx="17.5" cy="16.5" r="0.8" fill="currentColor" stroke="none" />
+            <path d="M7 8.5h10" />
         </Icon>
     ),
     Folder: ({ className }) => (
@@ -116,6 +117,19 @@ const Icons = {
             <path d="M3 6h18" />
             <path d="M8 6V4h8v2" />
             <path d="M6 6l1 15h10l1-15" />
+        </Icon>
+    ),
+    File: ({ className }) => (
+        <Icon className={className}>
+            <path d="M6 3h8l4 4v14H6z" />
+            <path d="M14 3v5h5" />
+        </Icon>
+    ),
+    Dashboard: ({ className }) => (
+        <Icon className={className}>
+            <path d="M4 17a8 8 0 1 1 16 0" />
+            <path d="m12 17 4-5" />
+            <circle cx="12" cy="17" r="1" />
         </Icon>
     ),
     Search: ({ className }) => (
@@ -232,7 +246,8 @@ const Icons = {
 };
 
 const navItems = [
-    { key: "my", label: "My files", icon: Icons.File },
+    { key: "admin", label: "Dashboard", icon: Icons.Dashboard, adminOnly: true },
+    { key: "my", label: "My files", icon: Icons.HardDrive },
     { key: "shared", label: "Shared", icon: Icons.Shared },
     { key: "recent", label: "Recent", icon: Icons.Clock },
     { key: "favorites", label: "Favorites", icon: Icons.Star },
@@ -555,15 +570,7 @@ function Main({ onLogout }) {
     const draftHandledRef = useRef(false);
 
     const fileInputRef = useRef(null);
-    const [uploading, setUploading] = useState(false);
-    const [uploads, setUploads] = useState([]);
-    const [uploadPanelMinimized, setUploadPanelMinimized] = useState(false);
-    const [uploadPanelClosed, setUploadPanelClosed] = useState(false);
-    const [uploadCancelConfirm, setUploadCancelConfirm] = useState(false);
-    const cancelUploadsRef = useRef(false);
-    const canceledUploadIdsRef = useRef(new Set());
-    const currentUploadAbortRef = useRef(null);
-    const currentUploadRef = useRef(null);
+    const { uploading, startUploads } = useUploads();
     const [openMenuId, setOpenMenuId] = useState(null);
 
     const [renamingItem, setRenamingItem] = useState(null);
@@ -732,169 +739,9 @@ function Main({ onLogout }) {
         const files = Array.from(event.target.files || []);
 
         if (files.length === 0 || !currentFolderId) return;
-
-        const uploadItems = files.map((file) => ({
-            id: createClientId(),
-            name: file.name,
-            progress: 0,
-            status: "waiting",
-            error: "",
-            fileKey: `${file.name}-${file.size}-${file.lastModified}`,
-        }));
-
-        setUploads((currentUploads) => [...currentUploads, ...uploadItems]);
-        setUploading(true);
-        setUploadPanelClosed(false);
-        setUploadPanelMinimized(false);
-        setUploadCancelConfirm(false);
-        cancelUploadsRef.current = false;
-        canceledUploadIdsRef.current.clear();
         setError("");
-
-        try {
-            for (let index = 0; index < files.length; index += 1) {
-                if (cancelUploadsRef.current) break;
-
-                const file = files[index];
-                const uploadItem = uploadItems[index];
-                const uploadId = uploadItem.id;
-
-                if (canceledUploadIdsRef.current.has(uploadId)) {
-                    continue;
-                }
-
-                setUploads((currentUploads) =>
-                    currentUploads.map((item) =>
-                        item.id === uploadId
-                            ? {
-                                ...item,
-                                status: "uploading",
-                                progress: 0,
-                                error: "",
-                            }
-                            : item
-                    )
-                );
-
-                const abortController = new AbortController();
-                currentUploadAbortRef.current = abortController;
-                currentUploadRef.current = {
-                    uploadId,
-                    controller: abortController,
-                };
-
-                try {
-                    await uploadFile(
-                        currentFolderId,
-                        file,
-                        (percent) => {
-                            if (
-                                cancelUploadsRef.current ||
-                                canceledUploadIdsRef.current.has(uploadId)
-                            ) {
-                                return;
-                            }
-
-                            setUploads((currentUploads) =>
-                                currentUploads.map((item) =>
-                                    item.id === uploadId
-                                        ? {
-                                            ...item,
-                                            progress: percent,
-                                            status:
-                                                percent >= 100
-                                                    ? "processing"
-                                                    : "uploading",
-                                        }
-                                        : item
-                                )
-                            );
-                        },
-                        abortController.signal,
-                        uploadId
-                    );
-
-                    if (
-                        cancelUploadsRef.current ||
-                        canceledUploadIdsRef.current.has(uploadId) ||
-                        abortController.signal.aborted
-                    ) {
-                        continue;
-                    }
-
-                    setUploads((currentUploads) =>
-                        currentUploads.map((item) =>
-                            item.id === uploadId
-                                ? {
-                                    ...item,
-                                    progress: 100,
-                                    status: "done",
-                                    error: "",
-                                }
-                                : item
-                        )
-                    );
-
-                    /*
-                     * The backend creates UPLOAD_COMPLETED before the upload
-                     * request resolves. Tell the bell to refresh immediately.
-                     */
-                    announceNotificationsChanged();
-                } catch (err) {
-                    const wasCanceled =
-                        cancelUploadsRef.current ||
-                        canceledUploadIdsRef.current.has(uploadId) ||
-                        abortController.signal.aborted ||
-                        err.message === "Upload canceled" ||
-                        err.code === "UPLOAD_CANCELED";
-
-                    const wasMalware =
-                        err.code === "MALWARE_DETECTED" ||
-                        err.status === 422;
-
-                    setUploads((currentUploads) =>
-                        currentUploads.map((item) =>
-                            item.id === uploadId
-                                ? {
-                                    ...item,
-                                    status: wasCanceled ? "canceled" : "error",
-                                    error: wasCanceled
-                                        ? "Cancelled"
-                                        : wasMalware
-                                            ? "Rejected: malware detected"
-                                            : err.message || "Failed to upload this file",
-                                }
-                                : item
-                        )
-                    );
-
-                    /*
-                     * Malware notifications are created even though the
-                     * upload request returns an error response.
-                     */
-                    if (wasMalware && !wasCanceled) {
-                        announceNotificationsChanged();
-                    }
-
-                    if (cancelUploadsRef.current) break;
-                } finally {
-                    if (currentUploadAbortRef.current === abortController) {
-                        currentUploadAbortRef.current = null;
-                    }
-
-                    if (currentUploadRef.current?.uploadId === uploadId) {
-                        currentUploadRef.current = null;
-                    }
-                }
-            }
-
-            if (!cancelUploadsRef.current) {
-                await reloadCurrentFolder();
-            }
-        } finally {
-            setUploading(false);
-            event.target.value = "";
-        }
+        event.target.value = "";
+        await startUploads(files, currentFolderId, reloadCurrentFolder);
     }
 
     async function submitShare(payload) {
@@ -1145,19 +992,16 @@ function Main({ onLogout }) {
                     .filter((currentItem) => currentItem.type === "folder")
                     .map((currentItem) => currentItem.rawId);
 
-                const blob = await getMixedZipBlob(fileIds, folderIds);
-                downloadBlob(blob, "download.zip");
+                startBrowserDownload(await createBrowserDownloadUrl("ZIP", fileIds, folderIds));
                 return;
             }
 
             if (item.type === "folder") {
-                const blob = await getFolderZipBlob(item.rawId);
-                downloadBlob(blob, `${item.name || "folder"}.zip`);
+                startBrowserDownload(await createBrowserDownloadUrl("FOLDER", [], [item.rawId]));
                 return;
             }
 
-            const blob = await getFileBlob(item.rawId);
-            downloadBlob(blob, item.name || "download");
+            startBrowserDownload(await createBrowserDownloadUrl("FILE", [item.rawId], []));
         } catch (err) {
             setError(err.message || "Failed to download item");
         }
@@ -1485,97 +1329,6 @@ function Main({ onLogout }) {
         });
     }
 
-    function handleCloseUploadPanel(hasActiveUploadsFromPanel = false) {
-        const hasActiveUploads =
-            hasActiveUploadsFromPanel ||
-            uploading ||
-            uploads.some(
-                (item) =>
-                    item.status === "waiting" ||
-                    item.status === "uploading" ||
-                    item.status === "processing"
-            );
-
-        if (!hasActiveUploads) {
-            setUploadPanelClosed(true);
-            setUploadCancelConfirm(false);
-            return;
-        }
-
-        setUploadPanelMinimized(false);
-        setUploadCancelConfirm(true);
-    }
-
-    async function confirmCancelUploads() {
-        cancelUploadsRef.current = true;
-
-        const activeUploadIds = uploads
-            .filter(
-                (item) =>
-                    item.status === "waiting" ||
-                    item.status === "uploading" ||
-                    item.status === "processing"
-            )
-            .map((item) => item.id);
-
-        activeUploadIds.forEach((uploadId) => {
-            canceledUploadIdsRef.current.add(uploadId);
-        });
-
-        setUploads((currentUploads) =>
-            currentUploads.map((item) => {
-                if (activeUploadIds.includes(item.id)) {
-                    return {
-                        ...item,
-                        status: "canceled",
-                        error: "Cancelled",
-                    };
-                }
-
-                return item;
-            })
-        );
-
-        await Promise.allSettled(
-            activeUploadIds.map((uploadId) => cancelUpload(uploadId))
-        );
-
-        currentUploadAbortRef.current?.abort();
-        currentUploadAbortRef.current = null;
-        currentUploadRef.current = null;
-
-        setUploading(false);
-        setUploadCancelConfirm(false);
-        setUploadPanelClosed(true);
-    }
-
-    async function cancelSingleUpload(uploadId) {
-        canceledUploadIdsRef.current.add(uploadId);
-
-        setUploads((currentUploads) =>
-            currentUploads.map((item) =>
-                item.id === uploadId
-                    ? {
-                        ...item,
-                        status: "canceled",
-                        error: "Cancelled",
-                    }
-                    : item
-            )
-        );
-
-        await Promise.allSettled([cancelUpload(uploadId)]);
-
-        if (currentUploadRef.current?.uploadId === uploadId) {
-            currentUploadRef.current.controller.abort();
-            currentUploadRef.current = null;
-            currentUploadAbortRef.current = null;
-        }
-    }
-
-    function keepUploadPanelOpen() {
-        setUploadCancelConfirm(false);
-    }
 
     function handleFileSelect(event, itemId) {
         const multiSelect = event.ctrlKey || event.metaKey;
@@ -1715,7 +1468,7 @@ function Main({ onLogout }) {
 
                 <div className="sidebar-scroll">
                     <nav className="sidebar-nav">
-                        {navItems.map((item) => {
+                        {navItems.filter((item) => !item.adminOnly || hasRole("ADMIN")).map((item) => {
                             const NavIcon = item.icon;
 
                             return (
@@ -1749,6 +1502,11 @@ function Main({ onLogout }) {
 
                                         if (item.key === "lockbox") {
                                             navigate("/lockbox");
+                                            return;
+                                        }
+
+                                        if (item.key === "admin") {
+                                            navigate("/admin");
                                             return;
                                         }
 
@@ -2069,18 +1827,6 @@ function Main({ onLogout }) {
                 onSubmit={submitShare}
             />
 
-            <UploadPanel
-                uploads={uploads}
-                minimized={uploadPanelMinimized}
-                closed={uploadPanelClosed}
-                cancelConfirm={uploadCancelConfirm}
-                onToggleMinimized={() => setUploadPanelMinimized((value) => !value)}
-                onClose={handleCloseUploadPanel}
-                onConfirmCancel={confirmCancelUploads}
-                onKeepUploading={keepUploadPanelOpen}
-                onCancelUpload={cancelSingleUpload}
-            />
-
             {editorTarget && (
                 <TextEditorModal
                     item={editorTarget}
@@ -2373,194 +2119,6 @@ function FileRow({
                 )}
             </div>
         </button>
-    );
-}
-
-function UploadPanel({
-                         uploads,
-                         minimized,
-                         closed,
-                         cancelConfirm,
-                         onToggleMinimized,
-                         onClose,
-                         onConfirmCancel,
-                         onKeepUploading,
-                         onCancelUpload,
-                     }) {
-    if (!uploads || uploads.length === 0 || closed) return null;
-
-    const activeCount = uploads.filter(
-        (item) =>
-            item.status === "waiting" ||
-            item.status === "uploading" ||
-            item.status === "processing"
-    ).length;
-
-    const movingUploads = uploads.filter(
-        (item) => item.status === "uploading" || item.status === "processing"
-    );
-
-    const doneCount = uploads.filter((item) => item.status === "done").length;
-    const errorCount = uploads.filter((item) => item.status === "error").length;
-    const canceledCount = uploads.filter((item) => item.status === "canceled").length;
-    const latestActiveCount = activeCount;
-
-    const totalProgress = movingUploads.length
-        ? Math.round(
-            movingUploads.reduce((sum, item) => {
-                if (item.status === "processing") return sum + 100;
-                return sum + item.progress;
-            }, 0) / movingUploads.length
-        )
-        : 0;
-
-    let title = "Upload complete";
-
-    if (activeCount > 0) {
-        title = `Uploading ${latestActiveCount} ${latestActiveCount === 1 ? "file" : "files"}`;
-    } else if (errorCount > 0 && doneCount > 0) {
-        title = `${doneCount} uploaded, ${errorCount} failed`;
-    } else if (errorCount > 0) {
-        title = "Upload failed";
-    } else if (canceledCount > 0) {
-        title = `${canceledCount} ${canceledCount === 1 ? "upload" : "uploads"} cancelled`;
-    }
-
-    return (
-        <div className={`upload-panel ${minimized ? "minimized" : ""}`}>
-            <div className="upload-panel-header">
-                <div className="upload-panel-title">
-                    <div className="upload-panel-title-row">
-                        <strong>{title}</strong>
-
-                        {minimized && activeCount > 0 && (
-                            <span className="upload-panel-percent-wrap">
-        <span
-            className="upload-panel-circle-progress"
-            style={{
-                "--progress": `${totalProgress * 3.6}deg`,
-            }}
-            aria-hidden="true"
-        />
-        <span className="upload-panel-percent">
-            {totalProgress}%
-        </span>
-    </span>
-                        )}
-                    </div>
-
-                    <span>
-                        {doneCount}/{uploads.length}
-                    </span>
-                </div>
-
-                <div className="upload-panel-actions">
-                    <button
-                        type="button"
-                        onClick={onToggleMinimized}
-                        title={minimized ? "Expand uploads" : "Minimize uploads"}
-                        aria-label={minimized ? "Expand uploads" : "Minimize uploads"}
-                    >
-                        <Icons.ChevronDown
-                            className={`upload-panel-chevron ${minimized ? "up" : ""}`}
-                        />
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => onClose(activeCount > 0)}
-                        title="Close upload panel"
-                        aria-label="Close upload panel"
-                    >
-                        ×
-                    </button>
-                </div>
-            </div>
-
-            {!minimized && cancelConfirm && (
-                <div className="upload-cancel-confirm">
-                    <strong>Cancel uploads?</strong>
-                    <p>Uploads are still in progress. Cancel the remaining uploads?</p>
-
-                    <div className="upload-cancel-actions">
-                        <button type="button" onClick={onKeepUploading}>
-                            Keep uploading
-                        </button>
-
-                        <button
-                            type="button"
-                            className="danger"
-                            onClick={onConfirmCancel}
-                        >
-                            Cancel uploads
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {!minimized && !cancelConfirm && (
-                <div className="upload-panel-list">
-                    {uploads.map((upload) => (
-                        <div key={upload.id} className="upload-panel-item">
-                            <div className="upload-file-icon">
-                                {upload.status === "done" ? (
-                                    <Icons.Check className="svg-icon" />
-                                ) : (
-                                    <Icons.File className="svg-icon" />
-                                )}
-                            </div>
-
-                            <div className="upload-file-info">
-                                <div className="upload-file-line">
-                                    <span title={upload.name}>{upload.name}</span>
-
-                                    <div className="upload-file-actions">
-                                        <small>
-                                            {upload.status === "waiting" && "Waiting"}
-                                            {upload.status === "uploading" &&
-                                                `${upload.progress}%`}
-                                            {upload.status === "processing" &&
-                                                "Scanning..."}
-                                            {upload.status === "done" && "Done"}
-                                            {upload.status === "error" && "Failed"}
-                                            {upload.status === "canceled" && "Cancelled"}
-                                        </small>
-
-                                        {(upload.status === "waiting" ||
-                                            upload.status === "uploading" ||
-                                            upload.status === "processing") && (
-                                            <button
-                                                type="button"
-                                                className="upload-item-cancel"
-                                                onClick={() => onCancelUpload(upload.id)}
-                                                title="Cancel this upload"
-                                                aria-label={`Cancel upload ${upload.name}`}
-                                            >
-                                                ×
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {upload.status === "error" || upload.status === "canceled" ? (
-                                    <p className="upload-file-error">
-                                        {upload.error}
-                                    </p>
-                                ) : (
-                                    <div className="upload-file-progress">
-                                        <div
-                                            style={{
-                                                width: `${upload.progress}%`,
-                                            }}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
     );
 }
 

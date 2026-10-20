@@ -10,7 +10,7 @@ import {
     Routes,
 } from "react-router-dom";
 
-import { refresh } from "./api/auth";
+import { hasRole, refresh } from "./api/auth";
 import Login from "./pages/Login";
 import Main from "./pages/Main";
 import Trashcan from "./pages/Trashcan";
@@ -19,6 +19,14 @@ import Favorites from "./pages/Favorites";
 import Settings from "./pages/Settings";
 import Recent from "./pages/Recent";
 import Lockbox from "./pages/Lockbox";
+import AdminDashboard from "./pages/AdminDashboard";
+import AdminUsers from "./pages/AdminUsers";
+import AdminLogs from "./pages/AdminLogs";
+import AdminQuarantine from "./pages/AdminQuarantine";
+import AdminTraffic from "./pages/AdminTraffic";
+import AdminHealth from "./pages/AdminHealth";
+import AdminSectionPlaceholder from "./pages/AdminSectionPlaceholder";
+import { UploadProvider } from "./components/UploadManager";
 import "./App.css";
 import "./components/Recent-Activity.css";
 import "./styles/activity-history.css";
@@ -106,6 +114,7 @@ function App() {
 
     return (
         <BrowserRouter>
+            <UploadProvider>
             <Routes>
                 <Route
                     path="/login"
@@ -230,6 +239,76 @@ function App() {
                 />
 
                 <Route
+                    path="/admin"
+                    element={
+                        loggedIn && hasRole("ADMIN") ? (
+                            <AdminDashboard
+                                onLogout={handleLogout}
+                                sidebarOpen={sidebarOpen}
+                                onToggleSidebar={toggleSidebar}
+                            />
+                        ) : (
+                            <Navigate
+                                to={loggedIn ? "/main" : "/login"}
+                                replace
+                            />
+                        )
+                    }
+                />
+
+                <Route
+                    path="/admin/users"
+                    element={
+                        loggedIn && hasRole("ADMIN") ? (
+                            <AdminUsers
+                                onLogout={handleLogout}
+                                sidebarOpen={sidebarOpen}
+                                onToggleSidebar={toggleSidebar}
+                            />
+                        ) : (
+                            <Navigate
+                                to={loggedIn ? "/main" : "/login"}
+                                replace
+                            />
+                        )
+                    }
+                />
+
+                <Route
+                    path="/admin/logs"
+                    element={
+                        loggedIn && hasRole("ADMIN") ? (
+                            <AdminLogs
+                                onLogout={handleLogout}
+                                sidebarOpen={sidebarOpen}
+                                onToggleSidebar={toggleSidebar}
+                            />
+                        ) : (
+                            <Navigate to={loggedIn ? "/main" : "/login"} replace />
+                        )
+                    }
+                />
+
+                <Route
+                    path="/admin/quarantine"
+                    element={loggedIn && hasRole("ADMIN") ? <AdminQuarantine onLogout={handleLogout} sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} /> : <Navigate to={loggedIn ? "/main" : "/login"} replace />}
+                />
+
+                <Route
+                    path="/admin/traffic"
+                    element={loggedIn && hasRole("ADMIN") ? <AdminTraffic onLogout={handleLogout} sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} /> : <Navigate to={loggedIn ? "/main" : "/login"} replace />}
+                />
+
+                <Route
+                    path="/admin/health"
+                    element={loggedIn && hasRole("ADMIN") ? <AdminHealth onLogout={handleLogout} sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} /> : <Navigate to={loggedIn ? "/main" : "/login"} replace />}
+                />
+
+                {[{ path: "/admin/storage", title: "Storage", description: "Storage history and category breakdowns will appear here." }].map((section) => (
+                    <Route key={section.path} path={section.path} element={loggedIn && hasRole("ADMIN") ? <AdminSectionPlaceholder title={section.title} description={section.description} onLogout={handleLogout} sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} /> : <Navigate to={loggedIn ? "/main" : "/login"} replace />} />
+                ))}
+
+                <Route
                     path="/"
                     element={
                         <Navigate
@@ -257,6 +336,7 @@ function App() {
                     }
                 />
             </Routes>
+            </UploadProvider>
         </BrowserRouter>
     );
 }

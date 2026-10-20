@@ -65,14 +65,20 @@ public class TwoStageLoginService {
         LoginAttemptLimit limit = limit(user, now);
         checkLimit(limit);
         if (!passwords.matches(password, user.getPassword())) fail(limit);
+        if (user.isDeleted()) throw rejected();
+        if (user.isSuspensionActive()) throw new AccountSuspended(user.getSuspendedUntil());
         if (user.getPublicUuid() == null) throw new IllegalStateException("Authenticated account has no public UUID.");
+        if (user.isPasswordChangeRequired()) {
+            challenges.consumeOutstanding(user.getId(), now);
+            return new LoginResult(null, null, new PasswordChangeRequired(true));
+        }
         // Legacy TOTP-only accounts must not silently fall back to password-only
         // authentication after the TOTP API is removed. They remain locked until
         // an administrator completes an explicit WebAuthn migration.
         if (user.isTotpEnabled() && !user.isWebauthnEnabled()) throw rejected();
         if (!user.isWebauthnEnabled()) {
             challenges.consumeOutstanding(user.getId(), now);
-            return new LoginResult(refresh.issueSession(user, refreshDays, false), null);
+            return new LoginResult(refresh.issueSession(user, refreshDays, false), null, null);
         }
         if (limit.getChallenges() >= MAX_CHALLENGES) throw throttled();
         limit.setChallenges(limit.getChallenges() + 1);
@@ -88,7 +94,51 @@ public class TwoStageLoginService {
         challenge.setExpiresAt(now.plus(CHALLENGE_TTL));
         challenge.setPasswordFingerprint(TokenHashUtil.sha256(user.getPassword()));
         challenges.saveAndFlush(challenge);
-        return new LoginResult(null, new MfaRequired(true, raw, challenge.getExpiresAt(), "webauthn"));
+        return new LoginResult(null, new MfaRequired(true, raw, challenge.getExpiresAt(), "webauthn"), null);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, noRollbackFor = LoginRejected.class)
+    public AuthenticatedSession completeTemporaryPassword(
+            String username,
+            String temporaryPassword,
+            String newPassword
+    ) {
+        if (username == null || username.isBlank() || username.length() > 255
+                || temporaryPassword == null || temporaryPassword.isEmpty() || temporaryPassword.length() > 1024
+                || newPassword == null || newPassword.length() < 8 || newPassword.length() > 1024) {
+            throw rejected();
+        }
+
+        User user = users.findForAuthenticationByUsername(username).orElse(null);
+        if (user == null) {
+            passwords.matches(temporaryPassword, dummyPasswordHash);
+            throw rejected();
+        }
+
+        Instant now = clock.instant();
+        LoginAttemptLimit limit = limit(user, now);
+        checkLimit(limit);
+        if (!user.isPasswordChangeRequired()
+                || !passwords.matches(temporaryPassword, user.getPassword())) {
+            fail(limit);
+        }
+        if (user.isDeleted()) throw rejected();
+        if (user.isSuspensionActive()) throw new AccountSuspended(user.getSuspendedUntil());
+        if (passwords.matches(newPassword, user.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Choose a password different from the temporary password.");
+        }
+        if (user.isWebauthnEnabled()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Temporary-password completion is unavailable for an account with WebAuthn enabled.");
+        }
+
+        user.setPassword(passwords.encode(newPassword));
+        user.setPasswordChangeRequired(false);
+        limit.setFailures(0);
+        challenges.consumeOutstanding(user.getId(), now);
+        users.saveAndFlush(user);
+        return refresh.issueSession(user, refreshDays, false);
     }
 
     private LoginAttemptLimit limit(User user, Instant now) {
@@ -111,13 +161,29 @@ public class TwoStageLoginService {
     public static final class LoginRejected extends ResponseStatusException {
         private LoginRejected(HttpStatus status, String message) { super(status, message); }
     }
+    public static final class AccountSuspended extends ResponseStatusException {
+        private final Instant suspendedUntil;
+        public AccountSuspended(Instant suspendedUntil) {
+            super(HttpStatus.FORBIDDEN, "This account is suspended.");
+            this.suspendedUntil = suspendedUntil;
+        }
+        public Instant suspendedUntil() { return suspendedUntil; }
+    }
     public record MfaRequired(boolean mfaRequired, String challengeToken, Instant expiresAt, String method) {
         public MfaRequired(boolean mfaRequired, String challengeToken, Instant expiresAt) {
             this(mfaRequired, challengeToken, expiresAt, "webauthn");
         }
         @Override public String toString() { return "MfaRequired[redacted]"; }
     }
-    public record LoginResult(AuthenticatedSession session, MfaRequired challenge) {
+    public record PasswordChangeRequired(boolean passwordChangeRequired) {}
+    public record LoginResult(
+            AuthenticatedSession session,
+            MfaRequired challenge,
+            PasswordChangeRequired passwordChange
+    ) {
+        public LoginResult(AuthenticatedSession session, MfaRequired challenge) {
+            this(session, challenge, null);
+        }
         @Override public String toString() { return "LoginResult[redacted]"; }
     }
 }

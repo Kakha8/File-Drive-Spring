@@ -30,6 +30,9 @@ export async function login(username, password) {
     }
 
     const data = await response.json();
+    if (data.passwordChangeRequired === true) {
+        return { passwordChangeRequired: true };
+    }
     if (data.mfaRequired === true) {
         if (typeof data.challengeToken !== "string" || !data.challengeToken
             || typeof data.expiresAt !== "string" || !Number.isFinite(Date.parse(data.expiresAt))) {
@@ -42,6 +45,24 @@ export async function login(username, password) {
             ...(data.method ? { method: data.method } : {}) };
     }
     return storeLoginSession(data);
+}
+
+export async function completeTemporaryPassword(username, temporaryPassword, newPassword) {
+    clearAccessToken();
+    const response = await fetch(`${API_BASE_URL}/api/auth/complete-temporary-password`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, temporaryPassword, newPassword }),
+    });
+
+    if (!response.ok) {
+        throw await authResponseError(response, "Could not set your new password");
+    }
+
+    return storeLoginSession(await response.json());
 }
 
 export async function verifyWebAuthnLogin(challengeToken) {
@@ -77,8 +98,25 @@ function storeLoginSession(data) {
 }
 
 async function authResponseError(response, fallback) {
-    const error = new Error(await readApiError(response, fallback));
+    let data = null;
+    let message = fallback;
+    try {
+        const text = await response.text();
+        if (text) {
+            try {
+                data = JSON.parse(text);
+                message = data.message || data.error || fallback;
+            } catch {
+                message = text;
+            }
+        }
+    } catch {
+        message = fallback;
+    }
+    const error = new Error(message);
     error.status = response.status;
+    if (data?.error) error.code = data.error;
+    if (data?.suspendedUntil) error.suspendedUntil = data.suspendedUntil;
     return error;
 }
 

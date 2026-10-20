@@ -66,6 +66,35 @@ class FidoLoginServiceTests {
     }
 
     @Test
+    void temporaryPasswordRequiresReplacementWithoutIssuingSession() {
+        user.setPasswordChangeRequired(true);
+
+        var result = service.login("alice", "password");
+
+        assertNull(result.session());
+        assertNull(result.challenge());
+        assertNotNull(result.passwordChange());
+        assertTrue(result.passwordChange().passwordChangeRequired());
+        verify(refresh, never()).issueSession(any(), anyInt(), anyBoolean());
+    }
+
+    @Test
+    void replacingTemporaryPasswordClearsFlagAndIssuesSession() {
+        user.setPasswordChangeRequired(true);
+        var session = mock(AuthenticatedSession.class);
+        when(passwords.matches("new-password", "encoded")).thenReturn(false);
+        when(passwords.encode("new-password")).thenReturn("new-encoded");
+        when(refresh.issueSession(user, 7, false)).thenReturn(session);
+
+        var result = service.completeTemporaryPassword("alice", "password", "new-password");
+
+        assertSame(session, result);
+        assertFalse(user.isPasswordChangeRequired());
+        assertEquals("new-encoded", user.getPassword());
+        verify(users).saveAndFlush(user);
+    }
+
+    @Test
     void webAuthnAccountReceivesOnlyWebAuthnChallenge() {
         user.setWebauthnEnabled(true);
 

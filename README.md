@@ -167,6 +167,10 @@ flowchart TB
     subgraph vpc[Amazon VPC 10.42.0.0/16]
         subgraph public[Two public subnets in separate Availability Zones]
             alb
+            nat[NAT gateway<br/>preview egress]
+        end
+
+        subgraph application[Two private application subnets]
             web[ECS Fargate web service<br/>Nginx + React]
             api[ECS Fargate API service<br/>Spring Boot]
             clamav[ClamAV sidecar]
@@ -180,25 +184,31 @@ flowchart TB
         alb -->|/api/* on :8080| api
         api -->|localhost:3310| clamav
         api -->|TCP :5432| rds
+        clamav -->|HTTP/HTTPS updates| nat
     end
 
-    api -->|task-role credentials| s3[(Private Amazon S3 buckets)]
+    api -->|S3 gateway endpoint| s3[(Private Amazon S3 buckets)]
     s3 --> kms[AWS KMS key]
-    secrets[AWS Secrets Manager] -. injected at task startup .-> api
-    ecr[ECR] -. image pull .-> web
-    ecr -. image pull .-> api
-    web --> logs[CloudWatch Logs]
-    api --> logs
-    clamav --> logs
+    endpoints[Interface VPC endpoints] --> secrets[AWS Secrets Manager]
+    endpoints --> ecr[ECR]
+    endpoints --> logs[CloudWatch Logs]
+    web --> endpoints
+    api --> endpoints
+    clamav --> endpoints
 ```
 
 The Application Load Balancer is the only public application entry point.
 Requests under `/api/*` go to the Spring Boot target group; all other paths go
 to the Nginx container that serves the React single-page application. ECS uses
 security groups that accept web and API traffic only from the load balancer.
-The tasks currently run in public subnets with public IP addresses so they can
-pull images and contact AWS services without a NAT gateway, but their inbound
-ports are not open directly to the internet.
+The tasks run in two private application subnets and receive no public IP
+addresses. Private interface endpoints carry ECR, CloudWatch Logs, and Secrets
+Manager traffic, while an S3 gateway endpoint carries application object and
+ECR layer traffic. A single preview-grade NAT gateway provides HTTP/HTTPS
+internet egress to the API task for ClamAV signature updates. Because Spring
+and ClamAV share one task network interface, this restriction applies to the
+whole API task; domain-level ClamAV-only filtering would require an egress
+proxy or firewall. The web task can reach only the private AWS endpoints.
 
 RDS runs in database subnets, is not publicly accessible, and accepts PostgreSQL
 connections only from the API task security group. The application uses Spring
@@ -238,7 +248,7 @@ Preview image publication and deployment are explicit operations performed by
 the PowerShell helpers in `scripts/`.
 
 > [!WARNING]
-> The preview ALB currently serves plain HTTP. Authentication cookies are therefore configured for the preview accordingly, and WebAuthn is disabled. Before treating this as production, add a domain, ACM certificate and HTTPS listener, redirect HTTP to HTTPS, enable secure cookies and WebAuthn for that domain, move ECS tasks to private subnets with controlled egress, separate the application database role from the RDS master user, enable stronger RDS backups/deletion protection, and add monitoring and WAF rules. AWS WAF and Shield Advanced are not part of the current Terraform stack.
+> The preview ALB currently serves plain HTTP. Authentication cookies are therefore configured for the preview accordingly, and WebAuthn is disabled. Before treating this as production, add a domain, ACM certificate and HTTPS listener, redirect HTTP to HTTPS, enable secure cookies and WebAuthn for that domain, use redundant NAT or eliminate internet egress with a controlled ClamAV update path, separate the application database role from the RDS master user, enable stronger RDS backups/deletion protection, and add monitoring and WAF rules. AWS WAF and Shield Advanced are not part of the current Terraform stack.
 
 The AWS resources and deployment commands are documented in
 [`infra/README.md`](infra/README.md).

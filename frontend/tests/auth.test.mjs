@@ -26,6 +26,13 @@ test('MFA challenge never establishes a session, even if response contains a tok
     assert.equal(getAccessToken(), null);
 });
 
+test('temporary password requires replacement without establishing a session', async () => {
+    setAccessToken('old');
+    respond({ passwordChangeRequired: true, accessToken: 'must-not-store' });
+    assert.deepEqual(await login('alice', 'temporary-password'), { passwordChangeRequired: true });
+    assert.equal(getAccessToken(), null);
+});
+
 test('rejects malformed challenge response', async () => {
     respond({ mfaRequired: true, expiresAt: 'invalid' });
     await assert.rejects(login('alice', 'password'), /invalid sign-in challenge/);

@@ -15,6 +15,45 @@ import java.util.Optional;
 
 @Repository
 public interface FileMetaDataRepository extends JpaRepository<FileMetaData, Long> {
+    @Query("""
+        select coalesce(sum(f.size), 0) from FileMetaData f
+        where f.permanentlyDeleted = false
+          and f.driveSpace = kakha.kudava.filedrivespring.enums.DriveSpace.DRIVE
+    """)
+    long sumQuotaBytes();
+
+    @Query("""
+        select coalesce(sum(f.size), 0) from FileMetaData f
+        where f.deleted = false
+          and f.permanentlyDeleted = false
+          and f.driveSpace = kakha.kudava.filedrivespring.enums.DriveSpace.DRIVE
+    """)
+    long sumActiveDriveBytes();
+
+    @Query("""
+        select count(f) from FileMetaData f
+        where f.deleted = false
+          and f.permanentlyDeleted = false
+          and f.driveSpace = kakha.kudava.filedrivespring.enums.DriveSpace.DRIVE
+    """)
+    long countActiveDriveFiles();
+
+    @Query("""
+        select coalesce(sum(f.size), 0) from FileMetaData f
+        where f.deleted = true
+          and f.permanentlyDeleted = false
+          and f.driveSpace = kakha.kudava.filedrivespring.enums.DriveSpace.DRIVE
+    """)
+    long sumTrashBytes();
+
+    @Query("""
+        select count(f) from FileMetaData f
+        where f.deleted = true
+          and f.permanentlyDeleted = false
+          and f.driveSpace = kakha.kudava.filedrivespring.enums.DriveSpace.DRIVE
+    """)
+    long countTrashFiles();
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
         update FileMetaData m

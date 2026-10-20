@@ -2,6 +2,7 @@ resource "aws_lb" "preview" {
   name               = "file-drive-preview"
   internal           = false
   load_balancer_type = "application"
+  idle_timeout       = 1800
   security_groups    = [aws_security_group.load_balancer.id]
   subnets            = aws_subnet.public[*].id
 }
@@ -29,7 +30,7 @@ resource "aws_lb_target_group" "api" {
 
   health_check {
     enabled = true
-    path    = "/api/auth/me"
+    path    = "/actuator/health/readiness"
     matcher = "200"
   }
 }

@@ -1,10 +1,11 @@
 # Preview infrastructure
 
-This is the first AWS foundation for File Drive: remote Terraform state, ECR,
-networking, one ECS service, and a private Single-AZ PostgreSQL instance. The
-`aws-preview` Spring profile allows a private ECS task to start and connect to
-PostgreSQL. File and Lockbox operations remain disabled until S3 is migrated.
-The task has no inbound rule, so it cannot be accessed from the public internet.
+This AWS preview includes remote Terraform state, ECR, an internet-facing ALB,
+private ECS application subnets, private S3 buckets, VPC endpoints, and a
+private Single-AZ PostgreSQL instance. The ALB is the only public application
+entry point. ECS tasks receive no public IP addresses. A single NAT gateway
+provides preview-grade HTTP/HTTPS egress for ClamAV updates; it is intentionally
+not redundant across Availability Zones.
 
 Run these commands yourself from local PowerShell. Terraform is intentionally
 not run by Codex.
@@ -33,6 +34,32 @@ secure and backed up; do not commit it. It creates a versioned, encrypted,
 private S3 state bucket with deletion protection.
 
 ## 2. Preview environment
+
+For the normal create/build/deploy workflow, return to the repository root and
+run the launcher:
+
+```powershell
+cd ../..
+.\scripts\launch-preview.ps1
+```
+
+Review the foundation plan and type `CREATE`, then review the service deployment
+plan and type `APPLY`. The launcher creates the infrastructure, pushes immutable
+API and web images, starts both ECS services, and prints the ALB URL.
+
+To inspect current administrator credentials:
+
+```powershell
+.\scripts\show-preview-admin-credentials.ps1
+```
+
+To destroy the preview after use:
+
+```powershell
+.\scripts\destroy-preview.ps1
+```
+
+The manual Terraform workflow below remains available for troubleshooting.
 
 ```powershell
 cd ../preview

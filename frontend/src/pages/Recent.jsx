@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import DriveSidebar from "../components/DriveSidebar";
 import NotificationMenu from "../components/NotificationMenu";
 import UserMenu from "../components/UserMenu";
-import { getFileBlob, getRecentFiles } from "../api/drive";
+import { createBrowserDownloadUrl, getRecentFiles, startBrowserDownload } from "../api/drive";
 
 function Icon({ children, className = "" }) {
     return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>;
@@ -59,13 +59,7 @@ export default function Recent({ sidebarOpen, onToggleSidebar, onLogout }) {
 
     async function download(file) {
         try {
-            const blob = await getFileBlob(file.id);
-            const url = URL.createObjectURL(blob);
-            const anchor = document.createElement("a");
-            anchor.href = url;
-            anchor.download = file.fileName;
-            anchor.click();
-            URL.revokeObjectURL(url);
+            startBrowserDownload(await createBrowserDownloadUrl("FILE", [file.id], []));
         } catch (err) { setError(err.message || "Failed to download file"); }
     }
 

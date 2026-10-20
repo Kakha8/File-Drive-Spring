@@ -12,6 +12,8 @@ import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
+import org.springframework.data.jpa.repository.Modifying;
 
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
@@ -28,4 +30,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
     void deleteById(Long id);
 
     List<User> findByUsernameContainingIgnoreCase(String username);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+        update User u set u.suspended = false, u.suspendedAt = null, u.suspendedUntil = null
+        where u.suspended = true and u.suspendedUntil is not null and u.suspendedUntil <= :now
+    """)
+    int reactivateExpiredSuspensions(@Param("now") Instant now);
 }

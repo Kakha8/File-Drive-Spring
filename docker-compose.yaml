@@ -92,9 +92,9 @@ services:
     expose:
       - "3310"
     environment:
-      CLAMD_CONF_StreamMaxLength: 500M
-      CLAMD_CONF_MaxFileSize: 500M
-      CLAMD_CONF_MaxScanSize: 500M
+      CLAMD_CONF_StreamMaxLength: 10G
+      CLAMD_CONF_MaxFileSize: 10G
+      CLAMD_CONF_MaxScanSize: 10G
     volumes:
       - ./clamav-db:/var/lib/clamav
 

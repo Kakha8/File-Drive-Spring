@@ -7,14 +7,25 @@ import kakha.kudava.filedrivespring.records.ApiErrorResponse;
 import kakha.kudava.filedrivespring.services.totp.TwoStageLoginService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthRestController {
+    public record TemporaryPasswordRequest(
+            String username,
+            @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
+            String temporaryPassword,
+            @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
+            String newPassword
+    ) {}
+
     private final TwoStageLoginService loginService;
     private final int refreshDays;
 
@@ -36,13 +47,41 @@ public class AuthRestController {
             AuthCookies.clearRefresh(response);
             return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result.challenge());
         }
+        if (result.passwordChange() != null) {
+            AuthCookies.clearRefresh(response);
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result.passwordChange());
+        }
         AuthCookies.setRefresh(response, result.session().refreshToken(), refreshDays);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result.session().login());
+    }
+
+    @PostMapping("/complete-temporary-password")
+    public ResponseEntity<LoginResponse> completeTemporaryPassword(
+            @RequestBody TemporaryPasswordRequest request,
+            HttpServletResponse response
+    ) {
+        var session = loginService.completeTemporaryPassword(
+                request.username(),
+                request.temporaryPassword(),
+                request.newPassword()
+        );
+        AuthCookies.setRefresh(response, session.refreshToken(), refreshDays);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(session.login());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiErrorResponse> malformedRequest() {
         return ResponseEntity.badRequest().cacheControl(CacheControl.noStore())
                 .body(ApiErrorResponse.of("INVALID_AUTH_REQUEST", "Invalid authentication request.", 400));
+    }
+
+    @ExceptionHandler(TwoStageLoginService.AccountSuspended.class)
+    public ResponseEntity<Map<String, Object>> suspended(TwoStageLoginService.AccountSuspended exception) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "ACCOUNT_SUSPENDED");
+        body.put("message", "This account is suspended.");
+        body.put("status", HttpStatus.FORBIDDEN.value());
+        if (exception.suspendedUntil() != null) body.put("suspendedUntil", exception.suspendedUntil().toString());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).cacheControl(CacheControl.noStore()).body(body);
     }
 }
